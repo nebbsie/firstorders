@@ -34,7 +34,7 @@ function unitIcon(kind: string, x: number, y: number, col: string) {
 export const labelHits: { x: number; y: number; w: number; h: number; s: any }[] = [];
 export const labelAt = (x: number, y: number) => { for (let i = labelHits.length - 1; i >= 0; i--) { const l = labelHits[i]; if (x >= l.x && x <= l.x + l.w && y >= l.y && y <= l.y + l.h) return l.s; } return null; };
 // The order a unit is following: in planning, a new order, else one still under way from the last phase.
-const ordOf = (s: any, plan: boolean) => plan ? (s.order || (s.members && ['attack', 'suppress', 'follow'].includes(s.state) ? s.cur : null)) : s.cur;
+const ordOf = (s: any, plan: boolean) => plan ? (s.order || (s.members && ['attack', 'move', 'suppress', 'follow'].includes(s.state) ? s.cur : null)) : s.cur;
 // A line along the way the units will walk.
 function routeLine(s: any, a: any, b: any, col: string, dash: boolean, head: boolean) {
   if (!MOVERS.includes(s.kind)) { groundLine(a, b, col, dash, head); return; }
@@ -125,7 +125,7 @@ export function draw2D() {
       if (o.dir != null) groundLine(o, { x: o.x + Math.cos(o.dir) * 10, y: o.y + Math.sin(o.dir) * 10 }, col, false, true);
       routeLine(s, { x: c[0], y: c[1] }, o, col, o.type === 'defend', true);
     }
-    if (plan && (S.selMany || []).includes(s)) { const m = P(o.x, o.y, 3); plate(m[0], m[1] - 14, `${s.call || ''} ${o.type.toUpperCase()} ${grid(o.x, o.y)}`.trim(), col); }
+    if (plan && (S.selMany || []).includes(s)) { const m = P(o.x, o.y, 3); plate(m[0], m[1] - 14, `${s.call || ''} ${o.type.toUpperCase()}`.trim(), col); }
   }
   for (const s of S.supports) {
     if (s.round !== S.round || s.team !== NET.me || (!plan && s.fired)) continue;
@@ -134,30 +134,26 @@ export function draw2D() {
     else { ring(s.a.x, s.a.y, s.type === 'barrage' ? 14 : s.type === 'smoke' ? 20 : 9, col, false); const p = P(s.a.x, s.a.y, 6); if (plan) plate(p[0], p[1] - 12, lab, col); }
   }
   ctx.globalAlpha = 1;
-  // Heavy weapons and FOBs still being built show when they will be ready.
-  for (const s of S.squads) {
-    if (s.team !== NET.me || !(s.readyRound > S.round)) continue; const c = sqCenter(s); if (!c) continue; const p = P(c[0], c[1], 4);
-    plate(p[0], p[1] - 18, `${KIND_NAME[s.kind] || s.kind} · BUILDING · READY PHASE ${s.readyRound}`, '#e8c547');
-  }
   // Name tags: a map symbol for the unit type, the call sign, and its order (or NO ORDERS while planning).
   // Hovering a unit shows its route and target brightly.
   const hv = input.hover && !input.ptr ? S.squads.find((s: any) => s.team === NET.me && s.call && (() => { const c = sqCenter(s); return c && Math.hypot(c[0] - input.hover.x, c[1] - input.hover.y) < 7; })()) : null;
-  if (hv) { const o = ordOf(hv, plan), c = sqCenter(hv); if (o && c) { routeLine(hv, { x: c[0], y: c[1] }, o, '#ffffff', o.type === 'defend', true); const m = P(o.x, o.y, 3); plate(m[0], m[1] - 14, `${hv.call} ${o.type.toUpperCase()} ${grid(o.x, o.y)}`, '#ffffff'); } }
+  if (hv) { const o = ordOf(hv, plan), c = sqCenter(hv); if (o && c) { routeLine(hv, { x: c[0], y: c[1] }, o, '#ffffff', o.type === 'defend', true); const m = P(o.x, o.y, 3); plate(m[0], m[1] - 14, `${hv.call} ${o.type.toUpperCase()}`, '#ffffff'); } }
   const placed: number[][] = []; labelHits.length = 0;
   for (const s of S.squads) {
     if (s.team !== NET.me || !s.call) continue; const c = sqCenter(s); if (!c) continue; const p = P(c[0], c[1], 5); if (p[0] < -500) continue;
-    const o = ordOf(s, plan), extra = (s.stance ? ' · ' + s.stance.toUpperCase() : '') + (s.fallback ? ' · FB' : '');
-    // Planning: the order (or NO ORDERS) and how the unit will move. In battle: what it is doing now, and its strength.
-    const tag = plan ? (o ? `${o.type.toUpperCase()} ${grid(o.x, o.y)}${!s.order ? ' CONT.' : ''}${extra}` : MOVERS.includes(s.kind) && (!s.members || s.state === 'hold') ? 'NO ORDERS' : s.members && s.state === 'defend' ? 'HOLDING' + extra : '')
-      : s.members ? `${s.status || ''} ${s.alive ?? s.members.length}/${s.members.length}` : '';
-    const tcol = plan ? (o ? '#e8c547' : '#8a8a80') : s.status === 'PINNED' || s.status === 'FALLING BACK' ? '#ff7a72' : s.status === 'ENGAGING' ? '#e8c547' : '#b8c0cc';
+    const o = ordOf(s, plan), extra = [s.stance ? s.stance.toUpperCase() : '', s.fallback ? 'FB' : ''].filter(Boolean).join(' · ');
+    // Planning: a unit that still needs orders says so brightly; a unit with orders turns grey and shows only its stance.
+    // In battle: what it is doing now, and its strength.
+    const needs = plan && !o && MOVERS.includes(s.kind) && (!s.members || s.state === 'hold'), done = plan && !needs;
+    const tag = plan ? (needs ? 'NO ORDERS' : extra) : s.members ? `${s.status || ''} ${s.alive ?? s.members.length}/${s.members.length}` : '';
+    const tcol = plan ? (needs ? '#e8c547' : '#8a8d94') : s.status === 'PINNED' || s.status === 'FALLING BACK' ? '#ff7a72' : s.status === 'ENGAGING' ? '#e8c547' : '#b8c0cc';
     ctx.font = '11px Departure, monospace'; const wn = ctx.measureText(s.call).width, wt = tag ? ctx.measureText(tag).width + 8 : 0, w = 20 + wn + wt + 6, x0 = Math.round(p[0] - w / 2); let y0 = Math.round(p[1] - 22);
     // Tags of units standing together stack upwards instead of covering each other.
     for (let tries = 0; tries < 8 && placed.some(r => x0 < r[0] + r[2] && r[0] < x0 + w && y0 < r[1] + 15 && r[1] < y0 + 15); tries++) y0 -= 16;
     placed.push([x0, y0, w]); labelHits.push({ x: x0, y: y0, w, h: 14, s });
-    ctx.fillStyle = s === hv ? 'rgba(40,44,52,.95)' : 'rgba(20,21,25,.8)'; ctx.fillRect(x0, y0, w, 14);
-    unitIcon(s.kind, x0 + 3, y0 + 2, TEAM_COLORS[0]);
-    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#f4f1e8'; ctx.fillText(s.call, x0 + 20, y0 + 7.5);
+    ctx.fillStyle = s === hv ? 'rgba(40,44,52,.95)' : done ? 'rgba(20,21,25,.55)' : 'rgba(20,21,25,.8)'; ctx.fillRect(x0, y0, w, 14);
+    unitIcon(s.kind, x0 + 3, y0 + 2, done ? '#7d8088' : TEAM_COLORS[0]);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = done ? '#8a8d94' : '#f4f1e8'; ctx.fillText(s.call, x0 + 20, y0 + 7.5);
     if (tag) { ctx.fillStyle = tcol; ctx.fillText(tag, x0 + 20 + wn + 8, y0 + 7.5); }
   }
   if (S.sel) {
@@ -224,7 +220,7 @@ function drawGhost() {
     const p = P(ptr.w0.x, ptr.w0.y, 3); plate(p[0], p[1] - 16, `${S.tool.toUpperCase()} ${grid(ptr.w0.x, ptr.w0.y)}${d > 4 ? ' · FACING' : ''}`, '#e8c547'); return;
   }
   // What the order under the cursor will do.
-  if (!ptr && (S.selMany || []).length && ['attack', 'defend', 'suppress', 'follow'].includes(S.tool)) {
+  if (!ptr && (S.selMany || []).length && ['move', 'attack', 'defend', 'suppress', 'follow'].includes(S.tool)) {
     let lab = S.tool.toUpperCase();
     if (S.tool === 'defend') { let tr = 0, sb = 0; const c0 = Math.floor(hover.x / C), r0 = Math.floor(hover.y / C); for (let dy = -8; dy <= 8; dy++) for (let dx = -8; dx <= 8; dx++) { const cx = c0 + dx, cy = r0 + dy; if (cx < 0 || cy < 0 || cx >= GW || dx * dx + dy * dy > 64) continue; const cv = S.cover ? S.cover[cy * GW + cx] : 0; if (cv === 2) tr++; else if (cv === 1) sb++; }
       for (const st of S.structs) if (st.team === NET.me && (st.type === 'trench' || st.type === 'sandbag') && st.placedAt == null && st.cells.some((ci: number) => Math.hypot((ci % GW) * C + 1 - hover.x, Math.floor(ci / GW) * C + 1 - hover.y) < 16)) { if (st.type === 'trench') tr++; else sb++; }
@@ -233,7 +229,7 @@ function drawGhost() {
     if (S.tool === 'follow') lab = 'CLICK THE UNIT TO FOLLOW';
     const hp = P(hover.x, hover.y, 3); plate(hp[0], hp[1] + 22, lab, S.tool === 'suppress' ? '#ff7a72' : '#e8c547');
   }
-  if ((S.tool === 'attack' || S.tool === 'defend') && !ptr) { for (const s of S.selMany || []) { const c = sqCenter(s); if (c && MOVERS.includes(s.kind)) routeLine(s, { x: c[0], y: c[1] }, hover, 'rgba(232,197,71,.6)', S.tool === 'defend', true); } }
+  if ((S.tool === 'move' || S.tool === 'attack' || S.tool === 'defend') && !ptr) { for (const s of S.selMany || []) { const c = sqCenter(s); if (c && MOVERS.includes(s.kind)) routeLine(s, { x: c[0], y: c[1] }, hover, 'rgba(232,197,71,.6)', S.tool === 'defend', true); } }
   if (ptr && ptr.mode === 'order') { const c = sqCenter(ptr.sq); if (!c) return; routeLine(ptr.sq, { x: c[0], y: c[1] }, ptr.w, '#e8c547', S.tool === 'defend', true); const b = P(ptr.w.x, ptr.w.y, 3); plate(b[0], b[1] - 16, `${S.tool.toUpperCase()} ${grid(ptr.w.x, ptr.w.y)}`, '#e8c547'); return; }
   if (tool.mode === 'point') {
     // Placing a unit: show where it will shoot (solid red) and how far it will see (dashed).

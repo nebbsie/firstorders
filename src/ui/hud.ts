@@ -1,5 +1,5 @@
 import { NET } from '../state';
-import { HQ_HOLD, PLAY_R, M_PER_UNIT, MOVERS, PHASE_LEN, COST, TOOLS, INFO, KIND_NAME, T_BUILD, T_WATER, T_BRIDGE, T_ROAD, T_WOOD, T_PARK, HS, grid, fmtT, clamp } from '../config';
+import { UPKEEP, HQ_HOLD, PLAY_R, M_PER_UNIT, MOVERS, PHASE_LEN, COST, TOOLS, INFO, KIND_NAME, T_BUILD, T_WATER, T_BRIDGE, T_ROAD, T_WOOD, T_PARK, HS, grid, fmtT, clamp } from '../config';
 import { S, M, VIS0, SEEN0, logText } from '../state';
 import { cellOf, bldNear, ENG_BUILD } from '../world';
 import { aliveMembers, sqCenter, itemCost, left, canRemove, removeItem, SUPPORT_ROUND } from '../plan';
@@ -57,7 +57,8 @@ function phaseReport(r: number) {
   let h = `<p>You have <b>${left(NET.me)}</b> supply.</p>`;
   if (rep) {
     const sg = (n: number) => (n > 0 ? '+' : '') + n;
-    h = `<dl class="kv"><dt>Lost</dt><dd style="color:var(--bad)">${rep.lost}</dd><dt>Killed</dt><dd>${rep.kills}</dd><dt>Ground</dt><dd>${sg(Math.round(rep.terr / 10))}</dd><dt>Supply</dt><dd>${left(NET.me)}</dd>${rep.seen.length ? `<dt>Seen</dt><dd>${rep.seen.join(', ')}</dd>` : ''}</dl>`
+    const pay = S.pay && S.pay[NET.me];
+    h = `<dl class="kv"><dt>Lost</dt><dd style="color:var(--bad)">${rep.lost}</dd><dt>Killed</dt><dd>${rep.kills}</dd><dt>Ground</dt><dd>${sg(Math.round(rep.terr / 10))}</dd>${pay ? `<dt>Income</dt><dd style="color:var(--good)">+${pay.inc}</dd><dt>Upkeep</dt><dd style="color:var(--bad)">-${pay.up}</dd>` : ''}<dt>Supply</dt><dd>${left(NET.me)}</dd>${rep.seen.length ? `<dt>Seen</dt><dd>${rep.seen.join(', ')}</dd>` : ''}</dl>`
       + (rep.notes.length ? `<ul class="rep">${rep.notes.map((n: string) => `<li>${esc(logText(n))}</li>`).join('')}</ul>` : '<p class="hint">No contact this phase.</p>');
   }
   return h + `<p>Press <b>BEGIN PHASE ${r}</b> when ready.</p>`;
@@ -102,7 +103,7 @@ export function closeTools() { }
 // Window beside the tool panel while hovering a tile: what it is and where it works.
 function showInfo(id: string, tile: HTMLElement) {
   const def = TOOLS.flatMap(g => g.items).find(t => t[0] === id), inf = INFO[id]; if (!def || !inf) return;
-  $('#info').innerHTML = `<div class="ph"><span>${def[1]}</span><span>${COST[id] ? COST[id] + (def[2] === 'line' && id !== 'air' && id !== 'spy' ? ' / CELL' : '') : ''}</span></div><div class="pb"><p class="hint">${inf[0]}</p>${inf[1] ? `<dl class="kv" style="margin-top:8px"><dt>Best</dt><dd>${inf[1]}</dd></dl>` : ''}<p class="note">${def[2] === 'line' ? 'Drag a line.' : def[2] === 'order' ? 'Select units first.' : ['spy', 'barrage', 'para', 'demo', 'air', 'smoke'].includes(id) ? (S.round < SUPPORT_ROUND && id !== 'smoke' ? `Anywhere in the circle. Ready from phase ${SUPPORT_ROUND}.` : 'Anywhere in the circle.') : id === 'garrison' ? 'A building on your own ground.' : id === 'fob' ? 'Near your engineers. Ready next phase.' : ENG_BUILD.includes(id) ? 'In your start area, or round a finished FOB. Ready next phase.' : TOOLS.find(g => g.g === 'UNITS').items.some(i => i[0] === id) ? 'In your start area.' : 'On your own ground.'}</p></div>`;
+  $('#info').innerHTML = `<div class="ph"><span>${def[1]}</span><span>${COST[id] ? COST[id] + (def[2] === 'line' && id !== 'air' && id !== 'spy' ? ' / CELL' : '') : ''}</span></div><div class="pb"><p class="hint">${inf[0]}</p>${inf[1] || UPKEEP[id] ? `<dl class="kv" style="margin-top:8px">${inf[1] ? `<dt>Best</dt><dd>${inf[1]}</dd>` : ''}${UPKEEP[id] ? `<dt>Upkeep</dt><dd>${UPKEEP[id]} a phase</dd>` : ''}</dl>` : ''}<p class="note">${def[2] === 'line' ? 'Drag a line.' : def[2] === 'order' ? 'Select units first.' : ['spy', 'barrage', 'para', 'demo', 'air', 'smoke'].includes(id) ? (S.round < SUPPORT_ROUND && id !== 'smoke' ? `Anywhere in the circle. Ready from phase ${SUPPORT_ROUND}.` : 'Anywhere in the circle.') : id === 'garrison' ? 'A building on your own ground.' : id === 'fob' ? 'Near your engineers. Ready next phase.' : ENG_BUILD.includes(id) ? 'In your start area, or round a finished FOB. Ready next phase.' : TOOLS.find(g => g.g === 'UNITS').items.some(i => i[0] === id) ? 'In your start area.' : 'On your own ground.'}</p></div>`;
   // A fixed spot just right of the tool panel, its bottom level with the panel's bottom.
   const el = $('#info'); el.hidden = false; el.style.left = $('#toolpanel').getBoundingClientRect().right + 6 + 'px';
 }
@@ -136,7 +137,7 @@ export function renderInspector() {
     title.textContent = `${many.length} units selected`;
     const total = many.reduce((a: number, s: any) => a + (s.members ? aliveMembers(s).length : s.pos.length), 0);
     h = `<dl class="kv"><dt>Soldiers</dt><dd>${total}</dd><dt>Units</dt><dd>${many.map((s: any) => s.call || KIND_NAME[s.kind]).join(', ')}</dd></dl>`;
-    if (S.phase === 'plan') h += `<p class="hint" style="margin-top:8px">Pick ATTACK or DEFEND, then click the ground. Drag to set the way they face.</p><div class="row"><button class="btn" id="iAtk">ATTACK</button><button class="btn" id="iDef">DEFEND</button>${many.some((s: any) => s.kind === 'engineers') ? '<button class="btn" id="iDemo">DEMOLISH</button>' : ''}<button class="btn" id="iClear">CLEAR ORDERS</button></div>`;
+    if (S.phase === 'plan') h += `<p class="hint" style="margin-top:8px">Pick an order, then click the ground. Drag to set the way they face.</p><div class="row"><button class="btn" id="iMove">MOVE</button><button class="btn" id="iAtk">ATTACK</button><button class="btn" id="iDef">DEFEND</button>${many.some((s: any) => s.kind === 'engineers') ? '<button class="btn" id="iDemo">DEMOLISH</button>' : ''}<button class="btn" id="iClear">CLEAR ORDERS</button></div>`;
   } else if (it && it.pos) {
     const col = S.teams[it.team].color;
     title.textContent = it.call ? `${it.call} · ${it.temp ? 'Paratroopers' : KIND_NAME[it.kind]}` : KIND_NAME[it.kind];
@@ -167,6 +168,7 @@ export function renderInspector() {
   b('#iDel', () => { actRemove(it.id); setSel(null); });
   b('#iFpv', () => { if (S.fpv === it.id) { S.fpv = null; renderInspector(); return; } S.fpv = it.id; toast('First person. Right drag to look round. Esc, WASD or the button to leave.'); renderInspector(); });
   b('#iClear', () => { actOrders(S.selMany.map((s: any) => ({ id: s.id, type: null }))); renderInspector(); });
+  b('#iMove', () => { setTool('move'); toast('Click the ground to go to. Drag to set the way they face.'); });
   b('#iAtk', () => { closeTools(); setTool('attack'); toast('Click the ground to attack. Drag to set the way they face.'); });
   b('#iDemo', () => { setTool('demolish'); toast('Click the bridge or building the engineers should blow up.'); });
   b('#iDef', () => { closeTools(); setTool('defend'); toast('Click the ground to hold. Drag to set the way they face.'); });
@@ -219,6 +221,7 @@ export function syncUI() {
   show('#bReplay', ph === 'done'); show('#bNew', ph === 'done'); show('#bExit', ph === 'replay'); show('#bFollow', ph === 'replay'); show('#bFromStart', ph === 'replay');
   if (!live) setTool('select');
   if (!plan) $('#card').hidden = true;
+  if (!plan && ph !== 'battle') $('#quitAsk').hidden = true;
   if (ph !== 'done') $('#result').hidden = true;
   syncClock(); renderTimeline(); renderInspector(); syncSpeed(); syncFollow(); renderRadio();
 }
@@ -263,7 +266,11 @@ export function bindStrip(toMenu: () => void) {
   $('#bFromStart').onclick = () => { seek(0); S.paused = false; syncSpeed(); };
   $('#bFollow').onclick = () => { S.follow = !S.follow; syncFollow(); };
   $('#bNew').onclick = () => { newBattle(); cam.userMoved = false; fit(); phaseCard(); };
-  $('#bMenu').onclick = toMenu;
+  // A battle in progress asks first; a finished battle or a replay quits at once.
+  const quit = () => { $('#quitAsk').hidden = true; toMenu(); };
+  $('#bMenu').onclick = () => { if (S.phase === 'plan' || S.phase === 'battle') $('#quitAsk').hidden = false; else quit(); };
+  $('#quitYes').onclick = quit;
+  $('#quitNo').onclick = () => { $('#quitAsk').hidden = true; };
   $('#bHelp').onclick = () => { $('#help').hidden = !$('#help').hidden; };
   $('#helpClose').onclick = () => { $('#help').hidden = true; };
   $('#cardOk').onclick = () => { $('#card').hidden = true; };

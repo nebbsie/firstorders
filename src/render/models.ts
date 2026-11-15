@@ -32,6 +32,12 @@ function sandRing(r: number, n: number, layers = 2, gap = .55): Part[] {
   }
   return out;
 }
+// A thin rod from point a to point b, for legs and braces. Its matrix is already applied, so its place is [0, 0, 0].
+function rod(a: number[], b: number[], t: number, col: string): Part {
+  const va = new THREE.Vector3(...a as [number, number, number]), vb = new THREE.Vector3(...b as [number, number, number]), len = va.distanceTo(vb);
+  const g = box(t, len, t), q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), vb.clone().sub(va).normalize());
+  g.applyMatrix4(new THREE.Matrix4().compose(va.add(vb).multiplyScalar(.5), q, new THREE.Vector3(1, 1, 1))); return [g, col, [0, 0, 0]];
+}
 const crate = (x: number, y: number, z: number, s = .7, yaw = 0): Part[] => [[box(s, s * .7, s), WOOD, [x, y + s * .35, z], [0, yaw, 0]], [box(s * 1.04, s * .1, s * 1.04), WOOD2, [x, y + s * .35, z], [0, yaw, 0]]];
 THREE.ColorManagement.enabled = false;
 export const MODELS: Record<string, THREE.BufferGeometry> = {
@@ -43,12 +49,18 @@ export const MODELS: Record<string, THREE.BufferGeometry> = {
     ...crate(-.75, 0, .55, .6, .3), [cyl(.06, .06, .34, 6), '#4a5a3a', [-.75, .5, .5], [0, 0, .5]], [cyl(.06, .06, .34, 6), '#4a5a3a', [-.7, .5, .68], [0, 0, .5]],
     ...sandRing(1.5, 10, 2, .7),
   ]),
-  // MG nest: a horseshoe of bags three high, the gun on a tripod with its ammunition box.
+  // MG nest, in two parts: the ring of bags stays put (mgBase) and only the gun on its tripod turns (mg).
+  mgBase: build([
+    ...sandRing(1.55, 12, 2, .55),
+    [box(.34, .24, .22), '#4a5a3a', [-.6, .12, .75]], [box(.34, .24, .22), '#4a5a3a', [-.85, .12, .55], [0, .4, 0]],
+  ]),
+  // The gun: three straight legs from one head to the ground, a receiver, a jacketed barrel and an ammunition box.
   mg: build([
-    ...sandRing(1.4, 10, 3, .5),
-    [box(.62, .2, .22), DARK, [.1, .86, 0]], [cyl(.075, .075, 1.15, 8), '#4b4d52', [.9, .87, 0], [0, 0, -Math.PI / 2]], [cyl(.04, .04, .3, 6), DARK, [1.6, .87, 0], [0, 0, -Math.PI / 2]],
-    [box(.2, .28, .06), DARK, [-.25, .82, 0]], [box(.06, .86, .06), STEEL, [.35, .43, .28], [.42, 0, -.2]], [box(.06, .86, .06), STEEL, [.35, .43, -.28], [-.42, 0, -.2]], [box(.06, .86, .06), STEEL, [-.3, .43, 0], [0, 0, .5]],
-    [box(.34, .24, .2), '#4a5a3a', [.1, .12, .5]], [box(.3, .04, .04), '#c9b15a', [.1, .78, .2]],
+    rod([.05, .66, 0], [.55, 0, .42], .055, STEEL), rod([.05, .66, 0], [.55, 0, -.42], .055, STEEL), rod([.05, .66, 0], [-.6, 0, 0], .055, STEEL),
+    [box(.16, .1, .16), DARK, [.05, .7, 0]],
+    [box(.55, .16, .16), DARK, [.02, .82, 0]], [box(.28, .1, .1), '#5a4632', [-.36, .8, 0]],
+    [cyl(.06, .06, .7, 8), '#4b4d52', [.62, .84, 0], [0, 0, -Math.PI / 2]], [cyl(.025, .025, .25, 6), DARK, [1.08, .84, 0], [0, 0, -Math.PI / 2]],
+    [box(.18, .14, .1), '#4a5a3a', [.05, .8, .15]], [box(.04, .03, .2), '#c9b15a', [.08, .84, .1]],
   ]),
   // AT gun: angled shield, long barrel with a muzzle brake, spoked wheels, split trails with spades.
   at: build([
@@ -75,11 +87,18 @@ export const MODELS: Record<string, THREE.BufferGeometry> = {
     [cyl(.085, .1, 2.3, 7), DARK, [2.2, 1.58, 0], [0, 0, -Math.PI / 2]], [cyl(.14, .14, .26, 7), DARK, [3.3, 1.58, 0], [0, 0, -Math.PI / 2]],
     [box(.04, 1.1, .04), DARK, [-.8, 2.3, -.45]],
   ]),
-  // A soldier: pale tunic and helmet that take the team colour, dark legs, a rifle. Faces +x.
+  // A soldier: two legs with boots, a pale tunic and helmet that take the team colour, a belt and pack,
+  // arms forward to a rifle held at the ready. Faces +x.
   soldier: build([
-    [box(.22, .5, .34), '#55564a', [0, .25, 0]], [box(.26, .46, .42), '#ececec', [0, .73, 0]],
-    [box(.2, .2, .2), '#d6b08e', [0, 1.06, 0]], [cyl(.1, .17, .13, 8), '#b4b4b4', [0, 1.2, 0]], [cyl(.19, .19, .03, 8), '#a8a8a8', [0, 1.14, 0]],
-    [box(.62, .05, .05), '#2e2a25', [.3, .82, .17]],
+    [box(.15, .46, .13), '#4d4e44', [0, .29, .085]], [box(.15, .46, .13), '#4d4e44', [0, .29, -.085]],
+    [box(.21, .08, .14), '#2a2723', [.03, .04, .085]], [box(.21, .08, .14), '#2a2723', [.03, .04, -.085]],
+    [box(.2, .4, .34), '#ececec', [0, .72, 0]], [box(.22, .06, .36), '#5c4c34', [0, .54, 0]],
+    [box(.13, .26, .26), '#8c8a78', [-.16, .76, 0]],
+    rod([0, .88, .2], [.2, .7, .16], .09, '#dcdcdc'), rod([.2, .7, .16], [.32, .78, .04], .08, '#dcdcdc'),
+    rod([0, .88, -.2], [.16, .74, -.12], .09, '#dcdcdc'), rod([.16, .74, -.12], [.26, .8, -.02], .08, '#dcdcdc'),
+    [box(.16, .16, .16), '#d6b08e', [.01, 1.02, 0]],
+    [cyl(.12, .15, .08, 9), '#b8b8b8', [0, 1.13, 0]], [cyl(.19, .19, .025, 9), '#a8a8a8', [0, 1.09, 0]],
+    [box(.72, .045, .05), '#2e2a25', [.28, .8, .02], [0, 0, .12]], [box(.2, .07, .055), '#5a4632', [-.02, .76, .02], [0, 0, .12]],
   ]),
   // The dead: the same figure lying down, all grey.
   body: build([

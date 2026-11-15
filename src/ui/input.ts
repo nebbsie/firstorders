@@ -18,7 +18,8 @@ const visibleNow = (u: any) => u.team === NET.me || !S.fog || (S.vis[NET.me] && 
 function hitTest(w: any, squadsOnly?: boolean) {
   let best: any = null, bd = 1e9; const consider = (it: any, d: number, lim: number) => { if (d < lim && d < bd) { bd = d; best = it; } };
   if (S.phase === 'plan') { for (const s of S.squads) { if (s.team !== NET.me) continue; const c = sqCenter(s); if (c) consider(s, Math.hypot(c[0] - w.x, c[1] - w.y), s.kind === 'rifles' ? 9 : 5); } }
-  else { for (const u of S.units) { if (!u.alive || !visibleNow(u)) continue; const d = Math.hypot(u.x - w.x, u.y - w.y); if (d < 4 && d < bd) { bd = d; best = S.squads.find((s: any) => s.id === u.sq); } } if (best) return best; }
+  // Only your own units can be picked; enemy troops are watched, not inspected.
+  else { for (const u of S.units) { if (!u.alive || u.team !== NET.me) continue; const d = Math.hypot(u.x - w.x, u.y - w.y); if (d < 4 && d < bd) { bd = d; best = S.squads.find((s: any) => s.id === u.sq); } } if (best) return best; }
   if (squadsOnly || S.phase !== 'plan') return best;
   for (const s of S.supports) { if (s.team !== NET.me || s.round !== S.round) continue; if (s.b) consider(s, segDist(w, s.a, s.b), 5); else consider(s, Math.hypot(s.a.x - w.x, s.a.y - w.y), s.type === 'barrage' ? 14 : 9); }
   for (const s of S.structs) { if (s.team !== NET.me) continue; consider(s, segDist(w, s.a, s.b), 3); }
@@ -168,8 +169,8 @@ export function initInput(cv: HTMLCanvasElement) {
   window.addEventListener('keydown', e => {
     if ((e.target as HTMLElement).closest && (e.target as HTMLElement).closest('input,textarea')) return; keys.add(e.key.toLowerCase());
     if (e.key === 'Home') { cam.userMoved = false; fit(); }
-    // Order panel keys: 1 attack, 2 defend, 3 careful, 4 rush, 5 ambush, F fall back.
-    const qk: Record<string, string> = { '1': '[data-q="attack"]', '2': '[data-q="defend"]', '3': '[data-st="careful"]', '4': '[data-st="rush"]', '5': '[data-st="ambush"]', '6': '[data-q="suppress"]', '7': '[data-q="follow"]', f: '[data-st="fallback"]' }, qb = qk[e.key.toLowerCase()], qel = document.getElementById('qbar');
+    // Order panel keys: M move, 1 attack, 2 defend, 3 careful, 4 rush, 5 ambush, F fall back.
+    const qk: Record<string, string> = { m: '[data-q="move"]', '1': '[data-q="attack"]', '2': '[data-q="defend"]', '3': '[data-st="careful"]', '4': '[data-st="rush"]', '5': '[data-st="ambush"]', '6': '[data-q="suppress"]', '7': '[data-q="follow"]', f: '[data-st="fallback"]' }, qb = qk[e.key.toLowerCase()], qel = document.getElementById('qbar');
     if (qb && qel && !qel.hidden) { const b = qel.querySelector(qb) as HTMLElement; if (b && b.onclick) { b.click(); e.preventDefault(); return; } }
     if (e.key === 'Escape' && S.fpv != null) { S.fpv = null; return; }
     if (e.key === 'Escape') { if (S.tool !== 'select') setTool('select'); else setSel(null); }

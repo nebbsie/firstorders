@@ -26,4 +26,4 @@ export function useMission(i: number | null) {
   S.campaign = i; S.allowed = i == null ? null : unlockedAt(i); S.aiMult = i == null ? 1 : MISSIONS[i].ai;
   S.goal = i == null ? 'hq' : MISSIONS[i].goal; S.maxPhases = i == null ? (S.skirmishPhases || 0) : MISSIONS[i].phases; S.tutorial = null;
 }
-export const isAllowed = (id: string) => !S.allowed || S.allowed.has(id) || id === 'attack' || id === 'defend' || id === 'select' || id === 'demolish';
+export const isAllowed = (id: string) => !S.allowed || S.allowed.has(id) || id === 'attack' || id === 'move' || id === 'defend' || id === 'select' || id === 'demolish';

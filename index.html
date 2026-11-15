@@ -12,7 +12,8 @@
 <div class="game" id="game">
   <div class="stage"><canvas id="gl"></canvas><canvas id="cv" aria-label="Battle map"></canvas><div class="busy" id="busy"><div class="load"><div class="title">FIRST ORDERS</div><div id="busyText">LOADING</div><div class="loadbar"><i></i></div></div></div></div>
 
-  <div class="hud topleft"><button class="btn" id="bMenu" title="Pick another place">MENU</button><button class="btn side" id="bHelp">HELP</button></div>
+  <div class="hud topleft"><button class="btn" id="bMenu" title="Leave this battle and go back to the menu">QUIT</button><button class="btn side" id="bHelp">HELP</button></div>
+  <button class="hud btn go begin" id="bBegin" title="Lock your orders and fight this phase (Space)">BEGIN PHASE 1</button>
   <div class="hud speedreq" id="speedReq" hidden><span id="srText"></span><button class="btn" id="srAgree">AGREE</button></div>
   <div class="hud hqbar" id="hqBar" hidden><span id="hqText"></span><div class="track"><div id="hqFill"></div></div></div>
   <div class="hud panel roster" id="roster" hidden></div>
@@ -46,9 +47,8 @@
       <button class="btn" id="bExit" hidden>EXIT REPLAY</button>
       <button class="btn on" id="bFollow" title="Move the camera to where the fighting is" hidden>FOLLOW ACTION</button>
       <button class="btn" id="bFromStart" title="Play the replay from the start" hidden>FROM START</button></div>
-    <div class="plate supplyplate" id="supplyPlate" title="Supply left to spend this phase. Each phase pays more for the ground you hold."><span class="k">SUPPLY</span><b id="supply">0</b></div>
+    <div class="plate supplyplate" id="supplyPlate" title="Supply left to spend this phase. Each phase pays more for the ground you hold, less the upkeep of every unit you have."><span class="k">SUPPLY</span><b id="supply">0</b></div>
     <div class="side-r">
-      <button class="btn go" id="bBegin" title="Lock your orders and fight this phase (Space)">BEGIN PHASE 1</button>
       <button class="btn go" id="bReplay" title="Watch the whole battle again" hidden>WATCH REPLAY</button>
       <button class="btn" id="bNew" title="Start again on this map. AI teams get new personalities." hidden>NEW BATTLE</button></div>
   </div>
@@ -58,6 +58,7 @@
   <div class="hud qbar" id="qbar" hidden>
     <div class="qhead"><b id="qName"></b><span id="qInfo"></span></div>
     <div class="qrow"><span class="ql">ORDER</span>
+      <button class="btn qo" data-q="move" title="Go there and hold. Infantry keep walking under fire. Click the ground; drag to set facing. Key: M."><svg viewBox="0 0 12 12"><path d="M1 6h7M5 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2 1"/></svg>MOVE</button>
       <button class="btn qo" data-q="attack" title="Go there and take it. Click the ground; drag to set facing; Shift-click first for a waypoint. Key: 1."><svg viewBox="0 0 12 12"><path d="M1 6h8M6 2l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>ATTACK</button>
       <button class="btn qo" data-q="defend" title="Go there, dig in and hold. Key: 2."><svg viewBox="0 0 12 12"><path d="M6 1l4 1.5v3.2c0 2.6-1.7 4.3-4 5.3-2.3-1-4-2.7-4-5.3V2.5z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>DEFEND</button>
       <button class="btn qo" data-q="demolish" title="Engineers: blow up a bridge or building."><svg viewBox="0 0 12 12"><path d="M6 1v3M6 8v3M1 6h3M8 6h3M2.5 2.5l2 2M7.5 7.5l2 2M9.5 2.5l-2 2M4.5 7.5l-2 2" stroke="currentColor" stroke-width="1.3"/></svg>DEMOLISH</button>
@@ -82,6 +83,7 @@
   </div>
   <div class="hud panel banner" id="banner" hidden><b id="bannerBig"></b><span id="bannerSmall"></span></div>
   <div class="hud panel card" id="card" hidden><div class="ph"><span id="cardTitle"></span></div><div class="pb"><div id="cardBody"></div><div class="row"><button class="btn go" id="cardOk">GOT IT</button></div></div></div>
+  <div class="hud panel card quit" id="quitAsk" hidden><div class="ph"><span>QUIT THIS BATTLE?</span></div><div class="pb"><p class="hint">The battle ends and you go back to the menu.</p><div class="row"><button class="btn stop" id="quitYes">QUIT</button><button class="btn" id="quitNo">CANCEL</button></div></div></div>
   <div class="hud panel result" id="result" hidden></div>
 
   <div class="hud panel help" id="help" hidden>
@@ -90,7 +92,7 @@
       <h3>A BATTLE</h3>
       <p>Take the enemy HQ and hold your own. An HQ falls when enemy troops hold its ground for 40 seconds; a bar at the top shows the count. Driven off, it runs back down. Each phase lasts 60 seconds: before it you build, buy and give orders, then it plays out on its own. At the end, watch the replay.</p>
       <h3>GROUND</h3>
-      <p>The battle is the circle (1, 2 or 3 km across); the grey ring around it is scenery. You can only build on ground you hold, tinted your colour. Troops that clearly hold ground take it. Supply each phase comes from the ground you hold.</p>
+      <p>The battle is the circle (1, 2 or 3 km across); the grey ring around it is scenery. You can only build on ground you hold, tinted your colour. Troops that clearly hold ground take it. Supply each phase comes from the ground you hold. Every unit you keep costs upkeep each phase, so a big army eats your income: buy what you need, not all you can.</p>
       <h3>DEPLOYING</h3>
       <p>New units arrive in your start area. Engineers can build a FOB near where they stand; it is ready the next phase. Mortars, MG nests, AT guns and obs posts go in the start area or round a finished FOB, and also take a phase to build. Spy planes, artillery, air strikes and paradrops are ready from phase 2.</p>
       <h3>MOVING</h3>

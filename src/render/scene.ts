@@ -76,10 +76,9 @@ uniform float foTime;
 varying vec3 vFoW;
 ` + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
       #ifdef FO_WATER
-        // Slow bands of light and dark that drift across the water.
-        float foR = sin(vFoW.x * .5 + vFoW.z * .3 + foTime * .7) * sin(vFoW.z * .62 - vFoW.x * .21 - foTime * .5);
-        float foG = sin(vFoW.x * .17 - vFoW.z * .23 + foTime * .33);
-        diffuseColor.rgb += vec3(.04, .055, .06) * foR + vec3(.02, .03, .035) * foG;
+        // Broad, soft swells of light that drift slowly. Waves are added, not multiplied, so no grid pattern shows.
+        float foR = sin(vFoW.x * .09 + vFoW.z * .05 + foTime * .35) + sin(vFoW.x * .04 - vFoW.z * .11 - foTime * .22) + sin(vFoW.x * .21 + vFoW.z * .17 + foTime * .6) * .35;
+        diffuseColor.rgb += vec3(.012, .016, .018) * foR;
       #endif
       #ifdef FO_WIN
         // Rows of dark windows on walls (faces that stand upright), one bay about every 3 m.
@@ -127,13 +126,32 @@ export function paintTerritory(seen: Uint8Array | null, vis?: Uint8Array) {
   ictx.putImageData(img, 0, 0); terrTex.needsUpdate = true;
 }
 // Fog: clear where you see now, light shade where you have seen, dark where you never looked.
+// The painted fog eases towards these levels: ground clears in about half a second and closes again
+// slowly, so sight that comes and goes as troops move does not make the ground flicker.
+const fogT = new Float32Array(IW * IH), fogA = new Float32Array(IW * IH), unT = new Float32Array(IW * IH), unA = new Float32Array(IW * IH);
+const fogImg = fctx.createImageData(IW, IH), unImg = uctx.createImageData(IW, IH);
+let fogWasOn = false, fogMoving = false;
 export function paintFog(vis: Uint8Array, seen: Uint8Array, on: boolean) {
-  const img = fctx.createImageData(IW, IH), px = img.data;
-  if (on) for (let i = 0; i < IW * IH; i++) { if (!inPlay((i % IW) * IC + 2, Math.floor(i / IW) * IC + 2)) continue; px[i * 4] = 11; px[i * 4 + 1] = 14; px[i * 4 + 2] = 18; px[i * 4 + 3] = vis[i] ? 0 : seen[i] ? 80 : 112; }
-  fctx.putImageData(img, 0, 0); fogTex.needsUpdate = true;
-  const ui = uctx.createImageData(IW, IH), up = ui.data;
-  if (on) for (let i = 0; i < IW * IH; i++) { up[i * 4] = seen[i] ? 0 : 255; up[i * 4 + 3] = 255; }
-  uctx.putImageData(ui, 0, 0); unseenTex.needsUpdate = true;
+  for (let i = 0; i < IW * IH; i++) {
+    const inside = inPlay((i % IW) * IC + 2, Math.floor(i / IW) * IC + 2);
+    fogT[i] = on && inside ? (vis[i] ? 0 : seen[i] ? 80 : 112) : 0; unT[i] = on && !seen[i] ? 255 : 0;
+  }
+  // Fog turned on or off (a new phase type, a replay): no fade, show it as it is at once.
+  if (on !== fogWasOn) { fogA.set(fogT); unA.set(unT); fogWasOn = on; }
+  fogMoving = true; writeFog();
+}
+function stepFog(dt: number) {
+  if (!fogMoving) return; let moving = false; const clear = 1 - Math.exp(-dt * 6), close = 1 - Math.exp(-dt * .8);
+  for (let i = 0; i < IW * IH; i++) {
+    const d = fogT[i] - fogA[i]; if (d) { fogA[i] = Math.abs(d) < .5 ? fogT[i] : fogA[i] + d * (d < 0 ? clear : close); moving = true; }
+    const e = unT[i] - unA[i]; if (e) { unA[i] = Math.abs(e) < 1 ? unT[i] : unA[i] + e * clear; moving = true; }
+  }
+  fogMoving = moving; writeFog();
+}
+function writeFog() {
+  const px = fogImg.data, up = unImg.data;
+  for (let i = 0; i < IW * IH; i++) { px[i * 4] = 11; px[i * 4 + 1] = 14; px[i * 4 + 2] = 18; px[i * 4 + 3] = fogA[i]; up[i * 4] = unA[i]; up[i * 4 + 3] = 255; }
+  fctx.putImageData(fogImg, 0, 0); fogTex.needsUpdate = true; uctx.putImageData(unImg, 0, 0); unseenTex.needsUpdate = true;
 }
 
 let mapGroup: THREE.Group = null;
@@ -185,7 +203,8 @@ export function buildMap3D() {
     wp.push(...a, ...d, ...b, ...b, ...d, ...e);
   }
   const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3)); wg.computeVertexNormals();
-  const water = new THREE.Mesh(wg, greyUnseen(new THREE.MeshLambertMaterial({ color: '#3f6874', transparent: true, opacity: .82 }), 'water')); water.renderOrder = 2; mapGroup.add(water);
+  // Phong, so the sun puts a soft shine on the water.
+  const water = new THREE.Mesh(wg, greyUnseen(new THREE.MeshPhongMaterial({ color: '#35606c', specular: '#5d7f88', shininess: 28, transparent: true, opacity: .9 }), 'water')); water.renderOrder = 2; mapGroup.add(water);
 
   // Buildings: one merged mesh of flat-shaded walls and roofs. Roofs are triangulated, so L-shapes work.
   const Pa: number[] = [], Na: number[] = [], Ca: number[] = [];
@@ -305,6 +324,12 @@ function setI(mesh: any, i: number, x: number, y: number, h: number, sx: number,
   _q.setFromAxisAngle(_up, yaw || 0); _p.set(x - W / 2, h, y - H / 2); _s.set(sx, sy, sz); _m.compose(_p, _q, _s); mesh.setMatrixAt(i, _m);
   if (col) { _c.setRGB(col[0], col[1], col[2]); mesh.setColorAt(i, _c); }
 }
+// A gun or vehicle model. An MG nest is two models: the bags face the battle centre and do not turn; the gun turns.
+function model(kind: string, x: number, y: number, h: number, s: number, hd: number, col: number[], sy = s) {
+  const m = mModel[kind]; if (!m || nModel[kind] >= 400) return;
+  setI(m, nModel[kind]++, x, y, h, s, sy, s, hd, col);
+  if (kind === 'mg' && nModel.mgBase < 400) setI(mModel.mgBase, nModel.mgBase++, x, y, h, s, sy, s, Math.atan2(-(H / 2 - y), W / 2 - x), col);
+}
 function done(mesh: any, n: number) { mesh.count = n; mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true; }
 
 let structKey = '';
@@ -348,12 +373,11 @@ export function update3D(V: View) {
   };
   // Team tint over the model's own colours: a light wash of the team colour.
   for (const k in mModel) nModel[k] = 0;
-  const emp = (kind: string, x: number, y: number, c: number[], hd: number) => {
-    const m = mModel[kind]; if (!m || nModel[kind] >= 400) return;
-    setI(m, nModel[kind]++, x, y, unitH(x, y), 1.6, 1.6, 1.6, hd || 0, [.62 + c[0] * .5, .62 + c[1] * .5, .62 + c[2] * .5]);
-  };
+  const emp = (kind: string, x: number, y: number, c: number[], hd: number) => model(kind, x, y, unitH(x, y), 1.6, hd || 0, [.62 + c[0] * .5, .62 + c[1] * .5, .62 + c[2] * .5]);
+  // While planning, your soldiers that already have orders turn grey, so the ones still waiting stand out.
+  const ORDERED = [.58, .6, .64], hasOrder = (q: any) => q && (q.order || ['attack', 'move', 'suppress', 'follow'].includes(q.state));
   for (const u of V.units) {
-    const c = TRGB[sw(u.team)];
+    const c = plan && u.team === NET.me && !MODEL_KINDS.has(u.kind) && hasOrder(u.sqo) ? ORDERED : TRGB[sw(u.team)];
     if (u.alive) {
       if (u.team !== NET.me && V.fogOn && !V.isVis(u)) continue;
       if (MODEL_KINDS.has(u.kind)) { emp(u.kind, u.x, u.y, c, u.hd); if (!figures) putU(u.x, u.y, unitH(u.x, u.y) + .9, c, 1); }
@@ -363,11 +387,11 @@ export function update3D(V: View) {
       if (figures && !MODEL_KINDS.has(u.kind)) { if (nd < 5000) setI(mBody, nd++, u.x, u.y, unitH(u.x, u.y), 1.25, 1.25, 1.25, (u.hd || 0) + u.i); }
       else { bp[nb * 3] = u.x - W / 2; bp[nb * 3 + 1] = unitH(u.x, u.y) + .2; bp[nb * 3 + 2] = u.y - H / 2; bc[nb * 3] = .42; bc[nb * 3 + 1] = .42; bc[nb * 3 + 2] = .4; nb++; } // the dead: grey
       // Wrecked guns and tanks stay where they fell, burnt dark.
-      if (MODEL_KINDS.has(u.kind)) { const m = mModel[u.kind]; if (m && nModel[u.kind] < 400) setI(m, nModel[u.kind]++, u.x, u.y, unitH(u.x, u.y) - .15, 1.6, 1.3, 1.6, (u.hd || 0) + .3, [.22, .2, .18]); }
+      if (MODEL_KINDS.has(u.kind)) model(u.kind, u.x, u.y, unitH(u.x, u.y) - .15, 1.6, (u.hd || 0) + .3, [.22, .2, .18], 1.3);
     }
   }
   if (plan) for (const s of S.squads) {
-    if (s.members || s.team !== NET.me) continue; const c = TRGB[0];
+    if (s.members || s.team !== NET.me) continue; const c = s.order && !MODEL_KINDS.has(s.kind) ? ORDERED : TRGB[0];
     const hd0 = Math.atan2(-(H / 2 - s.pos[0][1]), W / 2 - s.pos[0][0]);
     for (const p of s.pos) { if (MODEL_KINDS.has(s.kind)) putU(p[0], p[1], unitH(p[0], p[1]) + .9, c, .75); else man({ x: p[0], y: p[1], hd: hd0 }, unitH(p[0], p[1]), c, .75); }
     if (MODEL_KINDS.has(s.kind)) emp(s.kind, s.pos[0][0], s.pos[0][1], c, Math.atan2(-(H / 2 - s.pos[0][1]), W / 2 - s.pos[0][0]));
@@ -377,7 +401,7 @@ export function update3D(V: View) {
   if (plan && hv && !input.ptr && tl) {
     const ghost = (kind: string, x: number, y: number, c: number[], hd: number) => {
       const uk = unitKind(kind);
-      if (MODEL_KINDS.has(uk)) { const m = mModel[uk]; if (m && nModel[uk] < 400) setI(m, nModel[uk]++, x, y, unitH(x, y), 1.6, 1.6, 1.6, hd, c); return; }
+      if (MODEL_KINDS.has(uk)) { model(uk, x, y, unitH(x, y), 1.6, hd, c); return; }
       const n = PLATOON_SIZE[kind] || 1, fx = Math.cos(-hd), fy = Math.sin(-hd);
       for (let i = 0; i < n; i++) { const col = (i % 4 - 1.5) * 2.3, row = (Math.floor(i / 4) - 1.5) * 2.3, px = x - fy * col - fx * row, py = y + fx * col - fy * row; man({ x: px, y: py, hd }, unitH(px, py), c, 1); }
     };
@@ -385,7 +409,7 @@ export function update3D(V: View) {
     if ((tl.mode === 'point' || tl.mode === 'aim') && K[unitKind(S.tool)] && S.tool !== 'garrison') {
       const ok = canPlaceUnit(NET.me, S.tool, hv.x, hv.y) && spacingOk(NET.me, S.tool, hv.x, hv.y) && left(NET.me) >= COST[S.tool];
       ghost(S.tool, hv.x, hv.y, ok ? [.55, 1, .65] : [1, .4, .36], toMid);
-    } else if (S.tool === 'attack' || S.tool === 'defend') {
+    } else if (S.tool === 'move' || S.tool === 'attack' || S.tool === 'defend') {
       const sel = (S.selMany || []).filter((s: any) => s.team === NET.me && MOVERS.includes(s.kind)); let gx = 0, gy = 0, k = 0;
       for (const s of sel) { gx += s.x; gy += s.y; k++; }
       if (k) { const a = Math.atan2(hv.y - gy / k, hv.x - gx / k), dx = Math.cos(a), dy = Math.sin(a); sel.forEach((s: any, j: number) => { const off = (j - (k - 1) / 2) * 11; ghost(s.kind, hv.x - dy * off, hv.y + dx * off, [.5, .78, 1], -a); }); }
@@ -443,6 +467,6 @@ export function update3D(V: View) {
   for (const br of M.bridges) if (br.group) br.group.visible = !(br.blown != null && (S.phase !== 'replay' || br.blown <= S.rt));
   updateStructs(V); updateDowns();
 }
-export function render() { timeU.value = performance.now() / 1000; renderer.render(scene, camera); }
+export function render() { const t = performance.now() / 1000; stepFog(clamp(t - timeU.value, 0, .1)); timeU.value = t; renderer.render(scene, camera); }
 
 export const THREE_ = THREE; // developer checks only

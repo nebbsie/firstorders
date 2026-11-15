@@ -1,4 +1,4 @@
-import { W, H, C, GW, GH, IW, IH, IC, DT, BUDGET, COST, T_GROUND, PLATOONS, unitKind, PHASES, PHASE_LEN, HQ_HOLD, K, COV, KIND_NAME, SPY_RADIUS, T_ROAD, T_BRIDGE, T_WOOD, T_BUILD, T_WATER, clamp, grid } from './config';
+import { W, H, C, GW, GH, IW, IH, IC, DT, BUDGET, COST, UPKEEP, T_GROUND, PLATOONS, unitKind, PHASES, PHASE_LEN, HQ_HOLD, K, COV, KIND_NAME, SPY_RADIUS, T_ROAD, T_BRIDGE, T_WOOD, T_BUILD, T_WATER, clamp, grid } from './config';
 import { S, M, OWN, VIS0, SEEN0, NET, hooks } from './state';
 import { cellOf, unitH, passable, nudge, opRange } from './world';
 import { aliveMembers, spentNow, sqName, nextCall, rollPersonalities, initOwn } from './plan';
@@ -17,7 +17,13 @@ function snd(k: string, x: number, y: number, size = 0) {
 export function log(team: number, msg: string) {
   S.teams.forEach((t: any) => { msg = msg.split(t.name).join(`{T${t.id}}`); }); S.log.unshift({ t: S.t, team, msg }); if (S.log.length > 400) S.log.pop(); S.logDirty = true; }
 // Supply each phase: a small base, plus more for ground held. Kept low so every purchase is a choice.
-export const income = (t: number) => S.teams[t].lost ? 0 : Math.round((60 + (S.terrCount[t] || 0) * .2) * (S.teams[t].human ? 1 : (S.aiMult || 1)));
+export const income = (t: number) => S.teams[t].lost ? 0 : Math.round((40 + (S.terrCount[t] || 0) * .06) * (S.teams[t].human ? 1 : (S.aiMult || 1)));
+// What a side's units cost to keep each phase. Paratroopers are free; a half-dead platoon costs half.
+export function upkeep(t: number) {
+  let c = 0;
+  for (const s of S.squads) { if (s.team !== t || s.temp || !s.members || !UPKEEP[s.kind]) continue; const n = aliveMembers(s).length; if (n) c += Math.ceil(UPKEEP[s.kind] * n / s.members.length); }
+  return c;
+}
 
 export function newBattle() {
   if (M) { M.terr.set(M.terr0); M.deck.set(M.deck0); M.bridges.forEach(b => b.blown = null); M.bldId.set(M.bldId0); M.bldTop.set(M.bldTop0); for (const b of M.B) { b.hp = b.hp0; b.down = null; } }
@@ -119,7 +125,8 @@ function endRound() {
   if (S.round >= LIM + ot || (S.round >= LIM && !contested)) { finish(true); return; }
   if (S.round >= LIM) log(-1, 'Overtime: an HQ is under attack');
   for (const sq of S.squads) if (sq.members) sq.morale = Math.min(1, (sq.morale ?? 1) + .15); // a rest between phases
-  for (const t of S.teams) S.bank[t.id] += income(t.id);
+  S.pay = S.teams.map((t: any) => ({ inc: income(t.id), up: upkeep(t.id) }));
+  for (const t of S.teams) S.bank[t.id] = Math.max(0, S.bank[t.id] + S.pay[t.id].inc - S.pay[t.id].up);
   S.round++; S.phase = 'plan'; log(-1, `Phase ${S.round - 1} over`);
   updateVision();
   for (const t of S.teams) if (!t.human && !t.lost) aiPlan(t.id);
@@ -146,7 +153,7 @@ function assignSlots(sq: any) {
   // Facing: the order's direction, else the way from the unit to the target.
   const c0x = mem.reduce((a: number, u: any) => a + u.x, 0) / mem.length, c0y = mem.reduce((a: number, u: any) => a + u.y, 0) / mem.length;
   const face = sq.dir != null ? sq.dir : Math.atan2(sq.ty - c0y, sq.tx - c0x), fx = Math.cos(face), fy = Math.sin(face);
-  if (sq.state === 'attack' || sq.state === 'demolish' || sq.state === 'follow') {
+  if (sq.state === 'attack' || sq.state === 'move' || sq.state === 'demolish' || sq.state === 'follow') {
     // A line across the facing direction: eight wide, ranks behind.
     // Spread out as real sections do: about 10 m between men, so one shell does not take a whole platoon.
     let i = 0; for (const u of mem) { const col = i % 6 - 2.5, row = Math.floor(i / 6); i++; const q = nudge(sq.tx - fy * col * 4.5 - fx * row * 5 + (rnd() - .5) * 1.5, sq.ty + fx * col * 4.5 - fy * row * 5 + (rnd() - .5) * 1.5, vok) || [sq.tx, sq.ty]; u.sx = q[0]; u.sy = q[1]; if (!vok) u.hd = Math.atan2(-fy, fx); }
@@ -400,9 +407,11 @@ function updateSquads() {
       }
     }
     if (sq.members && sq.state === 'demolish') demolishStep(sq);
-    if (!sq.members || sq.state !== 'attack') continue; const mem = aliveMembers(sq); if (!mem.length) continue; const cx = mem.reduce((a: number, u: any) => a + u.x, 0) / mem.length, cy = mem.reduce((a: number, u: any) => a + u.y, 0) / mem.length;
+    if (!sq.members || (sq.state !== 'attack' && sq.state !== 'move')) continue; const mem = aliveMembers(sq); if (!mem.length) continue; const cx = mem.reduce((a: number, u: any) => a + u.x, 0) / mem.length, cy = mem.reduce((a: number, u: any) => a + u.y, 0) / mem.length;
     const near = mem.filter((u: any) => Math.hypot(u.x - sq.tx, u.y - sq.ty) < 12).length;
-    if (near >= mem.length * .5) {
+    // MOVE: there, then hold. No pushing on.
+    if (sq.state === 'move' && near >= mem.length * .5) { sq.state = 'defend'; sq.arrived = S.t; sq.pace = 1; log(sq.team, `${sqName(sq)}: in position at ${grid(sq.tx, sq.ty)}`); assignSlots(sq); continue; }
+    if (sq.state === 'attack' && near >= mem.length * .5) {
       // Objective taken. With time left in the phase, push on to the nearest enemy this side knows about; otherwise dig in.
       const left = PHASE_LEN - (S.t - S.phaseStart), k = S.known[sq.team]; let tgt: any = null, bd = 75;
       if (left > 12 && k) for (const e of k.values()) { const d = Math.hypot(e.x - sq.tx, e.y - sq.ty); if (d < bd) { bd = d; tgt = e; } }
@@ -430,7 +439,7 @@ function squadStatus(sq: any) {
   }
   sq.status = sq.readyRound > S.round ? 'BUILDING' : sq.broken ? 'BROKEN' : sq.fellBack && sq.state === 'defend' && m.some((u: any) => u.moving) ? 'FALLING BACK'
     : sup > pinAt(sq) ? 'PINNED' : MORALE_KINDS.has(sq.kind) && (sq.morale ?? 1) < .35 ? 'SHAKEN' : firing ? (sq.state === 'suppress' ? 'SUPPRESSING' : 'ENGAGING') : sq.state === 'follow' ? 'FOLLOWING' : sq.state === 'demolish' ? 'DEMOLISHING'
-    : m.some((u: any) => u.moving) ? (sq.via ? 'FLANKING' : 'MOVING') : sq.state === 'defend' ? 'HOLDING' : sq.state === 'attack' ? 'MOVING' : 'IDLE';
+    : m.some((u: any) => u.moving) ? (sq.via ? 'FLANKING' : 'MOVING') : sq.state === 'defend' ? 'HOLDING' : sq.state === 'attack' || sq.state === 'move' ? 'MOVING' : 'IDLE';
   if (sq.status === 'PINNED' && was !== 'PINNED' && sq.call) log(sq.team, `${sqName(sq)}: pinned down at ${grid(m[0].x, m[0].y)}`);
 }
 function launchSupport(su: any) {
@@ -597,7 +606,8 @@ export function step() {
       if (Math.abs(d) < .12 && u.cd <= 0) { shoot(u, e, k); u.cd = k.cd * (.8 + rnd() * .4); }
     } else if (e && u.cd <= 0) { shoot(u, e, k); u.cd = k.cd * (.7 + rnd() * .6); }
     u.moving = false;
-    if (k.speed > 0 && !u.gar && !pinned && (!e || (!k.veh && sq && sq.stance === 'rush')) && sq) { const x0 = u.x, y0 = u.y; moveUnit(u, k, sq); u.moving = u.x !== x0 || u.y !== y0; }
+    // Infantry on a MOVE order keep walking while they shoot; on ATTACK they stop to fight.
+    if (k.speed > 0 && !u.gar && !pinned && (!e || (!k.veh && sq && (sq.stance === 'rush' || sq.state === 'move'))) && sq) { const x0 = u.x, y0 = u.y; moveUnit(u, k, sq); u.moving = u.x !== x0 || u.y !== y0; }
   }
   for (const s of S.shells) { s.t += DT; if (s.t >= s.dur && !s.done) { s.done = true; if (s.smoke) { S.smokes.push({ x: s.x1, y: s.y1, r: 9, t0: S.t, life: 32 }); S.rec.smokes.push([S.t, s.x1, s.y1]); snd('launch', s.x1, s.y1); } else explode(s.x1, s.y1, s.r, s.power, s.team); } }
   if (S.smokes.length) S.smokes = S.smokes.filter((m: any) => S.t - m.t0 < m.life); S.shells = S.shells.filter((s: any) => !s.done);

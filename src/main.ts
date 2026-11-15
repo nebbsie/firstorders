@@ -15,7 +15,7 @@ import { exec } from './actions';
 import { NET } from './state';
 import { connected, sendMap, guestLoaded, closeNet, hostTick } from './net';
 import { menuStatus, type MapSpec } from './ui/menu';
-import { initMenu, showMenu, showLoading } from './ui/menu';
+import { initMenu, showMenu, showLoading, afterPaint } from './ui/menu';
 import { sampleTown } from './map/procgen';
 import { CX, CY } from './config';
 import type { RawMap } from './map/types';
@@ -39,13 +39,13 @@ function buildMap(raw: RawMap) { setMap(finishMap(raw)); buildMap3D(); cam.userM
 let pending: (() => void) | null = null;
 function startMap(raw: RawMap, spec: MapSpec) {
   // Hosting: wait for the friend, then have them load the same map before the battle starts.
-  if (NET.mode === 'host' && !connected()) { menuStatus('Waiting for your friend to join with your code.'); pending = () => startMap(raw, spec); return; }
+  if (NET.mode === 'host' && !connected()) { showLoading(null); menuStatus('Waiting for your friend to join with your code.'); pending = () => startMap(raw, spec); return; }
   showLoading('BUILDING THE MAP');
-  setTimeout(async () => {
+  afterPaint(async () => {
     buildMap(raw); if (spec.spawn == null) spec.spawn = (Math.random() * 1e9) | 0; S.spawnSeed = spec.spawn;
     if (NET.mode === 'host') { showLoading('WAITING FOR YOUR FRIEND TO LOAD THE MAP'); await sendMap(spec, S.nTeams); }
     showMenu(false); showLoading(null); makeTeams(); newBattle(); refreshFogPaint(); phaseCard();
-  }, 30);
+  });
 }
 // Guest: same map, same teams; the host's state fills everything else in.
 function startGuest(raw: RawMap) {

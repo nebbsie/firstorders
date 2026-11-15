@@ -8,7 +8,7 @@ export function clampPlay(x: number, y: number, margin = 6) { const dx = x - CX,
 export let M_PER_UNIT = 2.5, BATTLE_KM = 1;
 export function setBattleSize(km: number) { BATTLE_KM = km; M_PER_UNIT = 2.5 * km; }
 // A battle runs phase after phase until one HQ is left. PHASES is a safety limit.
-export const DT = 0.05, BUDGET = 700, PHASES = 10, PHASE_LEN = 60, HS = 0.3, HQ_HOLD = 40;
+export const DT = 0.05, BUDGET = 500, PHASES = 10, PHASE_LEN = 60, HS = 0.3, HQ_HOLD = 40;
 // Ground-control grid: 4 x 4 unit cells.
 export const IW = 140, IH = 140, IC = 4;
 
@@ -18,6 +18,9 @@ export const CALLSIGNS = ['ABLE', 'BAKER', 'CHARLIE', 'DOG', 'EASY', 'FOX', 'GEO
 export const TRGB = TEAM_COLORS.map(c => [parseInt(c.slice(1, 3), 16) / 255, parseInt(c.slice(3, 5), 16) / 255, parseInt(c.slice(5, 7), 16) / 255]);
 
 export const COST: Record<string, number> = { trench: 5, wire: 2, sandbag: 3, wall: 8, tanktrap: 6, rifles: 100, assault: 130, engineers: 120, medics: 90, garrison: 110, mg: 90, mortar: 120, sniper: 70, at: 110, tank: 320, op: 80, fob: 150, air: 480, barrage: 340, para: 400, demo: 160, spy: 180, smoke: 90 };
+// Upkeep: supply each unit costs at the end of every phase, in proportion to the men still alive.
+// A big army eats the income, so every unit bought is a cost you keep paying.
+export const UPKEEP: Record<string, number> = { rifles: 15, assault: 20, engineers: 15, medics: 10, garrison: 12, mg: 10, mortar: 15, sniper: 8, at: 12, tank: 45, op: 6, fob: 20 };
 export const T_GROUND = 0, T_ROAD = 1, T_PARK = 2, T_WATER = 3, T_BRIDGE = 4, T_BUILD = 5, T_WOOD = 6;
 export const COV: Record<string, number> = { sandbag: 1, trench: 2, wall: 3, wire: 4, tanktrap: 5 };
 
@@ -72,6 +75,7 @@ export const TOOLS: { g: string; items: [string, string, ToolMode, string][] }[]
     ['para', 'PARADROP', 'point', 'Click anywhere. Sixteen riflemen land and hold the ground.'],
     ['smoke', 'SMOKE', 'point', 'Click anywhere. A smoke screen blocks sight for about 30 s. Ready from phase 1.']] },
   { g: 'ORDERS', items: [
+    ['move', 'MOVE', 'order', 'With platoons, snipers or tanks selected, click the ground to go to. They keep walking under fire and hold when they get there.'],
     ['attack', 'ATTACK', 'order', 'With platoons, snipers or tanks selected, click the ground to take. Or drag from one of them.'],
     ['defend', 'DEFEND', 'order', 'With platoons, snipers or tanks selected, click the ground to hold. Infantry use trenches there.']] },
 ];
@@ -106,7 +110,8 @@ export const INFO: Record<string, [string, string, string]> = {
   air: ['A bomb run along the line you draw.', 'Columns on roads, dense groups', 'Spread-out troops'],
   para: ['Sixteen riflemen land at a point and hold the ground there.', 'Behind the enemy, near their HQ', 'MG nests'],
   demo: ['Engineers blow up a bridge or a building at the time you set.', 'Bridges the enemy needs, buildings they hold', ''],
-  attack: ['Selected units move to the ground you click and take it.', '', ''],
+  move: ['Selected units go to the ground you click and hold there. Infantry keep walking under fire.', '', ''],
+  attack: ['Selected units move to the ground you click and take it. They stop to fight on the way.', '', ''],
   defend: ['Selected units hold the ground you click. Infantry use trenches there.', '', ''],
 };
 export const KIND_NAME: Record<string, string> = { fob: 'FOB', rifles: 'Platoon', assault: 'Assault', engineers: 'Engineers', medics: 'Medics', garrison: 'Garrison', mg: 'MG nest', mortar: 'Mortar', sniper: 'Sniper', tank: 'Tank', at: 'AT gun', op: 'Obs post' };

@@ -49,11 +49,13 @@ export function initMenu(start: (raw: RawMap, spec: MapSpec) => void, guestMap: 
     catch (e: any) { showLoading(null); menuStatus(e.message || 'Import failed', true); }
     finally { busy(false); }
   };
-  $('#mSample').onclick = () => { useMission(null); const spec: MapSpec = { kind: 'sample', seed: 1000 + Math.floor(Math.random() * 9000), km: BATTLE_KM }; start(sampleTown(spec.seed), spec); };
+  // Making a town blocks the page, so show the loading screen and let it paint first.
+  const launch = (spec: MapSpec & { kind: 'sample' }) => { showLoading('BUILDING THE MAP'); afterPaint(() => start(sampleTown(spec.seed), spec)); };
+  $('#mSample').onclick = () => { useMission(null); launch({ kind: 'sample', seed: 1000 + Math.floor(Math.random() * 9000), km: BATTLE_KM }); };
 
   // Campaign: fixed sample towns at 1 km, one after another.
   const KIT_NAME: Record<string, string> = { mortar: 'mortars', sandbag: 'sandbags', smoke: 'smoke', engineers: 'engineers', fob: 'FOBs', wall: 'walls', demo: 'charges', tank: 'tanks', at: 'AT guns', tanktrap: 'tank traps', sniper: 'snipers', op: 'obs posts', spy: 'spy planes', medics: 'medics', assault: 'assault', garrison: 'garrisons', barrage: 'artillery', air: 'air strikes', para: 'paradrops' };
-  const mission = (i: number) => { useMission(i); setBattleSize(1); sizes(); S.nTeams = 2; teams(); const m = MISSIONS[i], spec: MapSpec = { kind: 'sample', seed: m.seed, km: 1 }; start(sampleTown(m.seed), spec); };
+  const mission = (i: number) => { useMission(i); setBattleSize(1); sizes(); S.nTeams = 2; teams(); launch({ kind: 'sample', seed: MISSIONS[i].seed, km: 1 }); };
   const camp = () => {
     const p = progress();
     $('#mCampaign').innerHTML = MISSIONS.map((m, i) => `<button class="btn${i < p ? ' done' : ''}" data-i="${i}"${i > p ? ' disabled' : ''} title="${m.brief}${m.adds.length ? ' New: ' + m.adds.map(a => KIT_NAME[a] || a).join(', ') + '.' : ''}"><span>${i + 1}. ${m.name}</span><em>${i < p ? 'WON' : i === p ? 'NEXT' : 'LOCKED'}</em></button>`).join('');
@@ -64,7 +66,7 @@ export function initMenu(start: (raw: RawMap, spec: MapSpec) => void, guestMap: 
   window.addEventListener('fo-campaign', camp);
   document.querySelectorAll('#mSideRow .btn').forEach((b: any) => b.onclick = () => { S.coop = b.dataset.side === 'with'; document.querySelectorAll('#mSideRow .btn').forEach((x: any) => x.classList.toggle('on', x === b)); });
   // Tutorial: the first campaign map with a weak enemy, and steps on screen.
-  $('#mTutorial').onclick = () => { useMission(null); S.allowed = new Set(['trench', 'wire', 'rifles', 'mg', 'sandbag']); S.aiMult = .5; S.maxPhases = 8; S.tutorial = 0; setBattleSize(1); sizes(); S.nTeams = 2; teams(); start(sampleTown(1101), { kind: 'sample', seed: 1101, km: 1 }); };
+  $('#mTutorial').onclick = () => { useMission(null); S.allowed = new Set(['trench', 'wire', 'rifles', 'mg', 'sandbag']); S.aiMult = .5; S.maxPhases = 8; S.tutorial = 0; setBattleSize(1); sizes(); S.nTeams = 2; teams(); launch({ kind: 'sample', seed: 1101, km: 1 }); };
   const phases = () => document.querySelectorAll('#mPhases .btn').forEach((b: any) => b.classList.toggle('on', +b.dataset.p === (S.skirmishPhases || 10)));
   document.querySelectorAll('#mPhases .btn').forEach((b: any) => b.onclick = () => { S.skirmishPhases = +b.dataset.p; S.maxPhases = S.skirmishPhases; phases(); });
   phases();
@@ -107,6 +109,8 @@ export function initMenu(start: (raw: RawMap, spec: MapSpec) => void, guestMap: 
   let resetArmed = 0;
   $('#sReset').onclick = () => { if (performance.now() - resetArmed > 4000) { resetArmed = performance.now(); $('#sNote').textContent = 'Press RESET again to clear your campaign progress.'; return; } try { localStorage.removeItem('fo-campaign'); } catch { } resetArmed = 0; settings(); };
 }
+// Run after the browser has painted the current screen (two frames).
+export function afterPaint(fn: () => void) { requestAnimationFrame(() => requestAnimationFrame(fn)); }
 // The loading screen: a line of text, or null to hide it.
 export function showLoading(text: string | null) { const b = $('#busy'); if (text == null) { b.hidden = true; return; } $('#busyText').textContent = text; b.hidden = false; }
 export function showMenu(v: boolean) { $('#menu').hidden = !v; $('#game').classList.toggle('inmenu', v); if (v) window.dispatchEvent(new Event('fo-menu')); }
