@@ -5,7 +5,8 @@ export const CX = W / 2, CY = H / 2, PLAY_R = 200;
 export const inPlay = (x: number, y: number, margin = 0) => (x - CX) ** 2 + (y - CY) ** 2 <= (PLAY_R - margin) ** 2;
 export function clampPlay(x: number, y: number, margin = 6) { const dx = x - CX, dy = y - CY, d = Math.hypot(dx, dy), r = PLAY_R - margin; return d <= r ? { x, y } : { x: CX + dx / d * r, y: CY + dy / d * r }; }
 export const M_PER_UNIT = 2.5;
-export const DT = 0.05, BUDGET = 1500, PHASES = 3, PHASE_LEN = 60, HS = 0.3;
+// A battle runs phase after phase until one HQ is left. PHASES is a safety limit.
+export const DT = 0.05, BUDGET = 1500, PHASES = 8, PHASE_LEN = 60, HS = 0.3, HQ_HOLD = 5;
 // Ground-control grid: 4 x 4 unit cells.
 export const IW = 140, IH = 140, IC = 4;
 

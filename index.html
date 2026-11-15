@@ -10,8 +10,8 @@
 <div class="game" id="game">
   <div class="stage"><canvas id="gl"></canvas><canvas id="cv" aria-label="Battle map"></canvas><div class="busy" id="busy" hidden>BUILDING MAP</div></div>
 
+  <div class="hud topleft"><button class="btn" id="bMenu" title="Pick another place">MENU</button><button class="btn side" id="bHelp">HELP</button></div>
   <div class="hud timebar" id="timebar">
-    <div class="plate" title="Supply left to spend this phase. Each phase pays more for the ground you hold."><span class="k">SUPPLY</span><b id="supply">0</b></div>
     <div class="plate"><span class="k" id="phaseName">PHASE 1</span><b id="clock">DEPLOY</b></div>
     <div class="speeds" id="speeds">
       <button class="btn" data-speed="0" title="Pause (Space)">II</button>
@@ -29,18 +29,15 @@
   <div class="hud panel timeline" id="timeline" hidden><div class="tl" id="tl"></div></div>
 
   <div class="hud strip">
-    <span id="cmds"></span>
-    <button class="btn" id="bExit" hidden>EXIT REPLAY</button>
-    <button class="btn on" id="bFollow" title="Move the camera to where the fighting is" hidden>FOLLOW ACTION</button>
-    <button class="btn" id="bFromStart" title="Play the replay from the start" hidden>FROM START</button>
-    <span class="sp"></span>
-    <button class="btn" id="bAuto" title="Let the AI plan this phase for you. It uses your ground, what you have seen of the enemy, and the terrain.">AI PLAN</button>
-    <button class="btn go" id="bBegin" title="Lock your orders and fight this phase">BEGIN PHASE 1</button>
-    <button class="btn go" id="bReplay" title="Watch the whole battle again" hidden>WATCH REPLAY</button>
-    <button class="btn" id="bNew" title="Start again on this map. AI teams get new personalities.">NEW BATTLE</button>
-    <button class="btn" id="bView" title="Camera: middle-drag to pan, right-drag to turn, scroll to zoom. WASD pans, Q and E turn.">RESET VIEW</button>
-    <button class="btn side" id="bHelp">HELP</button>
-    <button class="btn" id="bMenu" title="Pick another place">&lt; MENU</button>
+    <div class="side-l"><span id="cmds"></span>
+      <button class="btn" id="bExit" hidden>EXIT REPLAY</button>
+      <button class="btn on" id="bFollow" title="Move the camera to where the fighting is" hidden>FOLLOW ACTION</button>
+      <button class="btn" id="bFromStart" title="Play the replay from the start" hidden>FROM START</button></div>
+    <div class="plate supplyplate" id="supplyPlate" title="Supply left to spend this phase. Each phase pays more for the ground you hold."><span class="k">SUPPLY</span><b id="supply">0</b></div>
+    <div class="side-r">
+      <button class="btn go" id="bBegin" title="Lock your orders and fight this phase">BEGIN PHASE 1</button>
+      <button class="btn go" id="bReplay" title="Watch the whole battle again" hidden>WATCH REPLAY</button>
+      <button class="btn" id="bNew" title="Start again on this map. AI teams get new personalities." hidden>NEW BATTLE</button></div>
   </div>
 
   <div class="hud toast" id="toast" hidden></div>
@@ -52,7 +49,7 @@
     <div class="ph"><span>How it works</span><button class="btn x" id="helpClose" title="Close">X</button></div>
     <div class="pb helpbody">
       <h3>A BATTLE</h3>
-      <p>Three phases of 60 seconds. Before each phase you build, buy and give orders. Then the phase plays out on its own. At the end, watch the replay.</p>
+      <p>Take the enemy HQ and hold your own. An HQ falls when enemy troops hold its ground for 5 seconds; its side surrenders. Each phase lasts 60 seconds: before it you build, buy and give orders, then it plays out on its own. At the end, watch the replay.</p>
       <h3>GROUND</h3>
       <p>The battle is the circle; the grey ring around it is scenery. You can only build on ground you hold, tinted your colour. Troops that clearly hold ground take it. Supply each phase comes from the ground you hold.</p>
       <h3>FOG OF WAR</h3>
@@ -67,7 +64,7 @@
         <tr><td>HILLS</td><td>Block sight. Firing downhill is more accurate. Obs posts see further.</td></tr>
       </tbody></table>
       <h3>CONTROLS</h3>
-      <p>Click or drag a box to select your units. Pick ATTACK or DEFEND, then click the ground. Middle-drag pans, right-drag turns, scroll zooms. WASD pans, Q and E turn. Right-click or Esc drops the tool. Space pauses. Delete removes what you placed this phase.</p>
+      <p>Click or drag a box to select your units. Pick ATTACK or DEFEND, then click the ground. Middle-drag pans, right-drag turns, scroll zooms. WASD pans, Q and E turn, Home resets the view. Right-click or Esc drops the tool. Space pauses. Delete removes what you placed this phase.</p>
       <p class="note">Map data © OpenStreetMap contributors. Elevation: AWS Terrain Tiles.</p>
     </div>
   </div>

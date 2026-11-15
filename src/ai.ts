@@ -22,7 +22,7 @@ export function knownFoes(team: number) {
 // Every team, the player's AI PLAN too, plans each phase from what it knows:
 // its own ground, the terrain, and the enemy units it has seen.
 export function aiPlan(team: number) {
-  const T = S.teams[team], pr = T.per, r = T.rng; if (left(team) < 60) return;
+  const T = S.teams[team], pr = T.per, r = T.rng; if (T.lost || left(team) < 60) return;
   const own: number[] = []; for (let i = 0; i < OWN.length; i++) if (OWN[i] === team) own.push(i); if (!own.length) return;
   let ox = 0, oy = 0; for (const c of own) { const p = cellPos(c); ox += p[0]; oy += p[1]; } ox /= own.length; oy /= own.length;
   const foes = knownFoes(team);
@@ -93,7 +93,13 @@ export function aiPlan(team: number) {
     if (!inPlay(x, y, 6)) continue; const ci = cellOf(x, y); if (!passable(ci)) continue; const o = ownerAt(x, y); if (o === team) continue;
     const s = (o < 0 ? 3 : 1.5) - foesNear(x, y, 28) * .35 + M.hAt(x, y) * .15 - d * .015 + r() * 1.2; if (s > as) { as = s; A = { x, y }; }
   }
+  // The goal is the enemy HQ. Once one is found, attack it more and more often as the battle goes on.
+  const hqs = S.teams.filter((o: any) => o.id !== team && !o.lost && S.hqKnown[team].has(o.id)).sort((a: any, b: any) => Math.hypot(a.zone.x - D.x, a.zone.y - D.y) - Math.hypot(b.zone.x - D.x, b.zone.y - D.y));
+  if (hqs.length && r() < .35 + pr.aggr * .4 + (S.round - 1) * .12) A = { x: hqs[0].zone.x, y: hqs[0].zone.y };
   const go = (s: any, tx: number, ty: number) => { const q = nudge(tx, ty); if (q) s.order = { type: 'attack', x: q[0], y: q[1] }; };
+  // Always keep a guard on our own HQ.
+  const hq = T.zone, guarded = S.squads.some((s: any) => s.team === team && alive(s) && (s.kind === 'rifles' || s.kind === 'garrison') && (() => { const c = s.order && s.order.type === 'defend' ? [s.order.x, s.order.y] : sqCenter(s); return c && Math.hypot(c[0] - hq.x, c[1] - hq.y) < 14 && !(s.order && s.order.type === 'attack'); })());
+  if (!guarded && left(team) >= 100) { const g = addSquad(team, 'rifles', hq.x, hq.y); if (g) g.order = { type: 'defend', x: hq.x, y: hq.y }; }
   let side = 0;
   if (A) for (const s of S.squads) {
     if (s.team !== team || !s.members || (s.kind !== 'rifles' && s.kind !== 'sniper' && s.kind !== 'tank')) continue;

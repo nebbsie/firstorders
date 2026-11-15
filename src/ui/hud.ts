@@ -1,9 +1,8 @@
-import { PLAY_R, PHASES, PHASE_LEN, COST, TOOLS, KIND_NAME, T_BUILD, T_WATER, T_BRIDGE, T_ROAD, T_WOOD, T_PARK, HS, grid, fmtT, clamp, mulberry32 } from '../config';
+import { PLAY_R, PHASE_LEN, COST, TOOLS, KIND_NAME, T_BUILD, T_WATER, T_BRIDGE, T_ROAD, T_WOOD, T_PARK, HS, grid, fmtT, clamp } from '../config';
 import { S, M, VIS0, SEEN0 } from '../state';
 import { cellOf, bldNear } from '../world';
-import { aliveMembers, sqCenter, itemCost, left, canRemove, removeItem, clearMine } from '../plan';
+import { aliveMembers, sqCenter, itemCost, left, canRemove, removeItem } from '../plan';
 import { beginRound, newBattle } from '../sim';
-import { aiPlan } from '../ai';
 import { startReplay, seek, exitReplay, refreshReplayFog } from '../replay';
 import { fit, cam } from '../render/camera';
 import { paintFog, paintTerritory } from '../render/scene';
@@ -21,9 +20,9 @@ const fogOn = () => S.phase === 'replay' ? S.replayFog : S.fog && (S.phase === '
 // Phase card: says which phase this is and what to do now.
 export function phaseCard() {
   const r = S.round, body = r === 1
-    ? `<p>Your ground is tinted blue. You can only build there.</p><p>Open <b>DEFENCES</b>, <b>UNITS</b> and <b>SUPPORT</b> below to buy. Select your units, then use <b>ORDERS</b> to send them.</p><p>You cannot see the enemy yet. A <b>SPY PLANE</b> or forward troops will find them.</p><p>Press <b>BEGIN PHASE 1</b> when ready.</p>`
+    ? `<p><b>Take the enemy HQ. Hold your own.</b> An HQ falls when enemy troops hold its ground for 5 seconds.</p><p>Your ground is tinted blue. You can only build there.</p><p>Open <b>DEFENCES</b>, <b>UNITS</b> and <b>SUPPORT</b> below to buy. Select your units, then use <b>ORDERS</b> to send them.</p><p>You do not know where the enemy HQ is. A <b>SPY PLANE</b> or forward troops will find it.</p><p>Press <b>BEGIN PHASE 1</b> when ready.</p>`
     : `<p>Phase ${r - 1} is over. You have <b>${left(0)}</b> supply.</p><p>Build on the ground you now hold, buy more, and give new orders. Units with no new order carry on.</p><p>Faded dots are where you last saw the enemy.</p><p>Press <b>BEGIN PHASE ${r}</b> when ready.</p>`;
-  $('#cardTitle').textContent = `PHASE ${r} OF ${PHASES} · ${r === 1 ? 'DEPLOY' : 'REINFORCE'}`; $('#cardBody').innerHTML = body; $('#card').hidden = false;
+  $('#cardTitle').textContent = `PHASE ${r} · ${r === 1 ? 'DEPLOY' : 'REINFORCE'}`; $('#cardBody').innerHTML = body; $('#card').hidden = false;
 }
 
 // Tool tiles open above their command in the bottom strip, as in Mall Architect.
@@ -126,16 +125,16 @@ export function syncSpeed() { document.querySelectorAll('#speeds .btn').forEach(
 export function syncFollow() { $('#bFollow').classList.toggle('on', S.follow); }
 function syncClock() {
   const ph = S.phase;
-  if (ph === 'plan') { $('#phaseName').textContent = `PHASE ${S.round}/${PHASES}`; $('#clock').textContent = S.round === 1 ? 'DEPLOY' : 'REINFORCE'; }
-  else if (ph === 'battle') { $('#phaseName').textContent = `PHASE ${S.round}/${PHASES}`; $('#clock').textContent = `T+${Math.floor(S.t - S.phaseStart)}`; }
+  if (ph === 'plan') { $('#phaseName').textContent = `PHASE ${S.round}`; $('#clock').textContent = S.round === 1 ? 'DEPLOY' : 'REINFORCE'; }
+  else if (ph === 'battle') { $('#phaseName').textContent = `PHASE ${S.round}`; $('#clock').textContent = `T+${Math.floor(S.t - S.phaseStart)}`; }
   else if (ph === 'replay') { $('#phaseName').textContent = 'REPLAY'; $('#clock').textContent = `${fmtT(S.rt)} / ${fmtT(S.rec.end)}`; }
   else if (ph === 'done') { $('#phaseName').textContent = 'DEBRIEF'; $('#clock').textContent = fmtT(S.t); }
   if (S.teams.length && S.bank.length) $('#supply').textContent = String(Math.max(0, left(0)));
 }
 export function syncUI() {
   const ph = S.phase, plan = ph === 'plan', show = (id: string, v: boolean) => $(id).hidden = !v;
-  show('#bBegin', plan); $('#bBegin').textContent = `BEGIN PHASE ${S.round}`; show('#bAuto', plan); show('#cmds', plan);
-  show('#bReplay', ph === 'done'); show('#bNew', ph !== 'replay'); show('#bExit', ph === 'replay'); show('#bFollow', ph === 'replay'); show('#bFromStart', ph === 'replay');
+  show('#bBegin', plan); $('#bBegin').textContent = `BEGIN PHASE ${S.round}`; show('#cmds', plan); show('#supplyPlate', plan);
+  show('#bReplay', ph === 'done'); show('#bNew', ph === 'done'); show('#bExit', ph === 'replay'); show('#bFollow', ph === 'replay'); show('#bFromStart', ph === 'replay');
   if (!plan) { closeTools(); setTool('select'); $('#card').hidden = true; }
   if (ph !== 'done') $('#result').hidden = true;
   syncClock(); renderTimeline(); renderInspector(); syncSpeed(); syncFollow(); renderRadio();
@@ -151,7 +150,7 @@ const pct = (c: number) => Math.round(c / PLAY_CELLS * 100);
 export function showResult() {
   const r = S.result, el = $('#result'), st = S.stats, w = r.winner >= 0 ? S.teams[r.winner] : null;
   const rows = S.history.map((h: any) => `<tr><td>PHASE ${h.round}</td>${S.teams.map((t: any) => `<td style="color:${t.color}">${pct(h.terr[t.id])}%</td>`).join('')}</tr>`).join('');
-  el.innerHTML = `<div class="ph"><span>After-action report · ${fmtT(S.t)}</span><button class="btn x" id="rHide" title="Hide">X</button></div><div class="pb"><div class="big" style="color:${w ? w.color : 'var(--muted)'}">${w ? w.name + ' WINS' : 'NO SURVIVORS'}</div><p class="hint" style="margin:0 0 8px">${r.byTime ? 'All phases fought. Most ground held wins.' : 'Last team standing.'}</p>
+  el.innerHTML = `<div class="ph"><span>After-action report · ${fmtT(S.t)}</span><button class="btn x" id="rHide" title="Hide">X</button></div><div class="pb"><div class="big" style="color:${w ? w.color : 'var(--muted)'}">${w ? w.name + ' WINS' : 'NO SURVIVORS'}</div><p class="hint" style="margin:0 0 8px">${r.byTime ? 'Phase limit reached. Most ground held wins.' : r.winner === 0 ? 'You took the enemy HQ.' : S.teams[0].lost ? 'Your HQ fell.' : 'The last HQ standing wins.'}</p>
   <table><tr><th>Team</th><th>Alive</th><th>Lost</th><th>Kills</th><th>Ground</th></tr>${S.teams.map((t: any) => `<tr><td style="color:${t.color}">${t.name}${t.id ? ' · ' + t.per.label : ' · YOU'}</td><td>${r.alive[t.id]}</td><td>${st[t.id].lost}</td><td>${st[t.id].kills}</td><td>${pct(r.terr[t.id])}%</td></tr>`).join('')}</table>
   ${rows ? `<table style="margin-top:10px"><tr><th>Ground by phase</th>${S.teams.map((t: any) => `<th>${t.name}</th>`).join('')}</tr>${rows}</table>` : ''}
   <div class="row" style="margin-top:12px"><button class="btn go" id="rReplay">WATCH REPLAY</button><button class="btn" id="rNew">NEW BATTLE</button></div></div>`;
@@ -168,8 +167,6 @@ export function bindStrip(toMenu: () => void) {
   $('#bFromStart').onclick = () => { seek(0); S.paused = false; syncSpeed(); };
   $('#bFollow').onclick = () => { S.follow = !S.follow; syncFollow(); };
   $('#bNew').onclick = () => { newBattle(); cam.userMoved = false; fit(); phaseCard(); };
-  $('#bAuto').onclick = () => { clearMine(0); S.teams[0].rng = mulberry32((Math.random() * 1e9) | 0); aiPlan(0); setSel(null); syncUI(); toast('AI plan loaded. Edit it, or press BEGIN.'); };
-  $('#bView').onclick = () => { cam.userMoved = false; fit(); };
   $('#bMenu').onclick = toMenu;
   $('#bHelp').onclick = () => { $('#help').hidden = !$('#help').hidden; };
   $('#helpClose').onclick = () => { $('#help').hidden = true; };

@@ -1,4 +1,4 @@
-import { W, H, C, GW, GH, IW, IH, IC, DT, BUDGET, PHASES, PHASE_LEN, K, COV, KIND_NAME, SPY_RADIUS, T_ROAD, T_BRIDGE, T_WOOD, T_BUILD, T_WATER, clamp, grid } from './config';
+import { W, H, C, GW, GH, IW, IH, IC, DT, BUDGET, PHASES, PHASE_LEN, HQ_HOLD, K, COV, KIND_NAME, SPY_RADIUS, T_ROAD, T_BRIDGE, T_WOOD, T_BUILD, T_WATER, clamp, grid } from './config';
 import { S, M, OWN, VIS0, SEEN0, hooks } from './state';
 import { cellOf, unitH, passable, nudge, opRange } from './world';
 import { aliveMembers, spentNow, sqName, nextCall, rollPersonalities, initOwn } from './plan';
@@ -9,12 +9,13 @@ const gauss = () => { const u = rnd() || 1e-9, v = rnd(); return Math.sqrt(-2 * 
 
 // team -1 is a message for everyone.
 export function log(team: number, msg: string) { S.log.unshift({ t: S.t, team, msg }); if (S.log.length > 400) S.log.pop(); S.logDirty = true; }
-export const income = (t: number) => 200 + Math.round((S.terrCount[t] || 0) * 1.2);
+export const income = (t: number) => S.teams[t].lost ? 0 : 200 + Math.round((S.terrCount[t] || 0) * 1.2);
 
 export function newBattle() {
   if (M) { M.terr.set(M.terr0); M.deck.set(M.deck0); M.bridges.forEach(b => b.blown = null); }
   Object.assign(S, { phase: 'plan', round: 1, t: 0, units: [], shells: [], bombs: [], fx: [], tracers: [], craters: [], planes: [], cover: null, rec: null, result: null, log: [], stats: [], history: [], callN: [], vis: [], known: [], contactT: [], squads: [], structs: [], supports: [], sel: null, selMany: [] });
   S.bank = S.teams.map(() => BUDGET); SEEN0.fill(0);
+  for (const t of S.teams) { t.lost = false; t.hqHold = 0; t.hqBy = -1; } S.hqKnown = S.teams.map((t: any) => new Set([t.id]));
   rollPersonalities(); initOwn(); countGround(); updateVision();
   for (let t = 1; t < S.nTeams; t++) aiPlan(t);
   hooks.ground(); hooks.sync();
@@ -48,7 +49,7 @@ function endRound() {
   for (const t of S.teams) S.bank[t.id] += income(t.id);
   S.round++; S.phase = 'plan'; log(-1, `Phase ${S.round - 1} over`);
   updateVision();
-  for (let t = 1; t < S.nTeams; t++) aiPlan(t);
+  for (let t = 1; t < S.nTeams; t++) if (!S.teams[t].lost) aiPlan(t);
   hooks.banner(`PHASE ${S.round - 1} OVER`, 'Briefing: reinforce and give new orders'); S.tool = 'select'; S.sel = null; hooks.sync();
 }
 
@@ -246,6 +247,13 @@ export function updateVision() {
     }
     S.vis[t] = vis;
   }
+  // A team learns where an enemy HQ is when its troops or planes see that spot.
+  for (const t of S.teams) for (const o of S.teams) {
+    if (o.id === t.id || o.lost || S.hqKnown[t.id].has(o.id)) continue; const hx = o.zone.x, hy = o.zone.y;
+    const seen = U.some((u: any) => u.alive && u.team === t.id && !(u.drop > 0) && Math.hypot(u.x - hx, u.y - hy) < sightOf(u) && los(u.x, u.y, hx, hy))
+      || S.planes.some((p: any) => { const sp = p.team === t.id && spyPos(p); return sp && Math.hypot(sp[0] - hx, sp[1] - hy) < SPY_RADIUS; });
+    if (seen) { S.hqKnown[t.id].add(o.id); if (t.id === 0) log(0, `${o.name} HQ found at ${grid(hx, hy)}`); }
+  }
   // One radio line per sighting pass: "Contact near G2: 3 Platoon, MG nest".
   if (newContacts.size) log(0, `Contact near ${contactAt}: ${[...newContacts].map(([k, n]) => n > 1 ? `${n} ${k}` : k).join(', ')}`);
   // The player's view of the ground: what their troops and planes can see, and their own ground.
@@ -310,14 +318,29 @@ function captureGround(capture: boolean) {
   if (capture) for (let i = 0; i < IW * IH; i++) { let b = -1, bv = 0, sv = 0; for (let t = 0; t < N; t++) { const v = a[i * N + t]; if (v > bv) { sv = bv; bv = v; b = t; } else if (v > sv) sv = v; } if (b >= 0 && bv >= 1.5 && bv > sv * 2 && OWN[i] !== b) { OWN[i] = b; changed = true; } }
   if (changed && S.rec) S.rec.own.push({ t: S.t, o: OWN.slice() });
   countGround(); if (changed) hooks.ground();
+  if (capture) checkHQs();
 }
-function checkEnd() { const alive = S.teams.map((t: any) => S.units.filter((u: any) => u.alive && u.team === t.id).length); if (alive.filter((a: number) => a > 0).length <= 1) { snapshotHistory(); finish(false); } }
-function finish(byTime: boolean) {
+// An HQ falls when another team holds its ground for HQ_HOLD seconds. Its troops surrender and its ground goes to the captor.
+function checkHQs() {
+  for (const t of S.teams) {
+    if (t.lost) continue; const o = OWN[Math.floor(t.zone.y / IC) * IW + Math.floor(t.zone.x / IC)];
+    if (o >= 0 && o !== t.id) { if (t.hqBy !== o) { t.hqBy = o; t.hqHold = 0; log(-1, `${S.teams[o].name} troops are in the ${t.name} HQ`); } t.hqHold += .5; } else { t.hqBy = -1; t.hqHold = 0; }
+    if (t.hqHold < HQ_HOLD) continue;
+    const by = S.teams[t.hqBy]; t.lost = true;
+    for (const u of S.units) if (u.alive && u.team === t.id) { u.alive = false; S.stats[t.id].lost++; }
+    for (let i = 0; i < OWN.length; i++) if (OWN[i] === t.id) OWN[i] = by.id;
+    if (S.rec) S.rec.own.push({ t: S.t, o: OWN.slice() }); countGround(); hooks.ground();
+    log(-1, `${by.name} took the ${t.name} HQ. ${t.name} surrenders.`); hooks.banner(`${t.name} HQ TAKEN`, `${by.name} holds it`);
+    const left = S.teams.filter((x: any) => !x.lost);
+    if (left.length <= 1 || t.id === 0) { snapshotHistory(); finish(false, t.id === 0 ? by.id : left[0].id); return; }
+  }
+}
+function checkEnd() { }
+function finish(byTime: boolean, winner = -1) {
   recFrame(); captureGround(false);
-  const alive = S.teams.map((t: any) => S.units.filter((u: any) => u.alive && u.team === t.id).length); let w = -1;
-  if (!byTime) alive.forEach((a: number, i: number) => { if (a > 0) w = i; });
-  else { let bv = -1; S.teams.forEach((t: any, i: number) => { if (alive[i] > 0 && S.terrCount[i] > bv) { bv = S.terrCount[i]; w = i; } }); }
+  const alive = S.teams.map((t: any) => S.units.filter((u: any) => u.alive && u.team === t.id).length); let w = winner;
+  if (byTime) { let bv = -1; S.teams.forEach((t: any, i: number) => { if (!t.lost && S.terrCount[i] > bv) { bv = S.terrCount[i]; w = i; } }); }
   S.phase = 'done'; S.result = { winner: w, alive, terr: S.terrCount.slice(), byTime };
   S.rec.meta = S.units.map((u: any) => ({ team: u.team, kind: u.kind })); S.rec.end = S.t; S.finalOwn = OWN.slice();
-  log(-1, byTime ? 'Last phase over' : 'Battle over'); hooks.result(); hooks.sync();
+  log(-1, byTime ? 'Phase limit reached' : 'Battle over'); hooks.result(); hooks.sync();
 }

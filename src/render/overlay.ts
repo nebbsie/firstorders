@@ -1,5 +1,5 @@
-import { C, GW, IW, IC, COST, TOOLDEF, TEAM_COLORS, SUP_NAME, GRID_X0, GRID_Y0, grid } from '../config';
-import { S, SEEN0 } from '../state';
+import { C, GW, COST, TOOLDEF, TEAM_COLORS, SUP_NAME, GRID_X0, GRID_Y0, grid } from '../config';
+import { S } from '../state';
 import { canDeploy } from '../world';
 import { sqCenter, left, lineCells } from '../plan';
 import { P, view } from './camera';
@@ -36,8 +36,7 @@ export function draw2D() {
   for (let j = 0; j < 10; j++) { const p = P(GRID_X0 - 9, GRID_Y0 + j * 40 + 20, 0); if (p[0] > -500) ctx.fillText(String(j + 1), p[0], p[1]); }
   if (S.phase === 'replay') return;
   // Enemy HQs show only once your side has seen that ground.
-  const seenAt = (x: number, y: number) => !S.fog || SEEN0[Math.floor(y / IC) * IW + Math.floor(x / IC)];
-  if (plan) for (const t of S.teams) { if (t.id !== 0 && !seenAt(t.zone.x, t.zone.y)) continue; const c = P(t.zone.x, t.zone.y, 12); plate(c[0], c[1], t.id === 0 ? 'YOUR HQ' : `${t.name} HQ`, t.color); }
+  if (plan) for (const t of S.teams) { if (t.id !== 0 && S.fog && !(S.hqKnown && S.hqKnown[0].has(t.id))) continue; const c = P(t.zone.x, t.zone.y, 14); plate(c[0], c[1], t.id === 0 ? 'YOUR HQ' : t.lost ? `${t.name} HQ · TAKEN` : `${t.name} HQ`, t.color); }
   ctx.globalAlpha = plan ? 1 : .4;
   for (const s of S.squads) {
     if (s.team !== 0) continue; const o = plan ? s.order : s.cur; if (!o) continue; const c = sqCenter(s); if (!c) continue; const col = TEAM_COLORS[0];

@@ -198,6 +198,12 @@ export function update3D(V: View) {
   // Last known enemy positions, shown faded.
   for (const g of V.ghosts) { if (ng >= 3000) break; const c = TRGB[g.team]; gp[ng * 3] = g.x - W / 2; gp[ng * 3 + 1] = unitH(g.x, g.y) + .9; gp[ng * 3 + 2] = g.y - H / 2; gc[ng * 3] = c[0]; gc[ng * 3 + 1] = c[1]; gc[ng * 3 + 2] = c[2]; ng++; }
   for (const [p, c] of [[ptUnits, n], [ptBodies, nb], [ptGhosts, ng]] as [any, number][]) { p.geometry.setDrawRange(0, c); p.geometry.attributes.position.needsUpdate = true; p.geometry.attributes.color.needsUpdate = true; }
+  // Each HQ: a bunker with a flag in the team colour. Enemy HQs show once your side has found them.
+  for (const t of S.teams) {
+    if (t.id !== 0 && V.fogOn && !(S.hqKnown && S.hqKnown[0] && S.hqKnown[0].has(t.id))) continue;
+    const x = t.zone.x, y = t.zone.y, h = M.hAt(x, y), fc = TRGB[t.lost && t.hqBy >= 0 ? t.hqBy : t.id];
+    setI(mEmp, ne++, x, y, h + .9, 7, 1.8, 7, .3, [.36, .34, .3]); setI(mEmp, ne++, x + 2.4, y, h + 5, .25, 9, .25, 0, [.85, .85, .82]); setI(mEmp, ne++, x + 3.9, y, h + 8.6, 2.8, 1.7, .15, 0, fc);
+  }
   done(mEmp, ne);
   const ppu = view.ch / 2 / (cam.dist * Math.tan(FOV / 2 * Math.PI / 180));
   ptUnits.material.size = clamp(ppu * 1.1, 2.5, 7); ptBodies.material.size = clamp(ppu * .8, 1.5, 5); ptGhosts.material.size = clamp(ppu * 1.1, 2.5, 7); ptHeads.material.size = clamp(ppu * 1.2, 2.5, 6);

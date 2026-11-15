@@ -46,7 +46,7 @@ button:focus-visible { outline: 1px solid var(--gold); outline-offset: 1px; }
 .kv dt { color: var(--muted); } .kv dd { margin: 0; color: var(--text); text-align: right; }
 .hint { color: var(--soft); margin: 0; }
 .row { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
-.timeline { left: 10px; right: 10px; bottom: 52px; height: 46px; }
+.timeline { left: 10px; right: 10px; bottom: 50px; height: 46px; }
 .tl { position: relative; height: 100%; } .tl.scrub { cursor: pointer; }
 .tl .axis { position: absolute; left: 8px; right: 8px; top: 24px; height: 1px; background: var(--edge); }
 .tl .fill { position: absolute; left: 8px; top: 23px; height: 3px; background: var(--gold); }
@@ -55,9 +55,16 @@ button:focus-visible { outline: 1px solid var(--gold); outline-offset: 1px; }
 .tl .mk { position: absolute; top: 18px; width: 1px; height: 13px; transform: translateX(-50%); }
 .tl .now { position: absolute; top: 2px; bottom: 2px; width: 1px; background: var(--gold); }
 .tl .lbl { position: absolute; left: 8px; top: 28px; color: var(--gold); }
-.strip { left: 0; right: 0; bottom: 0; height: 44px; background: var(--bar); border-top: 1px solid var(--edge-soft); display: flex; align-items: center; gap: 6px; padding: 0 10px; overflow-x: auto; }
+/* The bottom row floats: no bar behind it, just the buttons. */
+.strip { left: 10px; right: 10px; bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 6px; pointer-events: none; }
+.strip > * { pointer-events: auto; }
+.strip .side-l, .strip .side-r { display: flex; gap: 6px; flex: 1; pointer-events: none; }
+.strip .side-l > *, .strip .side-r > * { pointer-events: auto; }
+.strip .side-r { justify-content: flex-end; }
+.supplyplate { flex: none; }
+.topleft { top: 8px; left: 8px; display: flex; gap: 4px; }
+.topleft .btn { font-family: var(--f-title); font-size: 16px; padding: 4px 10px; }
 .strip .btn { font-family: var(--f-title); font-size: 16px; padding: 5px 10px; white-space: nowrap; }
-.strip .sp { flex: 1; }
 .toast { left: 50%; bottom: 108px; transform: translateX(-50%); padding: 6px 10px; background: var(--window); border: 1px solid var(--warn); color: var(--ink); pointer-events: none; white-space: nowrap; }
 .banner { left: 50%; top: 22%; transform: translateX(-50%); padding: 10px 22px; text-align: center; pointer-events: none; background: rgba(23, 29, 41, .94); }
 .banner b { display: block; font-family: var(--f-title); font-size: 32px; font-weight: normal; color: var(--good); line-height: 1; }
@@ -105,7 +112,7 @@ table.cat td:first-child { color: var(--ink); white-space: nowrap; }
 .speeds .btn { min-width: 28px; text-align: center; }
 .btn.x { padding: 1px 5px; }
 /* Tool panel: opens above the command that owns it. */
-.toolpanel { bottom: 50px; padding: 6px; }
+.toolpanel { bottom: 48px; padding: 6px; }
 .toolpanel h3 { margin: 0 0 5px; font: inherit; color: var(--gold); letter-spacing: .06em; }
 .toolpanel .tiles { display: grid; grid-template-columns: repeat(4, 120px); gap: 3px; }
 .strip #cmds { display: flex; gap: 6px; }

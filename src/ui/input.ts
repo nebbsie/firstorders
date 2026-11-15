@@ -2,7 +2,7 @@ import { COST, TOOLDEF, segDist, clamp } from '../config';
 import { S, M } from '../state';
 import { nudge, canDeploy, bridgeNear, bridgeTouches } from '../world';
 import { sqCenter, left, addSquad, addStruct, addSupport, lineCells, canRemove, removeItem } from '../plan';
-import { cam, pick, panBy, P } from '../render/camera';
+import { cam, pick, panBy, P, fit } from '../render/camera';
 import { setSel, setTool, toast, cursorNote, syncSpeed, syncFollow, closeTools } from './hud';
 
 // Left button selects and uses tools. Middle button pans. Right button turns the camera; a right click drops the tool.
@@ -117,6 +117,7 @@ export function initInput(cv: HTMLCanvasElement) {
   cv.addEventListener('pointerleave', () => { input.hover = null; cursorNote(null, 0, 0); });
   window.addEventListener('keydown', e => {
     if ((e.target as HTMLElement).closest && (e.target as HTMLElement).closest('input,textarea')) return; keys.add(e.key.toLowerCase());
+    if (e.key === 'Home') { cam.userMoved = false; fit(); }
     if (e.key === 'Escape') { if (S.tool !== 'select') { closeTools(); setTool('select'); } else setSel(null); }
     if ((e.key === 'Delete' || e.key === 'Backspace') && S.sel && canRemove(S.sel)) { removeItem(S.sel); setSel(null); e.preventDefault(); }
     if (e.key === ' ' && (S.phase === 'battle' || S.phase === 'replay')) { S.paused = !S.paused; syncSpeed(); e.preventDefault(); }

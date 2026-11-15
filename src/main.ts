@@ -51,6 +51,8 @@ function frame(now: number) {
       const pr = S.rec.phases.filter((p: any) => p.t <= S.rt).length; if (pr > (S.lastBannerRound || 0)) { S.lastBannerRound = pr; banner(`PHASE ${pr}`, pr === 1 ? 'Plans locked' : 'Reinforcements in'); }
       V = replayView(); if (S.follow) followCam(dt);
     }
+    // The view keeps fitting the battle circle until the player moves the camera.
+    if (!cam.userMoved) fit();
     keyCam(dt); applyCam(); update3D(V); render(); draw2D();
     tickHud(dt); pulse -= dt; if (pulse <= 0) { pulse = .25; hudPulse(); }
   }
