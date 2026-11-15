@@ -1,14 +1,14 @@
 import { NET } from './state';
 import { C, GW, GH, COST, PLATOON_SIZE, MOVERS, KIND_NAME, TEAM_COLORS, TEAM_NAMES, CALLSIGNS, PERS, T_BRIDGE, T_BUILD, T_WATER, T_GROUND, T_PARK, T_ROAD, CX, CY, PLAY_R, mulberry32 } from './config';
 import { S, M, OWN } from './state';
-import { cellOf, passTerr, nudge, canDeploy, cellPos, canPlaceUnit, ENG_BUILD } from './world';
+import { cellOf, passTerr, nudge, canDeploy, cellPos, canPlaceUnit, ENG_BUILD, passable } from './world';
 
 export function makeTeams() {
   // Start areas: a random turn of the whole ring, then each side moved a little round and in or out.
   // Host and guest share the seed, so both get the same places.
   S.teams = []; const N = S.nTeams, rs = mulberry32(S.spawnSeed ?? 1), a0 = rs() * Math.PI * 2;
   for (let i = 0; i < N; i++) {
-    const a = a0 + i * Math.PI * 2 / N + (rs() - .5) * (Math.PI / N) * .8, d = PLAY_R * (.52 + rs() * .26), r = N <= 3 ? 40 : N <= 4 ? 36 : 30;
+    const a = a0 + i * Math.PI * 2 / N + (rs() - .5) * (Math.PI / N) * .8, d = PLAY_R * (.34 + rs() * .16), r = N <= 3 ? 40 : N <= 4 ? 36 : 30;
     let x = CX + Math.cos(a) * d, y = CY + Math.sin(a) * d;
     // Move a start area that is mostly water or buildings in towards the centre.
     for (let k = 0; k < 20; k++) {
@@ -66,7 +66,7 @@ export function spacingOk(team: number, kind: string, x: number, y: number) {
 export function addSquad(team: number, kind: string, x: number, y: number, face?: number): any {
   if (left(team) < COST[kind]) return null;
   if (kind === 'garrison') return addGarrison(team, x, y);
-  const ok = (px: number, py: number) => canPlaceUnit(team, kind, px, py); if (!ok(x, y) || !spacingOk(team, kind, x, y)) return null; const p = nudge(x, y, ok); if (!p) return null;
+  const ok = (px: number, py: number) => canPlaceUnit(team, kind, px, py) && (kind !== 'tank' || passable(cellOf(px, py), true)); if (!ok(x, y) || !spacingOk(team, kind, x, y)) return null; const p = nudge(x, y, ok); if (!p) return null;
   const pos: number[][] = [];
   if (PLATOON_SIZE[kind]) { const r = mulberry32((S.nextId * 7919) ^ team); for (let i = 0; i < PLATOON_SIZE[kind]; i++) { const gx = (i % 4 - 1.5) * 2.3 + (r() - .5) * .8, gy = (Math.floor(i / 4) - 1.5) * 2.3 + (r() - .5) * .8; const q = nudge(p[0] + gx, p[1] + gy, ok); if (q) pos.push([q[0] + (r() - .5) * .9, q[1] + (r() - .5) * .9]); } }
   else pos.push(p);

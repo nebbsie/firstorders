@@ -130,13 +130,15 @@ function spawnSquad(sq: any, drop?: boolean) {
 }
 function assignSlots(sq: any) {
   const mem = aliveMembers(sq); if (!mem.length) return;
+  // Tanks need a spot with room round it.
+  const vok = mem[0].kind === 'tank' ? (x: number, y: number) => passable(cellOf(x, y), true) : undefined;
   // Facing: the order's direction, else the way from the unit to the target.
   const c0x = mem.reduce((a: number, u: any) => a + u.x, 0) / mem.length, c0y = mem.reduce((a: number, u: any) => a + u.y, 0) / mem.length;
   const face = sq.dir != null ? sq.dir : Math.atan2(sq.ty - c0y, sq.tx - c0x), fx = Math.cos(face), fy = Math.sin(face);
   if (sq.state === 'attack' || sq.state === 'demolish') {
     // A line across the facing direction: eight wide, ranks behind.
     // Spread out as real sections do: about 10 m between men, so one shell does not take a whole platoon.
-    let i = 0; for (const u of mem) { const col = i % 6 - 2.5, row = Math.floor(i / 6); i++; const q = nudge(sq.tx - fy * col * 4.5 - fx * row * 5 + (rnd() - .5) * 1.5, sq.ty + fx * col * 4.5 - fy * row * 5 + (rnd() - .5) * 1.5) || [sq.tx, sq.ty]; u.sx = q[0]; u.sy = q[1]; u.hd = Math.atan2(-fy, fx); }
+    let i = 0; for (const u of mem) { const col = i % 6 - 2.5, row = Math.floor(i / 6); i++; const q = nudge(sq.tx - fy * col * 4.5 - fx * row * 5 + (rnd() - .5) * 1.5, sq.ty + fx * col * 4.5 - fy * row * 5 + (rnd() - .5) * 1.5, vok) || [sq.tx, sq.ty]; u.sx = q[0]; u.sy = q[1]; if (!vok) u.hd = Math.atan2(-fy, fx); }
     return;
   }
   const cells: number[][] = [], r = 16, c0 = Math.floor(sq.tx / C), r0 = Math.floor(sq.ty / C), rc = Math.ceil(r / C);
@@ -146,12 +148,18 @@ function assignSlots(sq: any) {
   cells.sort((a, b) => a[1] - b[1]);
   mem.forEach((u: any, i: number) => {
     if (i < cells.length) { const pick = cells[Math.floor(i * cells.length / mem.length)][0]; u.sx = (pick % GW) * C + 1 + (rnd() - .5) * .6; u.sy = Math.floor(pick / GW) * C + 1 + (rnd() - .5) * .6; }
-    else { const a = rnd() * 6.28, d = 4 + rnd() * 12; const q = nudge(sq.tx + Math.cos(a) * d, sq.ty + Math.sin(a) * d) || [u.x, u.y]; u.sx = q[0]; u.sy = q[1]; }
+    else { const a = rnd() * 6.28, d = 4 + rnd() * 12; const q = nudge(sq.tx + Math.cos(a) * d, sq.ty + Math.sin(a) * d, vok) || [u.x, u.y]; u.sx = q[0]; u.sy = q[1]; }
   });
 }
 function clearLine(ax: number, ay: number, bx: number, by: number, veh?: boolean) {
-  const n = Math.ceil(Math.hypot(bx - ax, by - ay) / .7);
-  for (let i = 1; i <= n; i++) if (!passable(cellOf(ax + (bx - ax) * i / n, ay + (by - ay) * i / n), veh)) return false;
+  // Step cell by cell. A diagonal step needs both side cells open, so a line cannot slip between two wall cells that touch at a corner.
+  const n = Math.ceil(Math.hypot(bx - ax, by - ay) / .5); let prev = cellOf(ax, ay);
+  for (let i = 1; i <= n; i++) {
+    const c = cellOf(ax + (bx - ax) * i / n, ay + (by - ay) * i / n); if (c === prev) continue; if (!passable(c, veh)) return false;
+    const px = prev % GW, py = (prev / GW) | 0, cx = c % GW, cy = (c / GW) | 0;
+    if (px !== cx && py !== cy && (!passable(py * GW + cx, veh) || !passable(cy * GW + px, veh))) return false;
+    prev = c;
+  }
   return true;
 }
 // The way troops will walk from a to b, as a few straight legs round buildings and water. Used to draw orders.
@@ -307,13 +315,23 @@ function moveUnit(u: any, k: any, sq: any) {
   // Go straight when the way is clear; otherwise follow the path field round buildings and water.
   const f = ds > 16 || !clearLine(u.x, u.y, u.sx, u.sy, k.veh) ? flowFor(sq.tx, sq.ty, k.veh) : null;
   if (f && ci >= 0 && f[ci] !== 65535 && f[ci] > 0) {
-    let best = f[ci], bc = -1; const cx = ci % GW, cy = (ci / GW) | 0;
-    for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
-      if (!ox && !oy) continue; const nx = cx + ox, ny = cy + oy; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
-      const n = ny * GW + nx; if (f[n] < best && (ox === 0 || oy === 0 || (passable(cy * GW + nx, k.veh) && passable(ny * GW + cx, k.veh)))) { best = f[n]; bc = n; }
+    // Steer at a point some cells ahead on the path, the furthest one in a clear straight line,
+    // and keep it for a moment: smooth walking, not a zigzag from cell to cell.
+    if (!u.wp || S.t > u.wpT || Math.hypot(u.wp[0] - u.x, u.wp[1] - u.y) < 1) {
+      let c = ci, pick = -1;
+      for (let s = 0; s < 12; s++) {
+        let best = f[c], bc = -1; const cx = c % GW, cy = (c / GW) | 0;
+        for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+          if (!ox && !oy) continue; const nx = cx + ox, ny = cy + oy; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
+          const n = ny * GW + nx; if (f[n] < best && (ox === 0 || oy === 0 || (passable(cy * GW + nx, k.veh) && passable(ny * GW + cx, k.veh)))) { best = f[n]; bc = n; }
+        }
+        if (bc < 0) break; c = bc;
+        if (pick < 0 || clearLine(u.x, u.y, (c % GW) * C + 1, ((c / GW) | 0) * C + 1, k.veh)) pick = c; else break;
+      }
+      u.wp = pick >= 0 ? [(pick % GW) * C + 1, ((pick / GW) | 0) * C + 1] : null; u.wpT = S.t + .8;
     }
-    if (bc >= 0) { tx = (bc % GW) * C + 1 + ((u.sx * 7.3) % 1 - .5) * 1.2; ty = ((bc / GW) | 0) * C + 1 + ((u.sy * 5.1) % 1 - .5) * 1.2; }
-  }
+    if (u.wp) { tx = u.wp[0]; ty = u.wp[1]; }
+  } else u.wp = null;
   const mx = tx - u.x, my = ty - u.y, ml = Math.hypot(mx, my) || 1; sp = Math.min(sp, ml);
   const nx = u.x + mx / ml * sp, ny = u.y + my / ml * sp;
   if (k.veh) {
@@ -321,11 +339,13 @@ function moveUnit(u: any, k: any, sq: any) {
     const want = Math.atan2(-(ny - u.y), nx - u.x), d = Math.atan2(Math.sin(want - u.hd), Math.cos(want - u.hd));
     u.hd += clamp(d, -TURN * DT, TURN * DT); if (Math.abs(d) > .5) return;
   }
-  if (passable(cellOf(nx, ny), k.veh) || !passable(ci, k.veh)) { if (!k.veh) u.hd = Math.atan2(-(ny - u.y), nx - u.x); u.x = nx; u.y = ny; }
+  // The next spot must be open, and a step across a cell corner needs both side cells open (no slipping through walls).
+  const cn = cellOf(nx, ny), diag = ci >= 0 && cn >= 0 && cn !== ci && cn % GW !== ci % GW && ((cn / GW) | 0) !== ((ci / GW) | 0), cornerOk = !diag || (passable(((ci / GW) | 0) * GW + cn % GW, k.veh) && passable(((cn / GW) | 0) * GW + ci % GW, k.veh));
+  if ((passable(cn, k.veh) && cornerOk) || !passable(ci, k.veh)) { if (!k.veh) u.hd = Math.atan2(-(ny - u.y), nx - u.x); u.x = nx; u.y = ny; }
   // Blocked: slide along the wall on one axis before a small random step.
   else if (passable(cellOf(nx, u.y), k.veh)) u.x = nx;
   else if (passable(cellOf(u.x, ny), k.veh)) u.y = ny;
-  else { u.x += (rnd() - .5) * .4; u.y += (rnd() - .5) * .4; }
+  else { u.wp = null; u.x += (rnd() - .5) * .15; u.y += (rnd() - .5) * .15; }
 }
 function updateSquads() {
   const tick = Math.floor(S.t * 2) !== Math.floor((S.t - DT) * 2);

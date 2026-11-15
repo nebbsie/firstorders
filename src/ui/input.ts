@@ -41,7 +41,8 @@ function orderGroup(group: any[], type: string, w: any, face?: number) {
   const list: any[] = []; movers.forEach((s, k) => { const off = (k - (movers.length - 1) / 2) * 11, q = nudge(w.x - dy * off, w.y + dx * off); if (q) list.push({ id: s.id, type, x: q[0], y: q[1], dir, via: S.via ? { x: S.via.x - dy * off, y: S.via.y + dx * off } : null }); });
   S.via = null;
   actOrders(list);
-  setSel(movers.length === 1 ? movers[0] : null, movers);
+  // Order given: clear the selection, ready for the next unit.
+  setSel(null);
 }
 const stopFollow = () => { cam.userMoved = true; if (S.phase === 'replay' && S.follow) { S.follow = false; syncFollow(); } };
 function hoverCursor(cv: HTMLCanvasElement, w: any) {
@@ -103,7 +104,7 @@ export function initInput(cv: HTMLCanvasElement) {
       else if (id >= 0) { const bd = M.B[id], q = nudge(bd.cx, bd.cy); x = q ? q[0] : bd.cx; y = q ? q[1] : bd.cy; extra = { bld: id }; }
       else { toast('Click a bridge or a building'); return; }
       const eng = S.selMany.filter((s: any) => s.kind === 'engineers');
-      actOrders(eng.map((s: any) => ({ id: s.id, type: 'demolish', x, y, ...extra }))); setTool('select'); toast('Engineers are on their way'); return;
+      actOrders(eng.map((s: any) => ({ id: s.id, type: 'demolish', x, y, ...extra }))); setTool('select'); setSel(null); toast('Engineers are on their way'); return;
     }
     if (p.mode === 'aim') {
       // Sniper: where it stands, and the way it watches (towards the centre if not dragged).
@@ -160,7 +161,8 @@ export function initInput(cv: HTMLCanvasElement) {
     if (e.key === 'Escape' && S.fpv != null) { S.fpv = null; return; }
     if (e.key === 'Escape') { if (S.tool !== 'select') setTool('select'); else setSel(null); }
     if ((e.key === 'Delete' || e.key === 'Backspace') && S.sel && canRemove(S.sel)) { actRemove(S.sel.id); setSel(null); e.preventDefault(); }
-    if (e.key === ' ' && S.phase === 'plan') { (document.getElementById('bBegin') as HTMLButtonElement).click(); e.preventDefault(); }
+    // Space begins the phase. Return at once, so the same key press does not also pause the battle it started.
+    if (e.key === ' ' && S.phase === 'plan') { (document.getElementById('bBegin') as HTMLButtonElement).click(); e.preventDefault(); return; }
     if (e.key === ' ' && (S.phase === 'battle' || S.phase === 'replay')) { if (S.phase === 'replay') S.paused = !S.paused; else actSpeed(0); syncSpeed(); e.preventDefault(); }
   });
   window.addEventListener('keyup', e => keys.delete(e.key.toLowerCase())); window.addEventListener('blur', () => keys.clear());

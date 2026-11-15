@@ -8,7 +8,7 @@ export function clampPlay(x: number, y: number, margin = 6) { const dx = x - CX,
 export let M_PER_UNIT = 2.5, BATTLE_KM = 1;
 export function setBattleSize(km: number) { BATTLE_KM = km; M_PER_UNIT = 2.5 * km; }
 // A battle runs phase after phase until one HQ is left. PHASES is a safety limit.
-export const DT = 0.05, BUDGET = 1000, PHASES = 8, PHASE_LEN = 60, HS = 0.3, HQ_HOLD = 5;
+export const DT = 0.05, BUDGET = 1000, PHASES = 10, PHASE_LEN = 60, HS = 0.3, HQ_HOLD = 5;
 // Ground-control grid: 4 x 4 unit cells.
 export const IW = 140, IH = 140, IC = 4;
 
@@ -24,15 +24,15 @@ export const COV: Record<string, number> = { sandbag: 1, trench: 2, wall: 3, wir
 // arc: a unit with an arc (the sniper) sees and shoots only inside a cone that wide, in radians, round the way it faces.
 export interface KindStats { hp: number; range: number; cd: number; acc?: number; speed: number; min?: number; veh?: boolean; sight: number; arc?: number; salvo?: number; reload?: number }
 export const K: Record<string, KindStats> = {
-  // Speeds are map units a second. A phase is 60 s: riflemen walk about 100 in one, tanks about 200 (more on roads).
-  rifle: { hp: 1, range: 48, cd: 1.2, acc: .16, speed: 1.7, sight: 60 },
+  // Speeds are map units a second. A phase is 60 s: riflemen walk about 50 in one, tanks about 100 (more on roads).
+  rifle: { hp: 1, range: 48, cd: 1.2, acc: .16, speed: .85, sight: 60 },
   mg: { hp: 3, range: 74, cd: .13, acc: .07, speed: 0, sight: 70 },
   mortar: { hp: 2, range: 155, min: 26, cd: 4, salvo: 2, reload: 32, speed: 0, sight: 35 },
-  sniper: { hp: 1, range: 118, cd: 2.8, acc: .6, speed: 1.6, sight: 120, arc: 1.22 },
-  assault: { hp: 1, range: 30, cd: .5, acc: .16, speed: 1.9, sight: 55 },
-  engineer: { hp: 1, range: 40, cd: 1.3, acc: .13, speed: 1.5, sight: 55 },
-  medic: { hp: 1, range: 30, cd: 1.6, acc: .08, speed: 1.7, sight: 55 },
-  tank: { hp: 10, range: 70, cd: 4.5, acc: .5, speed: 3.3, veh: true, sight: 42 },
+  sniper: { hp: 1, range: 118, cd: 2.8, acc: .6, speed: .8, sight: 120, arc: 1.22 },
+  assault: { hp: 1, range: 30, cd: .5, acc: .16, speed: .95, sight: 55 },
+  engineer: { hp: 1, range: 40, cd: 1.3, acc: .13, speed: .75, sight: 55 },
+  medic: { hp: 1, range: 30, cd: 1.6, acc: .08, speed: .85, sight: 55 },
+  tank: { hp: 10, range: 70, cd: 4.5, acc: .5, speed: 1.65, veh: true, sight: 42 },
   at: { hp: 2, range: 85, cd: 3, acc: .5, speed: 0, sight: 60 },
   op: { hp: 1, range: 0, cd: 99, speed: 0, sight: 0 },
   fob: { hp: 14, range: 0, cd: 99, speed: 0, sight: 30 },

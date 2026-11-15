@@ -1,11 +1,20 @@
-import { W, H, C, GW, GH, IW, IC, T_WATER, T_BUILD, T_BRIDGE, T_WOOD, clamp, inPlay } from './config';
+import { W, H, C, GW, GH, IW, IC, T_WATER, T_BUILD, T_BRIDGE, T_WOOD, T_ROAD, clamp, inPlay } from './config';
 import { S, M, OWN } from './state';
 
 export const cellOf = (x: number, y: number) => { const cx = Math.floor(x / C), cy = Math.floor(y / C); return (cx < 0 || cy < 0 || cx >= GW || cy >= GH) ? -1 : cy * GW + cx; };
 export function unitH(x: number, y: number) { const h = M.hAt(x, y), ci = cellOf(x, y); if (ci < 0) return h; return Math.max(h, M.deck[ci], M.terr[ci] === T_BUILD ? M.bldTop[ci] : -99); }
 export const passTerr = (t: number) => t !== T_WATER && t !== T_BUILD;
 // Tanks cannot go into woods.
-export function passable(ci: number, veh?: boolean) { if (ci < 0 || !M.play[ci]) return false; if (!passTerr(M.terr[ci])) return false; if (veh && M.terr[ci] === T_WOOD) return false; if (!S.cover) return true; const c = S.cover[ci]; return !(c === 3 || (veh && c === 5)); }
+function open1(ci: number, veh?: boolean) { if (ci < 0 || !M.play[ci]) return false; if (!passTerr(M.terr[ci])) return false; if (veh && M.terr[ci] === T_WOOD) return false; if (!S.cover) return true; const c = S.cover[ci]; return !(c === 3 || (veh && c === 5)); }
+// Tanks need room: off roads and bridges, every cell next to them must be open too, so they go the long way
+// round instead of squeezing between houses, trees or walls.
+export function passable(ci: number, veh?: boolean) {
+  if (!open1(ci, veh)) return false; if (!veh) return true;
+  const t = M.terr[ci]; if (t === T_ROAD || t === T_BRIDGE) return true;
+  const x = ci % GW, y = (ci / GW) | 0;
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { if (!dx && !dy) continue; const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH || !open1(ny * GW + nx, true)) return false; }
+  return true;
+}
 export function wallAt(ci: number) { for (const s of S.structs) if (s.type === 'wall' && s.cells.includes(ci)) return true; return false; }
 export function nudge(x: number, y: number, check?: (x: number, y: number) => boolean): [number, number] | null {
   const c0 = Math.floor(x / C), r0 = Math.floor(y / C);
