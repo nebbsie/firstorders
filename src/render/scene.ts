@@ -201,9 +201,11 @@ export function buildMap3D() {
     const a = [x0, vh(i, j), z0], b = [x0 + C, vh(i + 1, j), z0], d = [x0, vh(i, j + 1), z0 + C], e = [x0 + C, vh(i + 1, j + 1), z0 + C];
     wp.push(...a, ...d, ...b, ...b, ...d, ...e);
   }
-  const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3)); wg.computeVertexNormals();
+  // Normals point straight up: the surface shades as one smooth sheet, with no shine on each triangle.
+  const wn = new Float32Array(wp.length); for (let i = 1; i < wn.length; i += 3) wn[i] = 1;
+  const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3)); wg.setAttribute('normal', new THREE.BufferAttribute(wn, 3));
   // Phong, so the sun puts a soft shine on the water.
-  const water = new THREE.Mesh(wg, greyUnseen(new THREE.MeshPhongMaterial({ color: '#35606c', specular: '#5d7f88', shininess: 28, transparent: true, opacity: .9 }), 'water')); water.renderOrder = 2; mapGroup.add(water);
+  const water = new THREE.Mesh(wg, greyUnseen(new THREE.MeshPhongMaterial({ color: '#35606c', specular: '#22333a', shininess: 30, transparent: true, opacity: .9 }), 'water')); water.renderOrder = 2; mapGroup.add(water);
 
   // Buildings: one merged mesh of flat-shaded walls and roofs. Roofs are triangulated, so L-shapes work.
   const Pa: number[] = [], Na: number[] = [], Ca: number[] = [];

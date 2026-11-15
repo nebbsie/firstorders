@@ -175,7 +175,10 @@ export function finishMap(raw: RawMap): MapData {
       }
       if (dir < 0) sA = s; else sB = s;
     }
-    const hA = hAt(cx + ax * (sA - C), cy + ay * (sA - C)), hB = hAt(cx + ax * (sB + C), cy + ay * (sB + C));
+    // Both ends stand clear of the highest water under the bridge, so the straight deck never dips into the river.
+    // The ramps below then rise to meet it.
+    let wTop = -Infinity; for (const c of cells) if (isWet(terr[c])) wTop = Math.max(wTop, wl[c]);
+    const clear = wTop + 1.6, hA = Math.max(hAt(cx + ax * (sA - C), cy + ay * (sA - C)), clear), hB = Math.max(hAt(cx + ax * (sB + C), cy + ay * (sB + C)), clear);
     const deckAt = (c: number) => { const s = ((c % GW) * C + 1 - cx) * ax + (Math.floor(c / GW) * C + 1 - cy) * ay, f = clamp((s - sA) / Math.max(1, sB - sA), 0, 1); return Math.max(hA + (hB - hA) * f, isWet(terr[c]) ? wl[c] + 1.6 : -9) + .15; };
     for (const c of cells) deck[c] = deckAt(c);
     // Raise the banks under the ramps into an embankment that meets the deck.
