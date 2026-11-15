@@ -1,4 +1,4 @@
-import { W, H, C, GW, GH, IW, IH, T_WOOD, T_ROAD, T_GROUND, clamp, segDist } from './config';
+import { C, GW, GH, IW, IH, T_WOOD, T_ROAD, T_GROUND, clamp, clampPlay, inPlay, segDist } from './config';
 import { S, M, OWN } from './state';
 import { cellOf, passable, nudge, ownerAt, canDeploy, cellPos, bldNear, waterBetween, bridgeTouches } from './world';
 import { left, addSquad, addStruct, addSupport, aliveMembers, sqCenter } from './plan';
@@ -49,7 +49,7 @@ export function aiPlan(team: number) {
   // Little intel: send a spy plane over the enemy first.
   if (foes.length < 6 && left(team) - supReserve >= 100 && r() < .75) {
     const tx = th.zone ? th.zone.x : th.x, ty = th.zone ? th.zone.y : th.y;
-    addSupport(team, 'spy', { x: clamp(tx + px * 70, 5, W - 5), y: clamp(ty + py * 70, 5, H - 5) }, { x: clamp(tx - px * 70, 5, W - 5), y: clamp(ty - py * 70, 5, H - 5) }, 5);
+    addSupport(team, 'spy', clampPlay(tx + px * 70, ty + py * 70), clampPlay(tx - px * 70, ty - py * 70), 5);
   }
   if (urban) { // in town, hold the tallest buildings instead of digging in
     const ids = new Set<number>(), c0 = Math.floor(D.x / C), r0 = Math.floor(D.y / C);
@@ -90,7 +90,7 @@ export function aiPlan(team: number) {
   let A: any = null, as = -1e9; const ang0 = Math.atan2(dy, dx);
   for (let k = 0; k < 50; k++) {
     const a = ang0 + (r() - .5) * 2.2, d = 30 + r() * 90, x = D.x + Math.cos(a) * d, y = D.y + Math.sin(a) * d;
-    if (x < 6 || y < 6 || x > W - 6 || y > H - 6) continue; const ci = cellOf(x, y); if (!passable(ci)) continue; const o = ownerAt(x, y); if (o === team) continue;
+    if (!inPlay(x, y, 6)) continue; const ci = cellOf(x, y); if (!passable(ci)) continue; const o = ownerAt(x, y); if (o === team) continue;
     const s = (o < 0 ? 3 : 1.5) - foesNear(x, y, 28) * .35 + M.hAt(x, y) * .15 - d * .015 + r() * 1.2; if (s > as) { as = s; A = { x, y }; }
   }
   const go = (s: any, tx: number, ty: number) => { const q = nudge(tx, ty); if (q) s.order = { type: 'attack', x: q[0], y: q[1] }; };
@@ -123,6 +123,6 @@ export function aiPlan(team: number) {
     let tgt: any = null, bc = 0; for (const e of foes) { const c = foesNear(e.x, e.y, 15); if (c > bc) { bc = c; tgt = e; } }
     if (tgt && bc >= 8) addSupport(team, 'air', { x: tgt.x + px * 40, y: tgt.y + py * 40 }, { x: tgt.x - px * 40, y: tgt.y - py * 40 }, Math.round(tA / 5) * 5 || 10);
   }
-  if (left(team) >= 200 && pr.aggr > .65 && A && S.round > 1 && r() < .5) addSupport(team, 'para', { x: clamp(A.x + dx * 18, 8, W - 8), y: clamp(A.y + dy * 18, 8, H - 8) }, null, Math.round(tA / 5) * 5 || 10);
+  if (left(team) >= 200 && pr.aggr > .65 && A && S.round > 1 && r() < .5) addSupport(team, 'para', clampPlay(A.x + dx * 18, A.y + dy * 18, 8), null, Math.round(tA / 5) * 5 || 10);
   while (left(team) >= 100 && n < 7) { const s = addSquad(team, 'rifles', D.x - dx * 14 + px * (r() - .5) * 30, D.y - dy * 14 + py * (r() - .5) * 30); if (!s) break; n++; s.order = { type: 'defend', x: D.x + px * (r() - .5) * 20, y: D.y + py * (r() - .5) * 20 }; }
 }

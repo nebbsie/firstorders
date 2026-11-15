@@ -7,7 +7,7 @@ export const S: any = {
   teams: [], bank: [], squads: [], structs: [], supports: [], units: [], cover: null,
   tool: 'select', sel: null, log: [],
   shells: [], bombs: [], fx: [], tracers: [], craters: [], planes: [], flow: new Map(),
-  stats: [], rec: null, rt: 0, follow: true, nextId: 1, result: null, terrCount: [], history: [], callN: [],
+  selMany: [], stats: [], rec: null, rt: 0, follow: true, nextId: 1, result: null, terrCount: [], history: [], callN: [],
   // Fog of war: per team, which units it sees now and where it last saw enemy units.
   fog: true, vis: [], known: [], contactT: [],
 };

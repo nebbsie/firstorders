@@ -10,51 +10,51 @@
 <div class="game" id="game">
   <div class="stage"><canvas id="gl"></canvas><canvas id="cv" aria-label="Battle map"></canvas><div class="busy" id="busy" hidden>BUILDING MAP</div></div>
 
-  <div class="hud panel topbar">
-    <div class="clock"><div class="phase" id="phase">DEPLOY</div><div class="time" id="clock">PHASE 1 / 3</div></div>
-    <div class="where"><b id="mapname"></b><span id="mapmeta"></span></div>
+  <div class="hud timebar" id="timebar">
+    <div class="plate" title="Supply left to spend this phase. Each phase pays more for the ground you hold."><span class="k">SUPPLY</span><b id="supply">0</b></div>
+    <div class="plate"><span class="k" id="phaseName">PHASE 1</span><b id="clock">DEPLOY</b></div>
     <div class="speeds" id="speeds">
+      <button class="btn" data-speed="0" title="Pause (Space)">II</button>
       <button class="btn on" data-speed="1" title="Normal speed">1x</button>
       <button class="btn" data-speed="2" title="Double speed">2x</button>
       <button class="btn" data-speed="4" title="Four times speed">4x</button>
       <button class="btn" data-speed="8" title="Eight times speed">8x</button>
-      <button class="btn" data-speed="0" title="Pause (Space)">PAUSE</button>
     </div>
   </div>
 
-  <div class="hud panel roster"><div class="ph"><span>Teams</span><span id="teamCount">2</span></div><div id="roster" style="padding:4px 0 6px"></div></div>
-  <div class="hud panel tools" id="tools"></div>
-  <div class="hud panel insp"><div class="ph"><span id="inspTitle">Plan</span></div><div class="pb" id="inspBody"></div><div class="log" id="log" hidden></div></div>
-  <div class="hud panel timeline"><div class="tl" id="tl"></div></div>
+  <div class="hud panel insp" id="insp" hidden><div class="ph"><span id="inspTitle"></span><button class="btn x" id="inspClose" title="Close">X</button></div><div class="pb" id="inspBody"></div></div>
+  <div class="hud radio" id="radio"></div>
+  <div class="hud cursornote" id="cursorNote" hidden></div>
+  <div class="hud panel toolpanel" id="toolpanel" hidden></div>
+  <div class="hud panel timeline" id="timeline" hidden><div class="tl" id="tl"></div></div>
 
   <div class="hud strip">
-    <button class="btn go" id="bBegin" title="Lock this phase's orders and fight it out">BEGIN PHASE 1</button>
-    <button class="btn go" id="bReplay" title="Watch the whole battle again" hidden>WATCH REPLAY</button>
+    <span id="cmds"></span>
     <button class="btn" id="bExit" hidden>EXIT REPLAY</button>
     <button class="btn on" id="bFollow" title="Move the camera to where the fighting is" hidden>FOLLOW ACTION</button>
     <button class="btn" id="bFromStart" title="Play the replay from the start" hidden>FROM START</button>
-    <button class="btn" id="bAuto" title="Let the AI plan this phase for you. It looks at your ground, what you have seen of the enemy, and the terrain.">AI PLAN</button>
-    <button class="btn stop" id="bClear" title="Remove what you placed this phase">CLEAR PHASE</button>
-    <button class="btn on" id="bFog" title="Fog of war: you see only what your troops and planes can see. Turn it off to watch everything.">FOG ON</button>
     <span class="sp"></span>
+    <button class="btn" id="bAuto" title="Let the AI plan this phase for you. It uses your ground, what you have seen of the enemy, and the terrain.">AI PLAN</button>
+    <button class="btn go" id="bBegin" title="Lock your orders and fight this phase">BEGIN PHASE 1</button>
+    <button class="btn go" id="bReplay" title="Watch the whole battle again" hidden>WATCH REPLAY</button>
     <button class="btn" id="bNew" title="Start again on this map. AI teams get new personalities.">NEW BATTLE</button>
-    <button class="btn" id="bView" title="Camera: drag to pan, right-drag to turn, scroll to zoom. WASD pans, Q and E turn.">RESET VIEW</button>
+    <button class="btn" id="bView" title="Camera: middle-drag to pan, right-drag to turn, scroll to zoom. WASD pans, Q and E turn.">RESET VIEW</button>
     <button class="btn side" id="bHelp">HELP</button>
     <button class="btn" id="bMenu" title="Pick another place">&lt; MENU</button>
   </div>
 
-  <div class="hud credit" id="credit"></div>
   <div class="hud toast" id="toast" hidden></div>
   <div class="hud panel banner" id="banner" hidden><b id="bannerBig"></b><span id="bannerSmall"></span></div>
+  <div class="hud panel card" id="card" hidden><div class="ph"><span id="cardTitle"></span></div><div class="pb"><div id="cardBody"></div><div class="row"><button class="btn go" id="cardOk">GOT IT</button></div></div></div>
   <div class="hud panel result" id="result" hidden></div>
 
   <div class="hud panel help" id="help" hidden>
-    <div class="ph"><span>How it works</span><button class="btn" id="helpClose" title="Close">X</button></div>
+    <div class="ph"><span>How it works</span><button class="btn x" id="helpClose" title="Close">X</button></div>
     <div class="pb helpbody">
       <h3>A BATTLE</h3>
       <p>Three phases of 60 seconds. Before each phase you build, buy and give orders. Then the phase plays out on its own. At the end, watch the replay.</p>
       <h3>GROUND</h3>
-      <p>You can only build on ground you hold, tinted your colour. Troops that clearly hold ground take it. Supply each phase comes from the ground you hold.</p>
+      <p>The battle is the circle; the grey ring around it is scenery. You can only build on ground you hold, tinted your colour. Troops that clearly hold ground take it. Supply each phase comes from the ground you hold.</p>
       <h3>FOG OF WAR</h3>
       <p>You see only what your troops can see: line of sight, blocked by hills, buildings and woods. Troops in woods are seen only at half range. Snipers and obs posts see far. A spy plane sees everything near its path. Faded dots are where you last saw the enemy. The AI plays by the same rules.</p>
       <h3>TERRAIN</h3>
@@ -67,7 +67,8 @@
         <tr><td>HILLS</td><td>Block sight. Firing downhill is more accurate. Obs posts see further.</td></tr>
       </tbody></table>
       <h3>CONTROLS</h3>
-      <p>Drag to pan, right-drag to turn, scroll to zoom. WASD pans, Q and E turn. Space pauses. Esc drops the tool. Delete removes what you selected this phase.</p>
+      <p>Click or drag a box to select your units. Pick ATTACK or DEFEND, then click the ground. Middle-drag pans, right-drag turns, scroll zooms. WASD pans, Q and E turn. Right-click or Esc drops the tool. Space pauses. Delete removes what you placed this phase.</p>
+      <p class="note">Map data © OpenStreetMap contributors. Elevation: AWS Terrain Tiles.</p>
     </div>
   </div>
 
@@ -78,7 +79,7 @@
       <h3>FIGHT IN A REAL PLACE</h3>
       <div class="searchrow"><input id="mQuery" class="input" placeholder="Town, street or postcode" autocomplete="off"><button class="btn" id="mSearch">SEARCH</button></div>
       <div class="results" id="mResults"></div>
-      <div class="hint" id="mStatus">The map covers 1.0 x 0.65 km. Downloads once, then it is kept in this browser.</div>
+      <div class="hint" id="mStatus">The battle is a 1 km circle. Each place downloads once, then it is kept in this browser.</div>
       <h3>TEAMS</h3>
       <div class="row" id="mTeams"><button class="btn" data-n="2">2</button><button class="btn" data-n="3">3</button><button class="btn" data-n="4">4</button><button class="btn" data-n="6">6</button></div>
       <div class="row menuact"><button class="btn go" id="mImport" disabled>IMPORT AND PLAY</button><button class="btn side" id="mSample">PLAY SAMPLE TOWN</button></div>

@@ -17,9 +17,9 @@ export function sampleTown(seed: number): RawMap {
   const wdep = (x: number, y: number) => { const i = ri(x); return RW[i] - Math.abs(y - RY[i]); };
   const nb = 3 + (rng() < .5 ? 1 : 0), BX: number[] = []; for (let i = 0; i < nb; i++) BX.push(W * (0.12 + 0.76 * i / (nb - 1)) + (rng() - .5) * 30);
   const bridgeAt = (x: number, y: number) => { for (const bx of BX) { if (Math.abs(x - bx) < 2.3) { const i = ri(x); if (Math.abs(y - RY[i]) < RW[i] + 14) return true; } } return false; };
-  const nd = 4 + Math.floor(rng() * 2), D: any[] = [];
+  const nd = 6 + Math.floor(rng() * 3), D: any[] = [];
   for (let i = 0; i < nd; i++) D.push({ cx: 30 + rng() * (W - 60), cy: 25 + rng() * (H - 60), a: (rng() - .5) * 1.2, bw: 24 + rng() * 14, bh: 17 + rng() * 10, ou: rng() * 50, ov: rng() * 50 });
-  D[0].cx = W * (.3 + rng() * .4); D[0].cy = rY + (rng() < .5 ? -1 : 1) * (40 + rng() * 18);
+  D[0].cx = W / 2 + (rng() - .5) * 90; D[0].cy = rY + (rng() < .5 ? -1 : 1) * (40 + rng() * 18);
   for (const d of D) { d.c = Math.cos(d.a); d.s = Math.sin(d.a); }
   let nI = 0, nE = 0;
   const near = (x: number, y: number) => { let b = 0, bd = 1e9, sd = 1e9; for (let i = 0; i < nd; i++) { const dx = x - D[i].cx, dy = y - D[i].cy, dd = dx * dx + dy * dy; if (dd < bd) { sd = bd; bd = dd; b = i; } else if (dd < sd) sd = dd; } nI = b; nE = Math.sqrt(sd) - Math.sqrt(bd); };
@@ -29,7 +29,7 @@ export function sampleTown(seed: number): RawMap {
   const rw = (i: number) => mod(i, 3) === 0 ? 2.4 : 1.4;
   let park = false;
   const roadKind = (x: number, y: number) => { near(x, y); const d = D[nI]; const [u, v] = lu(d, x, y); park = hash(nI, Math.floor(u / d.bw), Math.floor(v / d.bh)) < 0.09; if (nE < 2.2) return 2; const iu = Math.round(u / d.bw), iv = Math.round(v / d.bh); if (Math.abs(u - iu * d.bw) < rw(iu)) return mod(iu, 3) === 0 ? 2 : 1; if (Math.abs(v - iv * d.bh) < rw(iv)) return mod(iv, 3) === 0 ? 2 : 1; return 0; };
-  const dens = (x: number, y: number) => clamp(1.3 - Math.hypot(x - D[0].cx, y - D[0].cy) / 150, 0, 1);
+  const dens = (x: number, y: number) => clamp(1.3 - Math.hypot(x - D[0].cx, y - D[0].cy) / 175, 0, 1);
   const woodAt = (x: number, y: number) => { const de = dens(x, y); return de < .7 && n(x / 36 + 70.3, y / 36 + 70.7) > .6 - (1 - de) * .12; };
   const classify = (x: number, y: number) => { const wd = wdep(x, y); if (bridgeAt(x, y)) return wd > 0 ? T_BRIDGE : T_ROAD; if (wd > 0) return T_WATER; const rk = roadKind(x, y), de = dens(x, y); if (rk === 2 || (rk === 1 && de > .3)) return T_ROAD; if (wd > -4) return T_PARK; if (woodAt(x, y)) return T_WOOD; if (park && de > .3) return T_PARK; return T_GROUND; };
 
@@ -50,7 +50,6 @@ export function sampleTown(seed: number): RawMap {
       if (dens(wx, wy) < .35 && Math.floor((wx * .8 + wy * .6) / 4) % 2) { r += 9; gg += 6; b -= 4; }
       if (x > 0 && y > 0) { const band = Math.floor(h / 5.5); if (band !== Math.floor(HP[i - 1] / 5.5) || band !== Math.floor(HP[i - gw] / 5.5)) { r -= 12; gg -= 12; b -= 10; } }
     }
-    if (x % (40 * GS) === 0 || y % (40 * GS) === 0) { r *= .82; gg *= .82; b *= .82; }
     px[i * 4] = r; px[i * 4 + 1] = gg; px[i * 4 + 2] = b; px[i * 4 + 3] = 255;
   }
   g.putImageData(img, 0, 0);

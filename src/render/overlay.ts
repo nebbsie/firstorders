@@ -1,5 +1,5 @@
-import { W, H, C, GW, COST, TOOLDEF, TEAM_COLORS, SUP_NAME, grid } from '../config';
-import { S } from '../state';
+import { C, GW, IW, IC, COST, TOOLDEF, TEAM_COLORS, SUP_NAME, GRID_X0, GRID_Y0, grid } from '../config';
+import { S, SEEN0 } from '../state';
 import { canDeploy } from '../world';
 import { sqCenter, left, lineCells } from '../plan';
 import { P, view } from './camera';
@@ -32,16 +32,18 @@ export function draw2D() {
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
   const plan = S.phase === 'plan';
   ctx.font = '11px Departure, ui-monospace, monospace'; ctx.fillStyle = 'rgba(232,197,71,.8)'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  for (let i = 0; i < 10; i++) { const p = P(i * 40 + 20, -6, 0); if (p[0] > -500) ctx.fillText('ABCDEFGHJK'[i], p[0], p[1]); }
-  for (let j = 0; j < 7; j++) { const p = P(-7, Math.min(H - 4, j * 40 + 20), 0); if (p[0] > -500) ctx.fillText(String(j + 1), p[0], p[1]); }
+  for (let i = 0; i < 10; i++) { const p = P(GRID_X0 + i * 40 + 20, GRID_Y0 - 8, 0); if (p[0] > -500) ctx.fillText('ABCDEFGHJK'[i], p[0], p[1]); }
+  for (let j = 0; j < 10; j++) { const p = P(GRID_X0 - 9, GRID_Y0 + j * 40 + 20, 0); if (p[0] > -500) ctx.fillText(String(j + 1), p[0], p[1]); }
   if (S.phase === 'replay') return;
-  if (plan) for (const t of S.teams) { const c = P(t.zone.x, t.zone.y, 12); plate(c[0], c[1], t.id === 0 ? 'YOUR HQ' : `${t.name} HQ · ${t.per ? t.per.label : ''}`, t.color); }
+  // Enemy HQs show only once your side has seen that ground.
+  const seenAt = (x: number, y: number) => !S.fog || SEEN0[Math.floor(y / IC) * IW + Math.floor(x / IC)];
+  if (plan) for (const t of S.teams) { if (t.id !== 0 && !seenAt(t.zone.x, t.zone.y)) continue; const c = P(t.zone.x, t.zone.y, 12); plate(c[0], c[1], t.id === 0 ? 'YOUR HQ' : `${t.name} HQ`, t.color); }
   ctx.globalAlpha = plan ? 1 : .4;
   for (const s of S.squads) {
     if (s.team !== 0) continue; const o = plan ? s.order : s.cur; if (!o) continue; const c = sqCenter(s); if (!c) continue; const col = TEAM_COLORS[0];
     if (o.type === 'defend') ring(o.x, o.y, 16, col, true);
     groundLine({ x: c[0], y: c[1] }, o, col, o.type === 'defend', true);
-    if (plan && S.sel === s) { const m = P(o.x, o.y, 3); plate(m[0], m[1] - 14, `${s.call || ''} ${o.type.toUpperCase()} ${grid(o.x, o.y)}`.trim(), col); }
+    if (plan && (S.selMany || []).includes(s)) { const m = P(o.x, o.y, 3); plate(m[0], m[1] - 14, `${s.call || ''} ${o.type.toUpperCase()} ${grid(o.x, o.y)}`.trim(), col); }
   }
   for (const s of S.supports) {
     if (s.round !== S.round || s.team !== 0 || (!plan && s.fired)) continue;
@@ -56,8 +58,10 @@ export function draw2D() {
     if (it.pos) { c = sqCenter(it); r = it.kind === 'rifles' ? 9 : 4; }
     else if (it.cells) { c = [(it.a.x + it.b.x) / 2, (it.a.y + it.b.y) / 2]; r = Math.hypot(it.b.x - it.a.x, it.b.y - it.a.y) / 2 + 3; }
     else if (it.a) { c = it.b ? [(it.a.x + it.b.x) / 2, (it.a.y + it.b.y) / 2] : [it.a.x, it.a.y]; r = it.b ? Math.hypot(it.b.x - it.a.x, it.b.y - it.a.y) / 2 : 16; }
-    if (c) ring(c[0], c[1], r, '#e8c547', false, 2);
+    if (c && !it.pos) ring(c[0], c[1], r, '#e8c547', false, 2);
   }
+  for (const s of S.selMany || []) { const c = sqCenter(s); if (c) ring(c[0], c[1], s.kind === 'rifles' ? 9 : 4, '#e8c547', false, 2); }
+  const b = input.box; if (b) { ctx.strokeStyle = '#e8c547'; ctx.lineWidth = 1; ctx.fillStyle = 'rgba(232,197,71,.08)'; const x = Math.min(b.x0, b.x1), y = Math.min(b.y0, b.y1), w = Math.abs(b.x1 - b.x0), h = Math.abs(b.y1 - b.y0); ctx.fillRect(x, y, w, h); ctx.strokeRect(x + .5, y + .5, w, h); }
   drawGhost();
 }
 function drawGhost() {
@@ -73,6 +77,8 @@ function drawGhost() {
     }
     groundLine(ptr.w0, ptr.w, ok ? okC : badC, true, S.tool === 'air' || S.tool === 'spy'); const b = P(ptr.w.x, ptr.w.y, 3); plate(b[0], b[1] - 16, label, ok ? okC : badC); return;
   }
+  if (ptr && ptr.mode === 'orderGroup') return;
+  if (S.tool === 'attack' || S.tool === 'defend') { for (const s of S.selMany || []) { const c = sqCenter(s); if (c && ['rifles', 'sniper', 'tank'].includes(s.kind)) groundLine({ x: c[0], y: c[1] }, hover, 'rgba(232,197,71,.6)', S.tool === 'defend', true); } }
   if (ptr && ptr.mode === 'order') { const c = sqCenter(ptr.sq); if (!c) return; groundLine({ x: c[0], y: c[1] }, ptr.w, '#e8c547', S.tool === 'defend', true); const b = P(ptr.w.x, ptr.w.y, 3); plate(b[0], b[1] - 16, `${S.tool.toUpperCase()} ${grid(ptr.w.x, ptr.w.y)}`, '#e8c547'); return; }
   if (tool.mode === 'point') {
     const sup = S.tool === 'barrage' || S.tool === 'para' || S.tool === 'demo', mine = canDeploy(0, hover.x, hover.y), ok = (sup || mine) && left(0) >= COST[S.tool];

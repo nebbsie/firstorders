@@ -9,15 +9,16 @@ import { camera, cam, view, applyCam, fit } from './render/camera';
 import { initRenderer, renderer, buildMap3D, update3D, render } from './render/scene';
 import { initOverlay, resizeOverlay, draw2D } from './render/overlay';
 import { initInput, keyCam } from './ui/input';
-import { buildTools, setTool, syncUI, banner, showResult, tickHud, hudPulse, bindStrip, refreshFogPaint } from './ui/hud';
+import { setTool, syncUI, banner, showResult, tickHud, hudPulse, bindStrip, refreshFogPaint, phaseCard } from './ui/hud';
 import { makeTeams } from './plan';
 import { initMenu, showMenu } from './ui/menu';
 import type { RawMap } from './map/types';
 
 const gl = document.getElementById('gl') as HTMLCanvasElement, cv = document.getElementById('cv') as HTMLCanvasElement;
-initRenderer(gl); initOverlay(cv); initInput(cv); buildTools(); setTool('select');
+initRenderer(gl); initOverlay(cv); initInput(cv); setTool('select');
 
-hooks.banner = banner; hooks.sync = syncUI; hooks.result = showResult;
+// A new planning phase gets the phase card; battle events get the short banner.
+hooks.banner = (big, small) => { if (S.phase === 'plan') phaseCard(); else banner(big, small); }; hooks.sync = syncUI; hooks.result = showResult;
 hooks.ground = () => refreshFogPaint(); hooks.vision = () => refreshFogPaint();
 
 function resize() {
@@ -34,7 +35,7 @@ function startMap(raw: RawMap) {
     makeTeamsAndStart();
   }, 30);
 }
-function makeTeamsAndStart() { makeTeams(); newBattle(); refreshFogPaint(); banner('DEPLOY', 'Plan phase 1'); }
+function makeTeamsAndStart() { makeTeams(); newBattle(); refreshFogPaint(); phaseCard(); }
 function toMenu() { S.phase = 'menu'; showMenu(true); syncUI(); }
 bindStrip(toMenu);
 initMenu(startMap, () => sampleTown(1000 + Math.floor(Math.random() * 9000)));

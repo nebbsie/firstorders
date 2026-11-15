@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { W, H, C, GW, GH, IW, IH, IC, TRGB, clamp } from '../config';
+import { W, H, C, GW, GH, IW, IH, IC, TRGB, clamp, inPlay } from '../config';
 import { S, M, OWN } from '../state';
 import { unitH } from '../world';
 import { camera, cam, FOV, view } from './camera';
@@ -28,7 +28,7 @@ export function initRenderer(canvas: HTMLCanvasElement) {
   // Intensities times pi give the classic (non-physical) light levels the colours were picked for.
   scene.add(new THREE.HemisphereLight('#dfe2d2', '#3a3528', 0.62 * Math.PI));
   const sun = new THREE.DirectionalLight('#fff0d8', 0.78 * Math.PI); sun.position.set(-150, 240, -110); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, { left: -260, right: 260, top: 200, bottom: -200, near: 10, far: 700 }); sun.shadow.bias = -0.0008;
+  Object.assign(sun.shadow.camera, { left: -300, right: 300, top: 300, bottom: -300, near: 10, far: 900 }); sun.shadow.bias = -0.0008;
   scene.add(sun); scene.add(sun.target);
   createDynamic();
 }
@@ -45,7 +45,7 @@ export function paintTerritory(seen: Uint8Array | null) {
 // Fog: clear where you see now, light shade where you have seen, dark where you never looked.
 export function paintFog(vis: Uint8Array, seen: Uint8Array, on: boolean) {
   const img = fctx.createImageData(IW, IH), px = img.data;
-  if (on) for (let i = 0; i < IW * IH; i++) { px[i * 4] = 11; px[i * 4 + 1] = 14; px[i * 4 + 2] = 18; px[i * 4 + 3] = vis[i] ? 0 : seen[i] ? 95 : 150; }
+  if (on) for (let i = 0; i < IW * IH; i++) { if (!inPlay((i % IW) * IC + 2, Math.floor(i / IW) * IC + 2)) continue; px[i * 4] = 11; px[i * 4 + 1] = 14; px[i * 4 + 2] = 18; px[i * 4 + 3] = vis[i] ? 0 : seen[i] ? 95 : 150; }
   fctx.putImageData(img, 0, 0); fogTex.needsUpdate = true;
 }
 
@@ -72,7 +72,9 @@ export function buildMap3D() {
     for (const q of [a, b, c]) { Pa.push(q[0], q[1], q[2]); Na.push(nn.x, nn.y, nn.z); Ca.push(col[0], col[1], col[2]); }
   };
   for (const b of M.B) {
-    const j = (b.v * 37 % 1 - .5) * 14, roof = b.mat.map(v => (v + j) / 255), wall = roof.map(v => v * .8), p = b.p;
+    // Buildings outside the battle circle are grey scenery.
+    const out0 = !inPlay(b.cx, b.cy), j = (b.v * 37 % 1 - .5) * 14, lum = (b.mat[0] * .3 + b.mat[1] * .59 + b.mat[2] * .11 + j) / 255;
+    const roof = out0 ? [lum * .62, lum * .63, lum * .65] : b.mat.map(v => (v + j) / 255), wall = roof.map(v => v * .8), p = b.p;
     let area = 0; for (let i = 0; i < p.length; i++) { const a = p[i], c = p[(i + 1) % p.length]; area += a[0] * c[1] - c[0] * a[1]; }
     const T = p.map(q => [q[0] - W / 2, b.top, q[1] - H / 2]), Bt = p.map(q => [q[0] - W / 2, b.base, q[1] - H / 2]);
     const faces = THREE.ShapeUtils.triangulateShape(p.map(q => new THREE.Vector2(q[0], q[1])), []);
@@ -96,10 +98,11 @@ export function buildMap3D() {
     pm.count = piers.length; grp.add(pm);
     br.group = grp; mapGroup.add(grp);
   }
-  if (M.trees.length) {
-    const tm = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 5), new THREE.MeshLambertMaterial({ color: '#3d5832' }), M.trees.length);
-    M.trees.forEach((t, i) => { _q.setFromAxisAngle(_up, t[0]); _p.set(t[0] - W / 2, M.hAt(t[0], t[1]) + t[2] / 2, t[1] - H / 2); _s.set(1.3 + t[2] * .18, t[2], 1.3 + t[2] * .18); _m.compose(_p, _q, _s); tm.setMatrixAt(i, _m); });
-    tm.castShadow = true; tm.receiveShadow = true; mapGroup.add(tm);
+  for (const inside of [true, false]) {
+    const list = M.trees.filter(t => inPlay(t[0], t[1]) === inside); if (!list.length) continue;
+    const tm = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 5), new THREE.MeshLambertMaterial({ color: inside ? '#3d5832' : '#4b4f4b' }), list.length);
+    list.forEach((t, i) => { _q.setFromAxisAngle(_up, t[0]); _p.set(t[0] - W / 2, M.hAt(t[0], t[1]) + t[2] / 2, t[1] - H / 2); _s.set(1.3 + t[2] * .18, t[2], 1.3 + t[2] * .18); _m.compose(_p, _q, _s); tm.setMatrixAt(i, _m); });
+    tm.castShadow = inside; tm.receiveShadow = true; mapGroup.add(tm);
   }
   const fogMesh = new THREE.Mesh(tg, new THREE.MeshBasicMaterial({ map: fogTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 })); fogMesh.renderOrder = 3; mapGroup.add(fogMesh);
   scene.add(mapGroup); structKey = '';

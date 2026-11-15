@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { W, H, clamp } from '../config';
+import { W, H, CX, CY, PLAY_R, clamp } from '../config';
 import { unitH } from '../world';
 
 export const FOV = 38;
@@ -14,13 +14,13 @@ export function applyCam() {
 }
 export function fit() {
   const t = Math.tan(FOV / 2 * Math.PI / 180), asp = view.cw / Math.max(1, view.ch);
-  cam.tx = W / 2; cam.ty = H / 2 + 8; cam.yaw = 0; cam.pitch = .95;
-  cam.dist = clamp(Math.max(W / (2 * t * asp), H * .8 / (2 * t)) * 1.18, 120, 700);
+  cam.tx = CX; cam.ty = CY + 8; cam.yaw = 0; cam.pitch = .95;
+  cam.dist = clamp(Math.max(PLAY_R * 2 / (2 * t * asp), PLAY_R * 2 * .8 / (2 * t)) * 1.15, 120, 900);
 }
 export function panBy(dx: number, dy: number) {
   const s = 2 * cam.dist * Math.tan(FOV / 2 * Math.PI / 180) / view.ch, cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw), f = 1 / Math.max(.5, Math.sin(cam.pitch));
-  cam.tx = clamp(cam.tx - cy * dx * s - sy * dy * s * f, -40, W + 40);
-  cam.ty = clamp(cam.ty + sy * dx * s - cy * dy * s * f, -40, H + 40);
+  cam.tx = clamp(cam.tx - cy * dx * s - sy * dy * s * f, CX - PLAY_R - 60, CX + PLAY_R + 60);
+  cam.ty = clamp(cam.ty + sy * dx * s - cy * dy * s * f, CY - PLAY_R - 60, CY + PLAY_R + 60);
 }
 const _v = new THREE.Vector3();
 // World point (map units) to screen pixels; far off screen when behind the camera.

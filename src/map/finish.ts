@@ -1,4 +1,4 @@
-import { W, H, C, GW, GH, GS, T_WATER, T_BRIDGE, T_BUILD, T_WOOD, T_PARK, T_ROAD, clamp, hashf } from '../config';
+import { W, H, C, GW, GH, GS, CX, CY, PLAY_R, T_WATER, T_BRIDGE, T_BUILD, T_WOOD, T_PARK, T_ROAD, clamp, hashf, inPlay } from '../config';
 import type { RawMap, MapData, Bridge } from './types';
 
 const isWet = (t: number) => t === T_WATER || t === T_BRIDGE;
@@ -56,7 +56,6 @@ function paintGround(raw: RawMap, wd: Float32Array, hAt: (x: number, y: number) 
         if (raw.farm && raw.farm[ci] && Math.floor((wx * .8 + wy * .6) / 4) % 2) { r += 9; gg += 6; b -= 4; }
         if (x > 0 && y > 0) { const band = Math.floor(h / 1.65); if (band !== Math.floor(row[x - 1] / 1.65) || band !== Math.floor(prevRow[x] / 1.65)) { r -= 10; gg -= 10; b -= 8; } }
       }
-      if (x % (40 * GS) === 0 || y % (40 * GS) === 0) { r *= .82; gg *= .82; b *= .82; }
       px[i * 4] = r; px[i * 4 + 1] = gg; px[i * 4 + 2] = b; px[i * 4 + 3] = 255;
     }
     const t = prevRow; prevRow = row; row = t;
@@ -64,6 +63,18 @@ function paintGround(raw: RawMap, wd: Float32Array, hAt: (x: number, y: number) 
   g.putImageData(img, 0, 0);
   if (raw.paintOver) { g.save(); g.scale(GS, GS); raw.paintOver(g); g.restore(); }
   return cv;
+}
+
+// Outside the battle circle the map is scenery: grey, darker, with a thin light ring at the edge.
+function greyOutside(cv: HTMLCanvasElement) {
+  const g = cv.getContext('2d'), img = g.getImageData(0, 0, cv.width, cv.height), px = img.data, s = W / cv.width;
+  for (let y = 0; y < cv.height; y++) for (let x = 0; x < cv.width; x++) {
+    const d = Math.hypot((x + .5) * s - CX, (y + .5) * s - CY) - PLAY_R; if (d < 0) continue;
+    const i = (y * cv.width + x) * 4, l = px[i] * .3 + px[i + 1] * .59 + px[i + 2] * .11, k = clamp(d / 4, 0, 1), dark = .72 - clamp(d / 160, 0, 1) * .25;
+    for (let c = 0; c < 3; c++) px[i + c] = (px[i + c] * (1 - k) + l * k) * (1 - k * (1 - dark));
+    if (d < 1.2) { px[i] = 200; px[i + 1] = 190; px[i + 2] = 150; }
+  }
+  g.putImageData(img, 0, 0);
 }
 
 export function finishMap(raw: RawMap): MapData {
@@ -81,7 +92,8 @@ export function finishMap(raw: RawMap): MapData {
     const a = TH[j * VW + i], b = TH[j * VW + i + 1], c = TH[(j + 1) * VW + i], d = TH[(j + 1) * VW + i + 1];
     return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
   };
-  const ground = raw.ground || paintGround(raw, wd, hAt);
+  const ground = raw.ground || paintGround(raw, wd, hAt); greyOutside(ground);
+  const play = new Uint8Array(GW * GH); for (let i = 0; i < play.length; i++) play[i] = inPlay((i % GW) * C + 1, Math.floor(i / GW) * C + 1) ? 1 : 0;
 
   const bldTop = new Float32Array(GW * GH), bldId = new Int32Array(GW * GH).fill(-1);
   const B = raw.B.filter(b => b.p.length >= 3);
@@ -119,5 +131,5 @@ export function finishMap(raw: RawMap): MapData {
     const x = (ci % GW) * C + 1, y = Math.floor(ci / GW) * C + 1;
     if (hashf(x, y, 3) < (t === T_WOOD ? .42 : .05)) trees.push([x + (hashf(x, y, 4) - .5) * 1.6, y + (hashf(x, y, 5) - .5) * 1.6, 3 + hashf(x, y, 6) * 4]);
   }
-  return { seed: raw.seed, name: raw.name, source: raw.source, credit: raw.credit, ground, terr, terr0: terr.slice(), TH, hAt, deck, deck0: deck.slice(), bridges, B, trees, bldTop, bldId, count: B.length };
+  return { seed: raw.seed, name: raw.name, source: raw.source, credit: raw.credit, ground, terr, terr0: terr.slice(), TH, hAt, deck, deck0: deck.slice(), bridges, B, trees, bldTop, bldId, count: B.length, play };
 }

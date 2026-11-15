@@ -21,19 +21,11 @@ button:focus-visible { outline: 1px solid var(--gold); outline-offset: 1px; }
 .game { position: fixed; inset: 0; background: var(--map); font-family: var(--f-ui); font-size: 11px; line-height: 1.35; }
 .stage { position: absolute; inset: 0; }
 #gl, #cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-#cv { touch-action: none; cursor: grab; }
+#cv { touch-action: none; cursor: default; }
 .hud { position: absolute; z-index: 2; }
 .panel { background: var(--window); border: 1px solid var(--edge-soft); }
 .ph { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; color: var(--gold); text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid var(--edge-soft); }
 .pb { padding: 8px; }
-
-.topbar { top: 10px; left: 50%; transform: translateX(-50%); display: flex; align-items: stretch; }
-.topbar .clock { display: flex; flex-direction: column; justify-content: center; padding: 6px 14px; min-width: 160px; }
-.phase { font-family: var(--f-title); font-size: 16px; color: var(--gold); line-height: 1; }
-.time { font-family: var(--f-title); font-size: 16px; color: var(--ink); line-height: 1; margin-top: 6px; font-variant-numeric: tabular-nums; }
-.where { padding: 6px 12px; display: flex; flex-direction: column; justify-content: center; color: var(--muted); border-left: 1px solid var(--edge-soft); width: 330px; white-space: nowrap; overflow: hidden; }
-.where b { color: var(--text); font-weight: normal; overflow: hidden; text-overflow: ellipsis; }
-.speeds { display: grid; grid-template-columns: repeat(5, auto); gap: 3px; padding: 6px; border-left: 1px solid var(--edge-soft); align-content: center; }
 
 .btn { background: var(--plate); border: 1px solid var(--edge); color: #fff; padding: 4px 7px; cursor: pointer; text-transform: uppercase; font-family: var(--f-ui); font-size: 11px; line-height: 1.2; border-radius: 0; }
 .btn:hover { background: var(--plate-hi); border-color: var(--edge-hi); }
@@ -44,31 +36,17 @@ button:focus-visible { outline: 1px solid var(--gold); outline-offset: 1px; }
 .btn.stop { background: var(--stop); border-color: #a8494d; }
 .btn:disabled { background: var(--plate-off); border-color: var(--edge-soft); color: var(--muted); cursor: default; }
 
-.roster { top: 10px; left: 10px; width: 214px; }
-.team { display: grid; grid-template-columns: 10px 1fr auto; gap: 6px; align-items: center; padding: 3px 8px; }
-.team i { width: 10px; height: 10px; display: block; }
-.team .v { color: var(--muted); font-variant-numeric: tabular-nums; }
-.team .bar { grid-column: 2/4; height: 3px; background: var(--track); }
-.team .bar span { display: block; height: 100%; }
-.tools { top: 128px; left: 10px; width: 214px; max-height: calc(100% - 128px - 100px); overflow: auto; }
-.supply { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--edge-soft); }
-.supply b { font-family: var(--f-title); font-size: 16px; color: var(--ink); font-weight: normal; }
-.meter { height: 4px; background: var(--track); margin: 6px 8px; }
-.meter span { display: block; height: 100%; background: var(--gold); }
 .grp { padding: 4px 8px 6px; }
 .grp h3 { margin: 2px 0 4px; font: inherit; color: var(--gold); letter-spacing: .06em; }
 .grp .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
 .tile { display: flex; justify-content: space-between; gap: 4px; text-align: left; }
 .tile em { font-style: normal; color: var(--soft); }
-.insp { top: 10px; right: 10px; width: 250px; max-height: calc(100% - 120px); display: flex; flex-direction: column; }
+.insp { top: 56px; right: 10px; width: 250px; max-height: calc(100% - 120px); overflow: auto; }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; }
 .kv dt { color: var(--muted); } .kv dd { margin: 0; color: var(--text); text-align: right; }
 .hint { color: var(--soft); margin: 0; }
 .row { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
-.log { border-top: 1px solid var(--edge-soft); padding: 6px 8px; overflow: auto; min-height: 0; flex: 1; }
-.log p { margin: 0 0 2px; color: var(--soft); } .log p b { font-weight: normal; color: var(--muted); margin-right: 4px; }
-.log p.seek { cursor: pointer; } .log p.seek:hover { background: var(--chip); }
-.timeline { left: 234px; right: 270px; bottom: 52px; height: 46px; }
+.timeline { left: 10px; right: 10px; bottom: 52px; height: 46px; }
 .tl { position: relative; height: 100%; } .tl.scrub { cursor: pointer; }
 .tl .axis { position: absolute; left: 8px; right: 8px; top: 24px; height: 1px; background: var(--edge); }
 .tl .fill { position: absolute; left: 8px; top: 23px; height: 3px; background: var(--gold); }
@@ -80,7 +58,6 @@ button:focus-visible { outline: 1px solid var(--gold); outline-offset: 1px; }
 .strip { left: 0; right: 0; bottom: 0; height: 44px; background: var(--bar); border-top: 1px solid var(--edge-soft); display: flex; align-items: center; gap: 6px; padding: 0 10px; overflow-x: auto; }
 .strip .btn { font-family: var(--f-title); font-size: 16px; padding: 5px 10px; white-space: nowrap; }
 .strip .sp { flex: 1; }
-.credit { right: 270px; bottom: 100px; color: var(--muted); font-size: 11px; pointer-events: none; text-shadow: 0 1px 2px #000; }
 .toast { left: 50%; bottom: 108px; transform: translateX(-50%); padding: 6px 10px; background: var(--window); border: 1px solid var(--warn); color: var(--ink); pointer-events: none; white-space: nowrap; }
 .banner { left: 50%; top: 22%; transform: translateX(-50%); padding: 10px 22px; text-align: center; pointer-events: none; background: rgba(23, 29, 41, .94); }
 .banner b { display: block; font-family: var(--f-title); font-size: 32px; font-weight: normal; color: var(--good); line-height: 1; }
@@ -118,3 +95,28 @@ table.cat td:first-child { color: var(--ink); white-space: nowrap; }
   .tools, .insp, .timeline, .credit { display: none; }
   .topbar .where { display: none; }
 }
+
+/* Top right, as in Mall Architect: readout plates, then the speed tiles. */
+.timebar { top: 8px; right: 8px; display: flex; gap: 4px; align-items: stretch; }
+.plate { background: var(--window); border: 1px solid var(--edge); display: flex; align-items: center; gap: 8px; padding: 4px 10px; }
+.plate .k { color: var(--muted); }
+.plate b { font-family: var(--f-title); font-size: 16px; font-weight: normal; color: var(--ink); font-variant-numeric: tabular-nums; }
+.speeds { display: flex; gap: 1px; background: var(--window); border: 1px solid var(--edge); padding: 3px; align-items: center; }
+.speeds .btn { min-width: 28px; text-align: center; }
+.btn.x { padding: 1px 5px; }
+/* Tool panel: opens above the command that owns it. */
+.toolpanel { bottom: 50px; padding: 6px; }
+.toolpanel h3 { margin: 0 0 5px; font: inherit; color: var(--gold); letter-spacing: .06em; }
+.toolpanel .tiles { display: grid; grid-template-columns: repeat(4, 120px); gap: 3px; }
+.strip #cmds { display: flex; gap: 6px; }
+.strip .cmd.on { background: var(--on); border-color: var(--gold); }
+.cmdcost { color: var(--soft); }
+/* Phase card: what this phase is and what to do. */
+.card { left: 50%; top: 90px; transform: translateX(-50%); width: min(420px, 92%); z-index: 5; }
+.card #cardBody p { margin: 0 0 6px; color: var(--soft); }
+.card #cardBody b { color: var(--ink); font-weight: normal; }
+/* Radio: the last few messages, bottom left. */
+.radio { left: 10px; bottom: 54px; width: 420px; display: flex; flex-direction: column; gap: 2px; pointer-events: none; }
+.radio p { margin: 0; padding: 2px 6px; background: rgba(16, 20, 28, .82); border-left: 2px solid var(--edge); color: var(--soft); width: fit-content; max-width: 100%; transition: opacity .6s; }
+.radio p b { font-weight: normal; color: var(--muted); margin-right: 6px; }
+.cursornote { pointer-events: none; padding: 2px 6px; background: rgba(16, 20, 28, .9); border: 1px solid var(--edge); color: var(--soft); white-space: nowrap; z-index: 3; }

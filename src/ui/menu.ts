@@ -19,7 +19,7 @@ export function initMenu(start: (raw: RawMap) => void, sample: () => RawMap) {
   const search = async () => {
     const q = ($('#mQuery') as HTMLInputElement).value.trim(); if (!q) return;
     status('Searching'); chosen = null; ($('#mImport') as HTMLButtonElement).disabled = true;
-    try { places = await searchPlaces(q); render(); status(places.length ? 'Pick a place. The map is 1.0 x 0.65 km around it.' : 'No places found. Try a town and country, or a postcode.', !places.length); }
+    try { places = await searchPlaces(q); render(); status(places.length ? 'Pick a place. The battle is a 1 km circle around it.' : 'No places found. Try a town and country, or a postcode.', !places.length); }
     catch (e: any) { status(e.message || 'Search failed', true); }
   };
   $('#mSearch').onclick = search;

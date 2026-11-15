@@ -167,8 +167,8 @@ way["leisure"~"^(park|garden|pitch|golf_course|nature_reserve|common)$"](${bb});
   const VW = GW + 1, VH = GH + 1, baseH = new Float32Array(VW * VH).fill(3);
   if (dem) {
     let lo = 1e9, hi = -1e9; for (const v of dem) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
-    // Exaggerate gentle ground a little; squash mountains so the battle stays readable.
-    const k = Math.min(1.4 / M_PER_UNIT, 25 / Math.max(1, hi - lo));
+    // True scale, the same as buildings and distances. Only very steep ground (over 150 m of rise) is squashed to fit.
+    const k = Math.min(1 / M_PER_UNIT, 60 / Math.max(1, hi - lo));
     for (let i = 0; i < baseH.length; i++) baseH[i] = 3 + (dem[i] - lo) * k;
   }
   const paintOver = (g: CanvasRenderingContext2D) => {

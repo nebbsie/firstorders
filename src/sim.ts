@@ -13,11 +13,10 @@ export const income = (t: number) => 200 + Math.round((S.terrCount[t] || 0) * 1.
 
 export function newBattle() {
   if (M) { M.terr.set(M.terr0); M.deck.set(M.deck0); M.bridges.forEach(b => b.blown = null); }
-  Object.assign(S, { phase: 'plan', round: 1, t: 0, units: [], shells: [], bombs: [], fx: [], tracers: [], craters: [], planes: [], cover: null, rec: null, result: null, log: [], stats: [], history: [], callN: [], vis: [], known: [], contactT: [], squads: [], structs: [], supports: [], sel: null });
+  Object.assign(S, { phase: 'plan', round: 1, t: 0, units: [], shells: [], bombs: [], fx: [], tracers: [], craters: [], planes: [], cover: null, rec: null, result: null, log: [], stats: [], history: [], callN: [], vis: [], known: [], contactT: [], squads: [], structs: [], supports: [], sel: null, selMany: [] });
   S.bank = S.teams.map(() => BUDGET); SEEN0.fill(0);
   rollPersonalities(); initOwn(); countGround(); updateVision();
   for (let t = 1; t < S.nTeams; t++) aiPlan(t);
-  aiPlan(0);
   hooks.ground(); hooks.sync();
 }
 
@@ -40,7 +39,7 @@ export function beginRound() {
   for (const st of S.stats) st.roundKills = st.kills;
   S.phase = 'battle'; S.paused = false; log(-1, `Phase ${S.round} begins`);
   updateVision(); recFrame();
-  hooks.banner(`PHASE ${S.round}`, S.round === 1 ? 'Plans locked' : 'Reinforcements in'); S.sel = null; hooks.sync();
+  hooks.banner(`PHASE ${S.round}`, S.round === 1 ? 'Plans locked' : 'Reinforcements in'); S.sel = null; S.selMany = []; hooks.sync();
 }
 function snapshotHistory() { S.history.push({ round: S.round, terr: S.terrCount.slice(), alive: S.teams.map((t: any) => S.units.filter((u: any) => u.alive && u.team === t.id).length) }); }
 function endRound() {

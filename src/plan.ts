@@ -1,4 +1,4 @@
-import { W, H, C, GW, GH, COST, KIND_NAME, TEAM_COLORS, TEAM_NAMES, CALLSIGNS, PERS, T_BRIDGE, clamp, mulberry32 } from './config';
+import { C, GW, GH, COST, KIND_NAME, TEAM_COLORS, TEAM_NAMES, CALLSIGNS, PERS, T_BRIDGE, CX, CY, PLAY_R, mulberry32 } from './config';
 import { S, M, OWN } from './state';
 import { cellOf, passTerr, nudge, canDeploy, cellPos } from './world';
 
@@ -6,13 +6,13 @@ export function makeTeams() {
   S.teams = []; const N = S.nTeams;
   for (let i = 0; i < N; i++) {
     const a = 2.356 + i * Math.PI * 2 / N, r = N <= 3 ? 40 : N <= 4 ? 36 : 30;
-    let x = clamp(W / 2 + Math.cos(a) * W * 0.37, 40, W - 40), y = clamp(H / 2 + Math.sin(a) * H * 0.34, 36, H - 36);
+    let x = CX + Math.cos(a) * PLAY_R * .68, y = CY + Math.sin(a) * PLAY_R * .68;
     // Move a start area that is mostly water or buildings in towards the centre.
     for (let k = 0; k < 20; k++) {
       let bad = 0, all = 0;
-      for (let dy = -r; dy <= r; dy += 4) for (let dx = -r; dx <= r; dx += 4) { if (dx * dx + dy * dy > r * r) continue; const ci = cellOf(x + dx, y + dy); all++; if (ci < 0 || !passTerr(M.terr[ci])) bad++; }
+      for (let dy = -r; dy <= r; dy += 4) for (let dx = -r; dx <= r; dx += 4) { if (dx * dx + dy * dy > r * r) continue; const ci = cellOf(x + dx, y + dy); all++; if (ci < 0 || !M.play[ci] || !passTerr(M.terr[ci])) bad++; }
       if (bad < all * .35) break;
-      x += (W / 2 - x) * .12; y += (H / 2 - y) * .12;
+      x += (CX - x) * .12; y += (CY - y) * .12;
     }
     S.teams.push({ id: i, name: TEAM_NAMES[i], color: TEAM_COLORS[i], ai: i > 0, zone: { x, y, r } });
   }

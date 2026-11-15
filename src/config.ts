@@ -1,9 +1,13 @@
-// Game rules and tuning. One map unit is 2.5 m. The map is 400 x 260 units (1.0 x 0.65 km).
-export const W = 400, H = 260, C = 2, GW = W / C, GH = H / C, GS = 3;
+// Game rules and tuning. One map unit is 2.5 m. The map is 560 x 560 units (1.4 km square).
+// Battles happen inside a circle of radius 200 units (1 km across); the ring outside is scenery only.
+export const W = 560, H = 560, C = 2, GW = W / C, GH = H / C, GS = 2;
+export const CX = W / 2, CY = H / 2, PLAY_R = 200;
+export const inPlay = (x: number, y: number, margin = 0) => (x - CX) ** 2 + (y - CY) ** 2 <= (PLAY_R - margin) ** 2;
+export function clampPlay(x: number, y: number, margin = 6) { const dx = x - CX, dy = y - CY, d = Math.hypot(dx, dy), r = PLAY_R - margin; return d <= r ? { x, y } : { x: CX + dx / d * r, y: CY + dy / d * r }; }
 export const M_PER_UNIT = 2.5;
 export const DT = 0.05, BUDGET = 1500, PHASES = 3, PHASE_LEN = 60, HS = 0.3;
 // Ground-control grid: 4 x 4 unit cells.
-export const IW = 100, IH = 65, IC = 4;
+export const IW = 140, IH = 140, IC = 4;
 
 export const TEAM_COLORS = ['#5aa8e6', '#ff7a72', '#e8c547', '#6ad38a', '#b48cff', '#5fd6d0'];
 export const TEAM_NAMES = ['BLUE', 'RED', 'GOLD', 'GREEN', 'VIOLET', 'CYAN'];
@@ -50,12 +54,12 @@ export const TOOLS: { g: string; items: [string, string, ToolMode, string][] }[]
     ['para', 'PARADROP', 'point', 'Click anywhere. Sixteen riflemen land and hold the ground.'],
     ['demo', 'DEMOLISH', 'point', 'Click a bridge with one end on your ground. It blows at the time you set.']] },
   { g: 'ORDERS', items: [
-    ['attack', 'ATTACK', 'order', 'Drag from a platoon, sniper or tank to the ground to take.'],
-    ['defend', 'DEFEND', 'order', 'Drag from a platoon, sniper or tank to the ground to hold. Infantry use trenches there.'],
-    ['select', 'SELECT', 'select', 'Click an item to inspect it. Drag to pan, right-drag to turn.']] },
+    ['attack', 'ATTACK', 'order', 'With platoons, snipers or tanks selected, click the ground to take. Or drag from one of them.'],
+    ['defend', 'DEFEND', 'order', 'With platoons, snipers or tanks selected, click the ground to hold. Infantry use trenches there.']] },
 ];
 export const TOOLDEF: Record<string, { id: string; name: string; mode: ToolMode; tip: string }> = {};
 TOOLS.forEach(g => g.items.forEach(t => TOOLDEF[t[0]] = { id: t[0], name: t[1], mode: t[2], tip: t[3] }));
+TOOLDEF.select = { id: 'select', name: 'SELECT', mode: 'select', tip: '' };
 export const KIND_NAME: Record<string, string> = { rifles: 'Platoon', garrison: 'Garrison', mg: 'MG nest', mortar: 'Mortar', sniper: 'Sniper', tank: 'Tank', at: 'AT gun', op: 'Obs post' };
 export const SUP_NAME: Record<string, string> = { barrage: 'ARTILLERY', air: 'AIR', para: 'PARA', demo: 'DEMOLISH', spy: 'SPY' };
 export const PERS = [
@@ -67,7 +71,9 @@ export const PERS = [
 
 export const clamp = (v: number, a: number, b: number) => v < a ? a : v > b ? b : v;
 export const mod = (a: number, b: number) => ((a % b) + b) % b;
-export const grid = (x: number, y: number) => 'ABCDEFGHJK'[clamp(Math.floor(x / 40), 0, 9)] + (clamp(Math.floor(y / 40), 0, 6) + 1);
+// Map grid references over the battle circle: columns A to K (no I), rows 1 to 10, 40 units a square.
+export const GRID_X0 = CX - PLAY_R, GRID_Y0 = CY - PLAY_R;
+export const grid = (x: number, y: number) => 'ABCDEFGHJK'[clamp(Math.floor((x - GRID_X0) / 40), 0, 9)] + (clamp(Math.floor((y - GRID_Y0) / 40), 0, 9) + 1);
 export const fmtT = (t: number) => { t = Math.max(0, Math.floor(t)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
 export function segDist(p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) {
   const vx = b.x - a.x, vy = b.y - a.y, l = vx * vx + vy * vy || 1, t = clamp(((p.x - a.x) * vx + (p.y - a.y) * vy) / l, 0, 1);

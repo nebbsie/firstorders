@@ -27,4 +27,5 @@ export interface MapData {
   deck: Float32Array; deck0: Float32Array;
   bridges: Bridge[]; B: Building[]; trees: number[][];
   bldTop: Float32Array; bldId: Int32Array; count: number;
+  play: Uint8Array;           // 1 for cells inside the battle circle
 }
