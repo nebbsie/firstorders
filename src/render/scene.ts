@@ -47,11 +47,13 @@ const ulayer = document.createElement('canvas'); ulayer.width = IW; ulayer.heigh
 const unseenTex = new THREE.CanvasTexture(ulayer); unseenTex.magFilter = THREE.LinearFilter; unseenTex.minFilter = THREE.LinearFilter; unseenTex.flipY = false;
 const winScale = { value: 1 };
 const timeU = { value: 0 };
+// 0 by day, 1 at night: some windows light up.
+const nightU = { value: 0 };
 // fx: 'win' window rows on walls, 'sway' trees move in the wind, 'water' ripples.
 function greyUnseen<T extends THREE.Material>(m: T, fx: boolean | 'sway' | 'water' = false): T {
   if (fx) (m as any).defines = { ...((m as any).defines || {}), [fx === 'sway' ? 'FO_SWAY' : fx === 'water' ? 'FO_WATER' : 'FO_WIN']: '' };
   m.onBeforeCompile = (sh: any) => {
-    sh.uniforms.unseenMap = { value: unseenTex }; sh.uniforms.winScale = winScale; sh.uniforms.foTime = timeU;
+    sh.uniforms.unseenMap = { value: unseenTex }; sh.uniforms.winScale = winScale; sh.uniforms.foTime = timeU; sh.uniforms.foNight = nightU;
     sh.vertexShader = `varying vec3 vFoW;
 uniform float foTime;
 ` + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
@@ -72,8 +74,10 @@ uniform float foTime;
     sh.fragmentShader = `uniform sampler2D unseenMap;
 uniform float winScale;
 uniform float foTime;
+uniform float foNight;
 varying vec3 vFoW;
 ` + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+      float foGlow = 0.;
       #ifdef FO_WATER
         // Broad, soft swells of light that drift slowly. Waves are added, not multiplied, so no grid pattern shows.
         float foR = sin(vFoW.x * .09 + vFoW.z * .05 + foTime * .35) + sin(vFoW.x * .04 - vFoW.z * .11 - foTime * .22) + sin(vFoW.x * .21 + vFoW.z * .17 + foTime * .6) * .35;
@@ -87,11 +91,16 @@ varying vec3 vFoW;
           vec2 fowG = vec2(fract(dot(vFoW.xz, fowH) * winScale), fract(vFoW.y * winScale * 1.3));
           float fowW = step(.3, fowG.x) * step(fowG.x, .7) * step(.28, fowG.y) * step(fowG.y, .74);
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.16, .18, .22), fowW * .45);
+          // At night about one window in three is lit. Each window has its own fixed chance and warmth.
+          vec2 fowId = vec2(floor(dot(vFoW.xz, fowH) * winScale), floor(vFoW.y * winScale * 1.3));
+          float fowR = fract(sin(dot(fowId, vec2(12.9898, 78.233)) + floor(vFoW.x * .02) * 3.1 + floor(vFoW.z * .02) * 7.7) * 43758.5453);
+          foGlow = fowW * step(.66, fowR) * foNight * (.7 + fract(fowR * 17.) * .5);
         }
       #endif
       float fowU = texture2D(unseenMap, vec2(vFoW.x / ${W.toFixed(1)} + .5, vFoW.z / ${H.toFixed(1)} + .5)).r;
       float fowL = dot(diffuseColor.rgb, vec3(.3, .59, .11));
-      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(fowL), fowU * .78);`);
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(fowL), fowU * .78);`).replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      totalEmissiveRadiance += vec3(1., .72, .38) * foGlow;`);
   };
   return m;
 }
@@ -105,11 +114,21 @@ export function initRenderer(canvas: HTMLCanvasElement) {
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   // Intensities times pi give the classic (non-physical) light levels the colours were picked for.
-  scene.add(new THREE.HemisphereLight('#dfe2d2', '#3a3528', 0.62 * Math.PI));
+  hemi = new THREE.HemisphereLight('#dfe2d2', '#3a3528', 0.62 * Math.PI); scene.add(hemi);
   sun = new THREE.DirectionalLight('#fff0d8', 0.78 * Math.PI); sun.position.set(-150, 240, -110); sun.castShadow = shadowsOn(); sun.shadow.mapSize.set(2048, 2048);
   Object.assign(sun.shadow.camera, { left: -300, right: 300, top: 300, bottom: -300, near: 10, far: 900 }); sun.shadow.bias = -0.0008;
   scene.add(sun); scene.add(sun.target);
-  createDynamic();
+  createDynamic(); setNight(nightOn());
+}
+// Night: a dim blue moon instead of the sun, a dark sky, and lit windows. Kept in this browser.
+let hemi: THREE.HemisphereLight = null;
+export const nightOn = () => { try { return localStorage.getItem('fo-night') === '1'; } catch { return false; } };
+export function setNight(v: boolean) {
+  try { localStorage.setItem('fo-night', v ? '1' : '0'); } catch { }
+  nightU.value = v ? 1 : 0;
+  hemi.color.set(v ? '#5a6a8c' : '#dfe2d2'); hemi.groundColor.set(v ? '#14161c' : '#3a3528'); hemi.intensity = (v ? .42 : .62) * Math.PI;
+  sun.color.set(v ? '#9fb4e0' : '#fff0d8'); sun.intensity = (v ? .32 : .78) * Math.PI;
+  const sky = v ? '#07090e' : '#121410'; (scene.background as THREE.Color).set(sky); (scene.fog as THREE.Fog).color.set(sky);
 }
 
 // Ground owned by each side. Under fog, other sides' ground shows only where you have looked.

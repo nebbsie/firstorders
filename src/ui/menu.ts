@@ -6,7 +6,7 @@ import { host, join, closeNet } from '../net';
 import type { RawMap } from '../map/types';
 import { MISSIONS, progress, useMission } from '../campaign';
 import { toggleMute, isMuted } from '../audio';
-import { setShadows, shadowsOn } from '../render/scene';
+import { setShadows, shadowsOn, setNight, nightOn } from '../render/scene';
 
 const $ = (s: string) => document.querySelector(s) as HTMLElement;
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -102,10 +102,12 @@ export function initMenu(start: (raw: RawMap, spec: MapSpec) => void, guestMap: 
   const settings = () => {
     $('#sSound').textContent = isMuted() ? 'OFF' : 'ON'; $('#sSound').classList.toggle('on', !isMuted());
     $('#sShadow').textContent = shadowsOn() ? 'ON' : 'OFF'; $('#sShadow').classList.toggle('on', shadowsOn());
+    $('#sNight').textContent = nightOn() ? 'NIGHT' : 'DAY'; $('#sNight').classList.toggle('on', nightOn());
     $('#sNote').textContent = `Campaign: ${progress()} of ${MISSIONS.length} missions won.`;
   };
   $('#sSound').onclick = () => { toggleMute(); settings(); const b = document.getElementById('vSound'); if (b) b.classList.toggle('on', !isMuted()); };
   $('#sShadow').onclick = () => { setShadows(!shadowsOn()); settings(); };
+  $('#sNight').onclick = () => { setNight(!nightOn()); settings(); };
   let resetArmed = 0;
   $('#sReset').onclick = () => { if (performance.now() - resetArmed > 4000) { resetArmed = performance.now(); $('#sNote').textContent = 'Press RESET again to clear your campaign progress.'; return; } try { localStorage.removeItem('fo-campaign'); } catch { } resetArmed = 0; settings(); };
 }
