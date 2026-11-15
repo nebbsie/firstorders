@@ -34,7 +34,7 @@ export function beginRound() {
   for (const s of S.structs) if (s.round === S.round) { for (const ci of s.cells) S.cover[ci] = COV[s.type]; s.placedAt = S.t; }
   for (const sq of S.squads) {
     if (!sq.members) { if (sq.round === S.round) spawnSquad(sq); }
-    else if (sq.order) { sq.state = sq.order.type; sq.tx = sq.order.x; sq.ty = sq.order.y; sq.dir = sq.order.dir ?? sq.dir; sq.dbridge = sq.order.bridge; sq.dbld = sq.order.bld; sq.planted = null; faceMembers(sq); sq.arrived = -1; sq.contact = S.t; assignSlots(sq); }
+    else if (sq.order) { sq.state = sq.order.type; sq.tx = sq.order.x; sq.ty = sq.order.y; sq.dir = sq.order.dir ?? sq.dir; sq.dbridge = sq.order.bridge; sq.dbld = sq.order.bld; sq.planted = null; faceMembers(sq); sq.arrived = -1; setPace(sq); sq.contact = S.t; assignSlots(sq); }
   }
   for (const sq of S.squads) if (sq.order) { if (sq.members && sq.order.type === 'attack') log(sq.team, `${sqName(sq)}: moving on ${grid(sq.order.x, sq.order.y)}`); sq.cur = sq.order; sq.order = null; }
   for (const su of S.supports) if (su.round === S.round) su.fired = false;
@@ -52,8 +52,16 @@ export function goLive(it: any) {
 }
 export function applyOrder(sq: any) {
   if (!sq.members || !sq.order) return; const o = sq.order;
-  sq.state = o.type; sq.tx = o.x; sq.ty = o.y; sq.dir = o.dir ?? sq.dir; sq.dbridge = o.bridge; sq.dbld = o.bld; sq.planted = null; faceMembers(sq); sq.arrived = -1; sq.contact = S.t; assignSlots(sq); sq.cur = o; sq.order = null;
+  sq.state = o.type; sq.tx = o.x; sq.ty = o.y; sq.dir = o.dir ?? sq.dir; sq.dbridge = o.bridge; sq.dbld = o.bld; sq.planted = null; faceMembers(sq); sq.arrived = -1; setPace(sq); sq.contact = S.t; assignSlots(sq); sq.cur = o; sq.order = null;
   if (o.type === 'attack') log(sq.team, `${sqName(sq)}: moving on ${grid(o.x, o.y)}`);
+}
+// Pace: a unit walks only as fast as it needs to reach its objective near the end of the phase,
+// so a phase is movement and fighting all the way through, not a dash and a long wait.
+function setPace(sq: any) {
+  const mem = aliveMembers(sq); if (!mem.length) { sq.pace = 1; return; }
+  let cx = 0, cy = 0; for (const u of mem) { cx += u.x; cy += u.y; } cx /= mem.length; cy /= mem.length;
+  const k = K[mem[0].kind], d = Math.hypot(sq.tx - cx, sq.ty - cy) * 1.25, time = Math.max(10, (PHASE_LEN - (S.t - S.phaseStart)) * .85);
+  sq.pace = k && k.speed ? clamp(d / time / k.speed, .4, 1) : 1;
 }
 const INFANTRY = new Set(['rifle', 'assault', 'engineer', 'medic', 'sniper']);
 // Medics: a soldier within 18 of a living medic of his side survives a fatal wound one time in three.
@@ -97,7 +105,7 @@ function spawnSquad(sq: any, drop?: boolean) {
     const u = { i: S.units.length, x: p[0], y: p[1], team: sq.team, sq: sq.id, kind, hp: k.hp, cd: rnd() * 1.2, scan: rnd() * .4, tgt: -1, sx: p[0], sy: p[1], alive: true, kills: 0, gar: sq.kind === 'garrison', hd: Math.atan2(-(H / 2 - p[1]), W / 2 - p[0]), drop: drop ? 1.2 + rnd() * .6 : 0 };
     sq.members.push(S.units.length); S.units.push(u); S.stats[sq.team].start++;
   }
-  const o = sq.order; sq.state = o ? o.type : 'hold'; sq.tx = o ? o.x : sq.x; sq.ty = o ? o.y : sq.y; sq.dir = o && o.dir != null ? o.dir : sq.face; sq.dbridge = o ? o.bridge : undefined; sq.dbld = o ? o.bld : undefined; sq.planted = null; faceMembers(sq); sq.contact = S.t; sq.arrived = -1; assignSlots(sq);
+  const o = sq.order; sq.state = o ? o.type : 'hold'; sq.tx = o ? o.x : sq.x; sq.ty = o ? o.y : sq.y; sq.dir = o && o.dir != null ? o.dir : sq.face; sq.dbridge = o ? o.bridge : undefined; sq.dbld = o ? o.bld : undefined; sq.planted = null; faceMembers(sq); sq.contact = S.t; sq.arrived = -1; assignSlots(sq); setPace(sq);
 }
 function assignSlots(sq: any) {
   const mem = aliveMembers(sq); if (!mem.length) return;
@@ -223,7 +231,7 @@ function mortarTarget(u: any) {
 function moveUnit(u: any, k: any, sq: any) {
   const dx = u.sx - u.x, dy = u.sy - u.y, ds = Math.hypot(dx, dy); if (ds < .5) return;
   const ci = cellOf(u.x, u.y), cov = ci >= 0 ? S.cover[ci] : 0, tt = ci >= 0 ? M.terr[ci] : 0;
-  let sp = k.speed * DT * (k.veh ? (tt === T_ROAD || tt === T_BRIDGE ? 1.5 : tt === T_WOOD ? .5 : cov === 2 ? .7 : 1) : (cov === 2 ? .6 : cov === 4 ? .33 : tt === T_WOOD ? .85 : 1));
+  let sp = k.speed * (sq.pace || 1) * DT * (k.veh ? (tt === T_ROAD || tt === T_BRIDGE ? 1.5 : tt === T_WOOD ? .5 : cov === 2 ? .7 : 1) : (cov === 2 ? .6 : cov === 4 ? .33 : tt === T_WOOD ? .85 : 1));
   let tx = u.sx, ty = u.sy;
   const f = ds > 10 ? flowFor(sq.tx, sq.ty, k.veh) : null;
   if (f && ci >= 0 && f[ci] !== 65535 && f[ci] > 3) {
@@ -242,9 +250,15 @@ function moveUnit(u: any, k: any, sq: any) {
 function updateSquads() {
   for (const sq of S.squads) {
     if (sq.members && sq.state === 'demolish') demolishStep(sq);
-    if (!sq.members || sq.state !== 'attack') continue; const mem = aliveMembers(sq); if (!mem.length) continue;
+    if (!sq.members || sq.state !== 'attack') continue; const mem = aliveMembers(sq); if (!mem.length) continue; const cx = mem.reduce((a: number, u: any) => a + u.x, 0) / mem.length, cy = mem.reduce((a: number, u: any) => a + u.y, 0) / mem.length;
     const near = mem.filter((u: any) => Math.hypot(u.x - sq.tx, u.y - sq.ty) < 12).length;
-    if (near >= mem.length * .5) { sq.state = 'defend'; sq.arrived = S.t; log(sq.team, `${sqName(sq)}: objective ${grid(sq.tx, sq.ty)} reached, digging in`); assignSlots(sq); }
+    if (near >= mem.length * .5) {
+      // Objective taken. With time left in the phase, push on to the nearest enemy this side knows about; otherwise dig in.
+      const left = PHASE_LEN - (S.t - S.phaseStart), k = S.known[sq.team]; let tgt: any = null, bd = 75;
+      if (left > 12 && k) for (const e of k.values()) { const d = Math.hypot(e.x - sq.tx, e.y - sq.ty); if (d < bd) { bd = d; tgt = e; } }
+      if (tgt) { const q = nudge(tgt.x, tgt.y); if (q) { sq.tx = q[0]; sq.ty = q[1]; sq.dir = Math.atan2(q[1] - cy, q[0] - cx); setPace(sq); assignSlots(sq); log(sq.team, `${sqName(sq)}: objective taken, pushing on to ${grid(q[0], q[1])}`); continue; } }
+      sq.state = 'defend'; sq.arrived = S.t; sq.pace = 1; log(sq.team, `${sqName(sq)}: objective ${grid(sq.tx, sq.ty)} reached, digging in`); assignSlots(sq);
+    }
   }
 }
 function launchSupport(su: any) {

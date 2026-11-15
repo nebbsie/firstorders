@@ -24,14 +24,14 @@ export const COV: Record<string, number> = { sandbag: 1, trench: 2, wall: 3, wir
 // arc: a unit with an arc (the sniper) sees and shoots only inside a cone that wide, in radians, round the way it faces.
 export interface KindStats { hp: number; range: number; cd: number; acc?: number; speed: number; min?: number; veh?: boolean; sight: number; arc?: number }
 export const K: Record<string, KindStats> = {
-  rifle: { hp: 1, range: 48, cd: 1.2, acc: .2, speed: 5.5, sight: 60 },
-  mg: { hp: 3, range: 74, cd: .13, acc: .085, speed: 0, sight: 70 },
+  rifle: { hp: 1, range: 48, cd: 1.2, acc: .16, speed: 4, sight: 60 },
+  mg: { hp: 3, range: 74, cd: .13, acc: .07, speed: 0, sight: 70 },
   mortar: { hp: 2, range: 155, min: 26, cd: 4.6, speed: 0, sight: 35 },
-  sniper: { hp: 1, range: 118, cd: 2.8, acc: .7, speed: 5, sight: 120, arc: 1.22 },
-  assault: { hp: 1, range: 30, cd: .5, acc: .2, speed: 6.5, sight: 55 },
-  engineer: { hp: 1, range: 40, cd: 1.3, acc: .16, speed: 5, sight: 55 },
-  medic: { hp: 1, range: 30, cd: 1.6, acc: .1, speed: 5.5, sight: 55 },
-  tank: { hp: 10, range: 70, cd: 3.2, acc: .55, speed: 4.5, veh: true, sight: 55 },
+  sniper: { hp: 1, range: 118, cd: 2.8, acc: .6, speed: 3.8, sight: 120, arc: 1.22 },
+  assault: { hp: 1, range: 30, cd: .5, acc: .16, speed: 4.8, sight: 55 },
+  engineer: { hp: 1, range: 40, cd: 1.3, acc: .13, speed: 3.8, sight: 55 },
+  medic: { hp: 1, range: 30, cd: 1.6, acc: .08, speed: 4, sight: 55 },
+  tank: { hp: 10, range: 70, cd: 3.2, acc: .5, speed: 3.6, veh: true, sight: 55 },
   at: { hp: 2, range: 85, cd: 3, acc: .5, speed: 0, sight: 60 },
   op: { hp: 1, range: 0, cd: 99, speed: 0, sight: 0 },
 };
