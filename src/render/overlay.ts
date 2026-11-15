@@ -109,6 +109,14 @@ function drawGhost() {
   if ((S.tool === 'attack' || S.tool === 'defend') && !ptr) { for (const s of S.selMany || []) { const c = sqCenter(s); if (c && ['rifles', 'sniper', 'tank'].includes(s.kind)) groundLine({ x: c[0], y: c[1] }, hover, 'rgba(232,197,71,.6)', S.tool === 'defend', true); } }
   if (ptr && ptr.mode === 'order') { const c = sqCenter(ptr.sq); if (!c) return; groundLine({ x: c[0], y: c[1] }, ptr.w, '#e8c547', S.tool === 'defend', true); const b = P(ptr.w.x, ptr.w.y, 3); plate(b[0], b[1] - 16, `${S.tool.toUpperCase()} ${grid(ptr.w.x, ptr.w.y)}`, '#e8c547'); return; }
   if (tool.mode === 'point') {
+    // Placing a unit: show where it will shoot (solid red) and how far it will see (dashed).
+    const kk = S.tool === 'rifles' || S.tool === 'garrison' ? 'rifle' : S.tool, k = K[kk];
+    if (k) {
+      const sight = S.tool === 'op' ? opRange(hover) : k.sight + (S.tool === 'garrison' ? 15 : 0);
+      if (k.range) { ring(hover.x, hover.y, k.range, 'rgba(255,122,114,.8)', false, 1.5); const p = P(hover.x + k.range, hover.y, 1); plate(p[0], p[1], `RANGE ${Math.round(k.range * M_PER_UNIT)} M`, '#ff7a72'); }
+      if (k.min) { ring(hover.x, hover.y, k.min, 'rgba(255,122,114,.5)', true, 1); const p = P(hover.x + k.min, hover.y, 1); plate(p[0], p[1], `MIN ${Math.round(k.min * M_PER_UNIT)} M`, '#ff7a72'); }
+      if (sight) { ring(hover.x, hover.y, sight, 'rgba(200,220,240,.7)', true, 1.5); const p = P(hover.x - sight, hover.y, 1); plate(p[0], p[1], `SEES ${Math.round(sight * M_PER_UNIT)} M`, '#c8dcf0'); }
+    }
     const sup = S.tool === 'barrage' || S.tool === 'para' || S.tool === 'demo', mine = canDeploy(NET.me, hover.x, hover.y), ok = (sup || mine) && left(NET.me) >= COST[S.tool];
     ring(hover.x, hover.y, S.tool === 'barrage' ? 14 : S.tool === 'rifles' ? 6 : 3, ok ? okC : badC, false);
     const c = P(hover.x, hover.y, 4); plate(c[0], c[1] - 20, `${tool.name} ${COST[S.tool]}${!ok && !sup && !mine ? ' · NOT YOUR GROUND' : ''}`, ok ? okC : badC);
