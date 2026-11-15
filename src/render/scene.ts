@@ -6,7 +6,7 @@ import { unitH } from '../world';
 import { camera, cam, FOV, view } from './camera';
 import { MODELS } from './models';
 import { BTYPES } from '../map/btypes';
-const MODEL_KINDS = new Set(['mg', 'mortar', 'tank', 'at', 'op']);
+const MODEL_KINDS = new Set(['mg', 'mortar', 'tank', 'at', 'op', 'fob']);
 
 // Colours are given in sRGB and used as they are, like the 2D interface.
 THREE.ColorManagement.enabled = false;
@@ -220,7 +220,7 @@ function createDynamic() {
   mPlane = inst(box, new THREE.MeshLambertMaterial({ color: '#c87a2a' }), 40, true);
   mCrater = inst(new THREE.CircleGeometry(1, 7).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#211b14', transparent: true, opacity: .75, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }), 700);
   mBoom = inst(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicMaterial({ color: '#ffffff', blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }), 300);
-  ptUnits = pointsObj(5000, 3, 1); ptBodies = pointsObj(5000, 2, .7); ptGhosts = pointsObj(3000, 3, .45); ptHeads = pointsObj(800, 3, 1);
+  ptUnits = pointsObj(5000, 3, 1); ptBodies = pointsObj(5000, 2, 1); ptGhosts = pointsObj(3000, 3, .45); ptHeads = pointsObj(800, 3, 1);
   lineG = new THREE.BufferGeometry(); lineG.setAttribute('position', new THREE.BufferAttribute(new Float32Array(LMAX * 6), 3)); lineG.setAttribute('color', new THREE.BufferAttribute(new Float32Array(LMAX * 6), 3)); lineG.setDrawRange(0, 0);
   const lines = new THREE.LineSegments(lineG, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: .85 })); lines.frustumCulled = false; scene.add(lines);
 }
@@ -277,7 +277,9 @@ export function update3D(V: View) {
       if (MODEL_KINDS.has(u.kind)) emp(u.kind, u.x, u.y, c, u.hd);
     } else if (nb < 5000) {
       if (u.team !== NET.me && V.fogOn && !cellSeen(V.seen, u.x, u.y)) continue;
-      bp[nb * 3] = u.x - W / 2; bp[nb * 3 + 1] = unitH(u.x, u.y) + .2; bp[nb * 3 + 2] = u.y - H / 2; bc[nb * 3] = c[0] * .45; bc[nb * 3 + 1] = c[1] * .45; bc[nb * 3 + 2] = c[2] * .45; nb++;
+      bp[nb * 3] = u.x - W / 2; bp[nb * 3 + 1] = unitH(u.x, u.y) + .2; bp[nb * 3 + 2] = u.y - H / 2; bc[nb * 3] = .16 + c[0] * .4; bc[nb * 3 + 1] = .1 + c[1] * .25; bc[nb * 3 + 2] = .08 + c[2] * .25; nb++;
+      // Wrecked guns and tanks stay where they fell, burnt dark.
+      if (MODEL_KINDS.has(u.kind)) { const m = mModel[u.kind]; if (m && nModel[u.kind] < 400) setI(m, nModel[u.kind]++, u.x, u.y, unitH(u.x, u.y) - .15, 1.6, 1.3, 1.6, (u.hd || 0) + .3, [.22, .2, .18]); }
     }
   }
   if (plan) for (const s of S.squads) {
@@ -299,7 +301,7 @@ export function update3D(V: View) {
   }
   for (const k in mModel) done(mModel[k], nModel[k]);
   const ppu = view.ch / 2 / (cam.dist * Math.tan(FOV / 2 * Math.PI / 180));
-  ptUnits.material.size = clamp(ppu * 1.1, 2.5, 7); ptBodies.material.size = clamp(ppu * .8, 1.5, 5); ptGhosts.material.size = clamp(ppu * 1.1, 2.5, 7); ptHeads.material.size = clamp(ppu * 1.2, 2.5, 6);
+  ptUnits.material.size = clamp(ppu * 1.1, 2.5, 7); ptBodies.material.size = clamp(ppu * 1, 2, 6); ptGhosts.material.size = clamp(ppu * 1.1, 2.5, 7); ptHeads.material.size = clamp(ppu * 1.2, 2.5, 6);
 
   const lp = lineG.attributes.position.array, lc = lineG.attributes.color.array; let L = 0;
   const seg = (x0: number, y0: number, h0: number, x1: number, y1: number, h1: number, c: number[], c2?: number[]) => {

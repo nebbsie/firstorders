@@ -16,7 +16,8 @@ function snd(k: string, x: number, y: number, size = 0) {
 }
 export function log(team: number, msg: string) {
   S.teams.forEach((t: any) => { msg = msg.split(t.name).join(`{T${t.id}}`); }); S.log.unshift({ t: S.t, team, msg }); if (S.log.length > 400) S.log.pop(); S.logDirty = true; }
-export const income = (t: number) => S.teams[t].lost ? 0 : 200 + Math.round((S.terrCount[t] || 0) * 1.2);
+// Supply each phase: a small base, plus more for ground held. Kept low so every purchase is a choice.
+export const income = (t: number) => S.teams[t].lost ? 0 : 100 + Math.round((S.terrCount[t] || 0) * .45);
 
 export function newBattle() {
   if (M) { M.terr.set(M.terr0); M.deck.set(M.deck0); M.bridges.forEach(b => b.blown = null); M.bldId.set(M.bldId0); M.bldTop.set(M.bldTop0); for (const b of M.B) { b.hp = b.hp0; b.down = null; } }
@@ -108,7 +109,7 @@ function spawnSquad(sq: any, drop?: boolean) {
   sq.members = []; const kind = unitKind(sq.kind);
   for (const p of sq.pos) {
     const k = K[kind];
-    const u = { i: S.units.length, x: p[0], y: p[1], team: sq.team, sq: sq.id, kind, hp: k.hp, cd: rnd() * 1.2, scan: rnd() * .4, tgt: -1, sx: p[0], sy: p[1], alive: true, kills: 0, gar: sq.kind === 'garrison', hd: Math.atan2(-(H / 2 - p[1]), W / 2 - p[0]), drop: drop ? 1.2 + rnd() * .6 : 0 };
+    const u = { i: S.units.length, x: p[0], y: p[1], team: sq.team, sq: sq.id, kind, hp: k.hp, cd: rnd() * 1.2, scan: rnd() * .4, tgt: -1, sx: p[0], sy: p[1], alive: true, kills: 0, gar: sq.kind === 'garrison', hd: Math.atan2(-(H / 2 - p[1]), W / 2 - p[0]), drop: drop ? 1.2 + rnd() * .6 : 0, ready: sq.readyRound || 0 };
     sq.members.push(S.units.length); S.units.push(u); S.stats[sq.team].start++;
   }
   const o = sq.order; sq.state = o ? o.type : 'hold'; sq.tx = o ? o.x : sq.x; sq.ty = o ? o.y : sq.y; sq.dir = o && o.dir != null ? o.dir : sq.face; sq.dbridge = o ? o.bridge : undefined; sq.dbld = o ? o.bld : undefined; sq.planted = null; faceMembers(sq); sq.contact = S.t; sq.arrived = -1; assignSlots(sq); setPace(sq);
@@ -120,7 +121,8 @@ function assignSlots(sq: any) {
   const face = sq.dir != null ? sq.dir : Math.atan2(sq.ty - c0y, sq.tx - c0x), fx = Math.cos(face), fy = Math.sin(face);
   if (sq.state === 'attack' || sq.state === 'demolish') {
     // A line across the facing direction: eight wide, ranks behind.
-    let i = 0; for (const u of mem) { const col = i % 8 - 3.5, row = Math.floor(i / 8); i++; const q = nudge(sq.tx - fy * col * 2.4 - fx * row * 2.6, sq.ty + fx * col * 2.4 - fy * row * 2.6) || [sq.tx, sq.ty]; u.sx = q[0]; u.sy = q[1]; u.hd = Math.atan2(-fy, fx); }
+    // Spread out as real sections do: about 10 m between men, so one shell does not take a whole platoon.
+    let i = 0; for (const u of mem) { const col = i % 6 - 2.5, row = Math.floor(i / 6); i++; const q = nudge(sq.tx - fy * col * 4.5 - fx * row * 5 + (rnd() - .5) * 1.5, sq.ty + fx * col * 4.5 - fy * row * 5 + (rnd() - .5) * 1.5) || [sq.tx, sq.ty]; u.sx = q[0]; u.sy = q[1]; u.hd = Math.atan2(-fy, fx); }
     return;
   }
   const cells: number[][] = [], r = 16, c0 = Math.floor(sq.tx / C), r0 = Math.floor(sq.ty / C), rc = Math.ceil(r / C);
@@ -130,7 +132,7 @@ function assignSlots(sq: any) {
   cells.sort((a, b) => a[1] - b[1]);
   mem.forEach((u: any, i: number) => {
     if (i < cells.length) { const pick = cells[Math.floor(i * cells.length / mem.length)][0]; u.sx = (pick % GW) * C + 1 + (rnd() - .5) * .6; u.sy = Math.floor(pick / GW) * C + 1 + (rnd() - .5) * .6; }
-    else { const a = rnd() * 6.28, d = 2 + rnd() * 8; const q = nudge(sq.tx + Math.cos(a) * d, sq.ty + Math.sin(a) * d) || [u.x, u.y]; u.sx = q[0]; u.sy = q[1]; }
+    else { const a = rnd() * 6.28, d = 4 + rnd() * 12; const q = nudge(sq.tx + Math.cos(a) * d, sq.ty + Math.sin(a) * d) || [u.x, u.y]; u.sx = q[0]; u.sy = q[1]; }
   });
 }
 function clearLine(ax: number, ay: number, bx: number, by: number, veh?: boolean) {
@@ -204,7 +206,7 @@ function kill(v: any, team: number) {
   if (!v.alive) return; v.alive = false; S.stats[v.team].lost++; if (team !== v.team && team >= 0) S.stats[team].kills++;
   // Teams that see the unit fall learn it is gone; the others still think it is there.
   S.teams.forEach((t: any) => { if (S.vis[t.id] && S.vis[t.id][v.i] && S.known[t.id]) S.known[t.id].delete(v.i); });
-  if (['mg', 'mortar', 'tank', 'at', 'op', 'sniper'].includes(v.kind)) log(v.team, `${S.teams[v.team].name} ${KIND_NAME[v.kind] || v.kind} lost at ${grid(v.x, v.y)}`);
+  if (['mg', 'mortar', 'tank', 'at', 'op', 'sniper', 'fob'].includes(v.kind)) log(v.team, `${S.teams[v.team].name} ${KIND_NAME[v.kind] || v.kind} lost at ${grid(v.x, v.y)}`);
   const sq = S.squads.find((s: any) => s.id === v.sq);
   if (sq && PLATOONS.includes(sq.kind)) { const alive = aliveMembers(sq).length; if (!sq.halfLogged && alive <= sq.members.length / 2 && alive > 0) { sq.halfLogged = true; log(v.team, `${sqName(sq)}: taking heavy losses at ${grid(v.x, v.y)}`); } if (alive === 0) log(v.team, `${sqName(sq)}: no reply`); }
 }
@@ -261,10 +263,16 @@ function mortarTarget(u: any) {
   }
   return best;
 }
+// How fast ground is to cross, times the unit's speed: roads speed tanks up; trenches, wire and woods slow men down.
+export function moveFactor(ci: number, veh?: boolean) {
+  if (ci < 0) return 1; const cov = S.cover ? S.cover[ci] : 0, tt = M.terr[ci];
+  return veh ? (tt === T_ROAD || tt === T_BRIDGE ? 1.5 : cov === 2 ? .7 : 1) : (cov === 2 ? .6 : cov === 4 ? .33 : tt === T_WOOD ? .85 : 1);
+}
+const TURN = 1.1; // tank turn speed, radians a second
 function moveUnit(u: any, k: any, sq: any) {
   const dx = u.sx - u.x, dy = u.sy - u.y, ds = Math.hypot(dx, dy); if (ds < .5) return;
   const ci = cellOf(u.x, u.y), cov = ci >= 0 ? S.cover[ci] : 0, tt = ci >= 0 ? M.terr[ci] : 0;
-  let sp = k.speed * (sq.pace || 1) * DT * (k.veh ? (tt === T_ROAD || tt === T_BRIDGE ? 1.5 : tt === T_WOOD ? .5 : cov === 2 ? .7 : 1) : (cov === 2 ? .6 : cov === 4 ? .33 : tt === T_WOOD ? .85 : 1));
+  let sp = k.speed * (sq.pace || 1) * DT * moveFactor(ci, k.veh);
   let tx = u.sx, ty = u.sy;
   // Go straight when the way is clear; otherwise follow the path field round buildings and water.
   const f = ds > 16 || !clearLine(u.x, u.y, u.sx, u.sy, k.veh) ? flowFor(sq.tx, sq.ty, k.veh) : null;
@@ -278,7 +286,12 @@ function moveUnit(u: any, k: any, sq: any) {
   }
   const mx = tx - u.x, my = ty - u.y, ml = Math.hypot(mx, my) || 1; sp = Math.min(sp, ml);
   const nx = u.x + mx / ml * sp, ny = u.y + my / ml * sp;
-  if (passable(cellOf(nx, ny), k.veh) || !passable(ci, k.veh)) { u.hd = Math.atan2(-(ny - u.y), nx - u.x); u.x = nx; u.y = ny; }
+  if (k.veh) {
+    // Tanks turn on the spot towards the way they go, and move only when roughly lined up.
+    const want = Math.atan2(-(ny - u.y), nx - u.x), d = Math.atan2(Math.sin(want - u.hd), Math.cos(want - u.hd));
+    u.hd += clamp(d, -TURN * DT, TURN * DT); if (Math.abs(d) > .5) return;
+  }
+  if (passable(cellOf(nx, ny), k.veh) || !passable(ci, k.veh)) { if (!k.veh) u.hd = Math.atan2(-(ny - u.y), nx - u.x); u.x = nx; u.y = ny; }
   // Blocked: slide along the wall on one axis before a small random step.
   else if (passable(cellOf(nx, u.y), k.veh)) u.x = nx;
   else if (passable(cellOf(u.x, ny), k.veh)) u.y = ny;
@@ -424,15 +437,22 @@ export function step() {
   for (let i = 0; i < U.length; i++) {
     const u = U[i]; if (!u.alive) continue; if (u.drop > 0) { u.drop -= DT; continue; }
     const k = K[u.kind]; u.cd -= DT; u.scan -= DT;
-    if (u.kind === 'op') continue;
+    // Under construction this phase (FOBs and heavy weapons): no fire and no movement yet.
+    if (u.ready > S.round) continue;
+    if (u.kind === 'op' || u.kind === 'fob') continue;
     if (u.kind === 'mortar') {
       if (u.cd <= 0 && u.scan <= 0) { u.scan = .6; const t = mortarTarget(u); if (t >= 0) { const e = U[t], d = Math.hypot(e.x - u.x, e.y - u.y); snd('launch', u.x, u.y); addShell({ x0: u.x, y0: u.y, x1: e.x + gauss() * 5, y1: e.y + gauss() * 5, t: 0, dur: .8 + d / 60, team: u.team, r: 6.5, power: .8 }); u.rounds = (u.rounds ?? k.salvo) - 1; if (u.rounds <= 0) { u.rounds = k.salvo; u.cd = k.reload * (.9 + rnd() * .2); u.reloading = true; } else { u.cd = k.cd * (.85 + rnd() * .3); u.reloading = false; } } }
       continue;
     }
     if (u.scan <= 0) { u.scan = .35 + rnd() * .25; u.tgt = findTarget(u, k.range); }
     let e = u.tgt >= 0 ? U[u.tgt] : null; if (e && (!e.alive || Math.hypot(e.x - u.x, e.y - u.y) > k.range)) { e = null; u.tgt = -1; }
-    if (e && u.cd <= 0) { shoot(u, e, k); u.cd = k.cd * (.7 + rnd() * .6); }
-    if (k.speed > 0 && (!e || k.veh) && !u.gar) { const sq = S.squads.find((s: any) => s.id === u.sq); if (sq) moveUnit(u, k, sq); }
+    if (e && k.veh) {
+      // A tank stops, turns its hull onto the target, and fires only when it is lined up.
+      const want = Math.atan2(-(e.y - u.y), e.x - u.x), d = Math.atan2(Math.sin(want - u.hd), Math.cos(want - u.hd));
+      u.hd += clamp(d, -TURN * DT, TURN * DT);
+      if (Math.abs(d) < .12 && u.cd <= 0) { shoot(u, e, k); u.cd = k.cd * (.8 + rnd() * .4); }
+    } else if (e && u.cd <= 0) { shoot(u, e, k); u.cd = k.cd * (.7 + rnd() * .6); }
+    if (k.speed > 0 && !e && !u.gar) { const sq = S.squads.find((s: any) => s.id === u.sq); if (sq) moveUnit(u, k, sq); }
   }
   for (const s of S.shells) { s.t += DT; if (s.t >= s.dur && !s.done) { s.done = true; explode(s.x1, s.y1, s.r, s.power, s.team); } } S.shells = S.shells.filter((s: any) => !s.done);
   for (const b of S.bombs) { b.t -= DT; if (b.t <= 0 && !b.done) { b.done = true; explode(b.x, b.y, 9, .95, b.team); } } S.bombs = S.bombs.filter((b: any) => !b.done);

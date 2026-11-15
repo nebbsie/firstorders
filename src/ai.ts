@@ -75,6 +75,10 @@ export function aiPlan(team: number) {
     let rx: any = null; for (let k = 0; k < 40; k++) { const x = D.x + (r() - .5) * 36, y = D.y + (r() - .5) * 36, ci = cellOf(x, y); if (ci >= 0 && M.terr[ci] === T_ROAD && canDeploy(team, x, y)) { rx = { x, y }; break; } }
     if (rx) addStruct(team, 'tanktrap', { x: rx.x - px * 7, y: rx.y - py * 7 }, { x: rx.x + px * 7, y: rx.y + py * 7 });
   }
+  // Engineers up to the front, then a FOB where they stand, so heavy weapons can come up behind the line.
+  const engs = S.squads.filter((s: any) => s.team === team && s.kind === 'engineers' && alive(s));
+  if (!engs.length && left(team) - supReserve >= 120) { const e = place('engineers', D.x, D.y); if (e) e.order = { type: 'defend', x: D.x, y: D.y }; }
+  if (!S.squads.some((s: any) => s.team === team && s.kind === 'fob' && alive(s)) && left(team) >= 150) for (const e of engs) { const c = e.members && sqCenter(e); if (c && addSquad(team, 'fob', c[0], c[1])) break; }
   const mortars = S.squads.filter((s: any) => s.team === team && s.kind === 'mortar' && alive(s)).length;
   for (let m = mortars; m < 1 + Math.round(pr.arty * 2) && left(team) - supReserve >= 90; m++) place('mortar', D.x - dx * (22 + r() * 14) + px * (r() - .5) * 24, D.y - dy * (22 + r() * 14) + py * (r() - .5) * 24);
   // High ground in our area: an observation post.

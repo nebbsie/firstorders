@@ -8,7 +8,7 @@ export function clampPlay(x: number, y: number, margin = 6) { const dx = x - CX,
 export let M_PER_UNIT = 2.5, BATTLE_KM = 1;
 export function setBattleSize(km: number) { BATTLE_KM = km; M_PER_UNIT = 2.5 * km; }
 // A battle runs phase after phase until one HQ is left. PHASES is a safety limit.
-export const DT = 0.05, BUDGET = 1500, PHASES = 8, PHASE_LEN = 60, HS = 0.3, HQ_HOLD = 5;
+export const DT = 0.05, BUDGET = 1000, PHASES = 8, PHASE_LEN = 60, HS = 0.3, HQ_HOLD = 5;
 // Ground-control grid: 4 x 4 unit cells.
 export const IW = 140, IH = 140, IC = 4;
 
@@ -17,23 +17,25 @@ export const TEAM_NAMES = ['BLUE', 'RED', 'GOLD', 'GREEN', 'VIOLET', 'CYAN'];
 export const CALLSIGNS = ['ABLE', 'BAKER', 'CHARLIE', 'DOG', 'EASY', 'FOX', 'GEORGE', 'HOW', 'ITEM', 'JIG', 'KING', 'LOVE', 'MIKE', 'NAN', 'OBOE', 'PETER', 'QUEEN', 'ROGER', 'SUGAR', 'TARE'];
 export const TRGB = TEAM_COLORS.map(c => [parseInt(c.slice(1, 3), 16) / 255, parseInt(c.slice(3, 5), 16) / 255, parseInt(c.slice(5, 7), 16) / 255]);
 
-export const COST: Record<string, number> = { trench: 5, wire: 2, sandbag: 3, wall: 8, tanktrap: 6, rifles: 100, assault: 130, engineers: 120, medics: 90, garrison: 110, mg: 80, mortar: 90, sniper: 60, at: 90, tank: 220, op: 70, air: 250, barrage: 120, para: 200, demo: 80, spy: 100 };
+export const COST: Record<string, number> = { trench: 5, wire: 2, sandbag: 3, wall: 8, tanktrap: 6, rifles: 100, assault: 130, engineers: 120, medics: 90, garrison: 110, mg: 90, mortar: 120, sniper: 70, at: 110, tank: 320, op: 80, fob: 150, air: 480, barrage: 340, para: 400, demo: 160, spy: 180 };
 export const T_GROUND = 0, T_ROAD = 1, T_PARK = 2, T_WATER = 3, T_BRIDGE = 4, T_BUILD = 5, T_WOOD = 6;
 export const COV: Record<string, number> = { sandbag: 1, trench: 2, wall: 3, wire: 4, tanktrap: 5 };
 
 // arc: a unit with an arc (the sniper) sees and shoots only inside a cone that wide, in radians, round the way it faces.
 export interface KindStats { hp: number; range: number; cd: number; acc?: number; speed: number; min?: number; veh?: boolean; sight: number; arc?: number; salvo?: number; reload?: number }
 export const K: Record<string, KindStats> = {
-  rifle: { hp: 1, range: 48, cd: 1.2, acc: .16, speed: 4, sight: 60 },
+  // Speeds are map units a second. A phase is 60 s: riflemen walk about 100 in one, tanks about 200 (more on roads).
+  rifle: { hp: 1, range: 48, cd: 1.2, acc: .16, speed: 1.7, sight: 60 },
   mg: { hp: 3, range: 74, cd: .13, acc: .07, speed: 0, sight: 70 },
-  mortar: { hp: 2, range: 155, min: 26, cd: 3, salvo: 3, reload: 20, speed: 0, sight: 35 },
-  sniper: { hp: 1, range: 118, cd: 2.8, acc: .6, speed: 3.8, sight: 120, arc: 1.22 },
-  assault: { hp: 1, range: 30, cd: .5, acc: .16, speed: 4.8, sight: 55 },
-  engineer: { hp: 1, range: 40, cd: 1.3, acc: .13, speed: 3.8, sight: 55 },
-  medic: { hp: 1, range: 30, cd: 1.6, acc: .08, speed: 4, sight: 55 },
-  tank: { hp: 10, range: 70, cd: 3.2, acc: .5, speed: 3.6, veh: true, sight: 42 },
+  mortar: { hp: 2, range: 155, min: 26, cd: 4, salvo: 2, reload: 32, speed: 0, sight: 35 },
+  sniper: { hp: 1, range: 118, cd: 2.8, acc: .6, speed: 1.6, sight: 120, arc: 1.22 },
+  assault: { hp: 1, range: 30, cd: .5, acc: .16, speed: 1.9, sight: 55 },
+  engineer: { hp: 1, range: 40, cd: 1.3, acc: .13, speed: 1.5, sight: 55 },
+  medic: { hp: 1, range: 30, cd: 1.6, acc: .08, speed: 1.7, sight: 55 },
+  tank: { hp: 10, range: 70, cd: 4.5, acc: .5, speed: 3.3, veh: true, sight: 42 },
   at: { hp: 2, range: 85, cd: 3, acc: .5, speed: 0, sight: 60 },
   op: { hp: 1, range: 0, cd: 99, speed: 0, sight: 0 },
+  fob: { hp: 14, range: 0, cd: 99, speed: 0, sight: 30 },
 };
 export const SPY_RADIUS = 55;
 
@@ -61,7 +63,8 @@ export const TOOLS: { g: string; items: [string, string, ToolMode, string][] }[]
     ['sniper', 'SNIPER', 'aim', 'Press on your ground and drag the way it should watch.'],
     ['at', 'AT GUN', 'point', 'Click on your ground. Fires only at tanks. Range 85.'],
     ['tank', 'TANK', 'point', 'Click on your ground. Fast on roads, slow in woods, stopped by tank traps. Takes orders. Only AT guns, shells, bombs and tanks hurt it.'],
-    ['op', 'OBS POST', 'point', 'Click on your ground, ideally high ground. Sees far, spots for mortars and makes artillery more accurate.']] },
+    ['op', 'OBS POST', 'point', 'Click on your ground, ideally high ground. Sees far, spots for mortars and makes artillery more accurate.'],
+    ['fob', 'FOB', 'point', 'Forward base. Engineers build it near where they stand; ready next phase. Mortars, MGs, AT guns and posts can then be set up round it.']] },
   { g: 'SUPPORT', items: [
     ['spy', 'SPY PLANE', 'line', 'Drag the flight path anywhere. It sees everything within 55 of its path while it flies.'],
     ['barrage', 'ARTILLERY', 'point', 'Click anywhere. Twelve shells land at the time you set.'],
@@ -88,11 +91,12 @@ export const INFO: Record<string, [string, string, string]> = {
   medics: ['8 medics. Your troops within 45 m of a medic survive a fatal wound one time in three.', 'Behind an attack', 'Mortars, artillery'],
   garrison: ['Ten riflemen inside a building. 85% cover, fire from the roof and see over lower roofs. Never move.', 'Tall buildings in town', 'Artillery, tanks'],
   mg: ['Machine gun nest. Long, fast, inaccurate fire. Never moves.', 'Woods, covering a road', 'Mortars, snipers'],
-  mortar: ['Fires salvos of 3 shells, then reloads for about 20 s. Hits enemies 26 to 155 away that your side can see.', 'Behind your line', 'Artillery, rushes'],
+  mortar: ['Fires salvos of 3 shells, then reloads for about 30 s. Hits enemies 26 to 155 away that your side can see.', 'Behind your line', 'Artillery, rushes'],
   sniper: ['One soldier. Sees and shoots twice as far as a rifleman, but only in the 70 degree cone it faces.', 'High ground, covering a road', 'Mortars, MGs'],
   at: ['Anti-tank gun. Fires only at tanks, range 85.', 'Facing roads and open ground', 'Infantry, mortars'],
   tank: ['Heavy gun, armour. Small arms cannot hurt it. Takes orders.', 'Roads, open ground', 'AT guns, tank traps, shells'],
   op: ['Observation post. Sees far, spots for mortars and tightens artillery.', 'The highest ground you hold', 'Snipers, artillery'],
+  fob: ['Forward base. Only engineers can build one, near where they stand. It takes the next phase to build. Heavy weapons can then be set up within 90 m of it.', 'Behind your front line', 'Artillery, air strikes'],
   spy: ['A plane that sees everything within 55 of its path while it flies. Finds the enemy HQ.', 'Over unknown ground', 'Nothing; it only looks'],
   barrage: ['Twelve shells into a circle at the time you set. Hits everyone, your troops too.', 'Enemy trenches, the HQ before an attack', 'Spread-out troops'],
   air: ['A bomb run along the line you draw.', 'Columns on roads, dense groups', 'Spread-out troops'],
@@ -101,7 +105,7 @@ export const INFO: Record<string, [string, string, string]> = {
   attack: ['Selected units move to the ground you click and take it.', '', ''],
   defend: ['Selected units hold the ground you click. Infantry use trenches there.', '', ''],
 };
-export const KIND_NAME: Record<string, string> = { rifles: 'Platoon', assault: 'Assault', engineers: 'Engineers', medics: 'Medics', garrison: 'Garrison', mg: 'MG nest', mortar: 'Mortar', sniper: 'Sniper', tank: 'Tank', at: 'AT gun', op: 'Obs post' };
+export const KIND_NAME: Record<string, string> = { fob: 'FOB', rifles: 'Platoon', assault: 'Assault', engineers: 'Engineers', medics: 'Medics', garrison: 'Garrison', mg: 'MG nest', mortar: 'Mortar', sniper: 'Sniper', tank: 'Tank', at: 'AT gun', op: 'Obs post' };
 export const SUP_NAME: Record<string, string> = { barrage: 'ARTILLERY', air: 'AIR', para: 'PARA', demo: 'DEMOLISH', spy: 'SPY' };
 export const PERS = [
   { label: 'CAUTIOUS', aggr: .25, arty: .4 },

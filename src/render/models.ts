@@ -57,5 +57,12 @@ export const MODELS: Record<string, THREE.BufferGeometry> = {
     [box(2.4, .5, 2.4), CONC, [0, .25, 0]], [box(1.6, .5, 1.6), '#9a978d', [0, .75, 0]],
     [cyl(.12, .16, 12, 6), '#d8d6cf', [0, 6.5, 0]], [cyl(.28, .28, .28, 8), '#c9a13a', [0, 12.6, 0]],
   ]),
+  // FOB: a canvas tent, stacked supply crates, sandbags and a radio mast.
+  fob: build([
+    [box(3.2, 1.6, 2.4), OLIVE, [0, .8, 0]], [box(3.4, .2, 2.6), '#6b6d4f', [0, 1.65, 0]],
+    [box(.9, .7, .9), '#7a5f3a', [2.4, .35, .9]], [box(.9, .7, .9), '#7a5f3a', [2.4, .35, -.2]], [box(.9, .6, .9), '#7a5f3a', [2.4, 1, .35]],
+    [box(.08, 4.5, .08), STEEL, [-1.4, 2.25, -1]],
+    ...sandRing(3.4, 12, .5),
+  ]),
   flag: build([[box(3.6, 2.2, .1), '#ffffff', [1.8, 0, 0]], [box(.2, 2.2, .14), '#ffffff', [3.55, 0, 0]]]),
 };

@@ -75,7 +75,7 @@ export function closeTools() { if (openGroup) openTools(openGroup); }
 // Window beside the tool panel while hovering a tile: what it is and where it works.
 function showInfo(id: string, tile: HTMLElement) {
   const def = TOOLS.flatMap(g => g.items).find(t => t[0] === id), inf = INFO[id]; if (!def || !inf) return;
-  $('#info').innerHTML = `<div class="ph"><span>${def[1]}</span><span>${COST[id] ? COST[id] + (def[2] === 'line' && id !== 'air' && id !== 'spy' ? ' / CELL' : '') : ''}</span></div><div class="pb"><p class="hint">${inf[0]}</p>${inf[1] ? `<dl class="kv" style="margin-top:8px"><dt>Best</dt><dd>${inf[1]}</dd></dl>` : ''}<p class="note">${def[2] === 'line' ? 'Drag a line.' : def[2] === 'order' ? 'Select units first.' : ['spy', 'barrage', 'para', 'demo', 'air'].includes(id) ? (S.round < SUPPORT_ROUND ? `Anywhere in the circle. Ready from phase ${SUPPORT_ROUND}.` : 'Anywhere in the circle.') : id === 'garrison' ? 'A building on your own ground.' : ENG_BUILD.includes(id) ? 'In your start area, or near your engineers.' : TOOLS.find(g => g.g === 'UNITS').items.some(i => i[0] === id) ? 'In your start area.' : 'On your own ground.'}</p></div>`;
+  $('#info').innerHTML = `<div class="ph"><span>${def[1]}</span><span>${COST[id] ? COST[id] + (def[2] === 'line' && id !== 'air' && id !== 'spy' ? ' / CELL' : '') : ''}</span></div><div class="pb"><p class="hint">${inf[0]}</p>${inf[1] ? `<dl class="kv" style="margin-top:8px"><dt>Best</dt><dd>${inf[1]}</dd></dl>` : ''}<p class="note">${def[2] === 'line' ? 'Drag a line.' : def[2] === 'order' ? 'Select units first.' : ['spy', 'barrage', 'para', 'demo', 'air'].includes(id) ? (S.round < SUPPORT_ROUND ? `Anywhere in the circle. Ready from phase ${SUPPORT_ROUND}.` : 'Anywhere in the circle.') : id === 'garrison' ? 'A building on your own ground.' : id === 'fob' ? 'Near your engineers. Ready next phase.' : ENG_BUILD.includes(id) ? 'In your start area, or round a finished FOB. Ready next phase.' : TOOLS.find(g => g.g === 'UNITS').items.some(i => i[0] === id) ? 'In your start area.' : 'On your own ground.'}</p></div>`;
   // A fixed spot just right of the tool panel, its bottom level with the panel's bottom.
   const el = $('#info'); el.hidden = false; el.style.left = $('#toolpanel').getBoundingClientRect().right + 6 + 'px';
 }
@@ -218,7 +218,11 @@ function goReplay() { $('#result').hidden = true; startReplay(); syncUI(); }
 
 export function bindStrip(toMenu: () => void) {
   buildCommands();
-  $('#bBegin').onclick = () => { if (S.round === 1 && !S.squads.some((s: any) => s.team === NET.me)) { toast('Buy at least one unit first'); return; } closeTools(); setSel(null); actReady(); if (NET.mode !== 'solo' && S.phase === 'plan') { S.waiting = true; syncUI(); } };
+  $('#bBegin').onclick = () => {
+    if (S.round === 1 && !S.squads.some((s: any) => s.team === NET.me)) { toast('Buy at least one unit first'); return; }
+    // Units with nothing to do: warn once; a second press starts anyway.
+    const idle = idleUnits(); if (idle.length && !(S.idleWarned && performance.now() - S.idleWarned < 8000)) { S.idleWarned = performance.now(); toast(`${idle.length} unit${idle.length > 1 ? 's have' : ' has'} no orders: ${idle.map((s: any) => s.call).join(', ')}. Press again to begin anyway.`); return; }
+    S.idleWarned = 0; closeTools(); setSel(null); actReady(); if (NET.mode !== 'solo' && S.phase === 'plan') { S.waiting = true; syncUI(); } };
   $('#bReplay').onclick = goReplay;
   $('#bExit').onclick = () => { exitReplay(); syncUI(); showResult(); };
   $('#bFromStart').onclick = () => { seek(0); S.paused = false; syncSpeed(); };
@@ -240,7 +244,7 @@ export function bindStrip(toMenu: () => void) {
 }
 // Refreshes the parts of the HUD that change every few frames.
 export function hudPulse() {
-  syncClock(); renderRadio(); syncSpeedReq();
+  syncClock(); renderRadio(); syncSpeedReq(); syncBegin();
   if (S.phase === 'battle') renderInspector();
   else if (S.phase === 'replay') { const nw = $('#now'), fl = $('#fill'); if (nw) nw.style.left = tpos(S.rt / S.rec.end); if (fl) fl.style.width = `calc((100% - 16px) * ${S.rt / S.rec.end})`; }
 }
@@ -255,4 +259,11 @@ function syncSpeedReq() {
   el.hidden = false;
   if (other != null && req[other] !== mine) { $('#srText').textContent = `${S.teams[other].name} WANTS ${speedName(req[other])}`; $('#srAgree').hidden = false; $('#srAgree').onclick = () => actSpeed(req[other]); }
   else { $('#srText').textContent = `WAITING FOR FRIEND TO AGREE: ${speedName(mine)}`; $('#srAgree').hidden = true; }
+}
+
+// Movers that will just stand still next phase: no new order, and no order still under way.
+export const idleUnits = () => S.squads.filter((s: any) => s.team === NET.me && MOVERS.includes(s.kind) && !s.order && (!s.members || (aliveMembers(s).length && s.state === 'hold')));
+function syncBegin() {
+  if (S.phase !== 'plan' || S.waiting) return; const n = idleUnits().length;
+  $('#bBegin').textContent = (NET.mode === 'solo' ? `BEGIN PHASE ${S.round}` : `READY · PHASE ${S.round}`) + (n ? ` · ${n} IDLE` : '');
 }

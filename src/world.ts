@@ -1,10 +1,11 @@
-import { W, H, C, GW, GH, IW, IC, T_WATER, T_BUILD, T_BRIDGE, clamp, inPlay } from './config';
+import { W, H, C, GW, GH, IW, IC, T_WATER, T_BUILD, T_BRIDGE, T_WOOD, clamp, inPlay } from './config';
 import { S, M, OWN } from './state';
 
 export const cellOf = (x: number, y: number) => { const cx = Math.floor(x / C), cy = Math.floor(y / C); return (cx < 0 || cy < 0 || cx >= GW || cy >= GH) ? -1 : cy * GW + cx; };
 export function unitH(x: number, y: number) { const h = M.hAt(x, y), ci = cellOf(x, y); if (ci < 0) return h; return Math.max(h, M.deck[ci], M.terr[ci] === T_BUILD ? M.bldTop[ci] : -99); }
 export const passTerr = (t: number) => t !== T_WATER && t !== T_BUILD;
-export function passable(ci: number, veh?: boolean) { if (ci < 0 || !M.play[ci]) return false; if (!passTerr(M.terr[ci])) return false; if (!S.cover) return true; const c = S.cover[ci]; return !(c === 3 || (veh && c === 5)); }
+// Tanks cannot go into woods.
+export function passable(ci: number, veh?: boolean) { if (ci < 0 || !M.play[ci]) return false; if (!passTerr(M.terr[ci])) return false; if (veh && M.terr[ci] === T_WOOD) return false; if (!S.cover) return true; const c = S.cover[ci]; return !(c === 3 || (veh && c === 5)); }
 export function wallAt(ci: number) { for (const s of S.structs) if (s.type === 'wall' && s.cells.includes(ci)) return true; return false; }
 export function nudge(x: number, y: number, check?: (x: number, y: number) => boolean): [number, number] | null {
   const c0 = Math.floor(x / C), r0 = Math.floor(y / C);
@@ -19,13 +20,18 @@ export function nudge(x: number, y: number, check?: (x: number, y: number) => bo
 export const ownerAt = (x: number, y: number) => OWN[Math.floor(clamp(y, 0, H - .01) / IC) * IW + Math.floor(clamp(x, 0, W - .01) / IC)];
 export const canDeploy = (t: number, x: number, y: number) => inPlay(x, y, 2) && ownerAt(x, y) === t;
 // New units arrive at the start area. Engineers can also build mortars, MG nests and posts near where they stand.
-export const ENG_BUILD = ['mortar', 'mg', 'op'], ENG_R = 30;
+// Heavy weapons go in the start area or round a finished FOB. Engineers build FOBs near where they stand.
+export const ENG_BUILD = ['mortar', 'mg', 'op', 'at'], ENG_R = 30, FOB_R = 36;
 export const inSpawn = (t: number, x: number, y: number) => { const z = S.teams[t].zone; return Math.hypot(x - z.x, y - z.y) <= z.r && canDeploy(t, x, y); };
 export function nearEngineers(t: number, x: number, y: number) {
   for (const s of S.squads) if (s.team === t && s.kind === 'engineers' && s.members) for (const i of s.members) { const u = S.units[i]; if (u.alive && Math.hypot(u.x - x, u.y - y) <= ENG_R) return true; }
   return false;
 }
-export const canPlaceUnit = (t: number, kind: string, x: number, y: number) => kind === 'garrison' ? canDeploy(t, x, y) : inSpawn(t, x, y) || (ENG_BUILD.includes(kind) && inPlay(x, y, 2) && nearEngineers(t, x, y));
+export function nearFob(t: number, x: number, y: number) {
+  for (const s of S.squads) if (s.team === t && s.kind === 'fob' && s.members && (s.readyRound || 0) <= S.round) { const u = S.units[s.members[0]]; if (u && u.alive && Math.hypot(u.x - x, u.y - y) <= FOB_R) return true; }
+  return false;
+}
+export const canPlaceUnit = (t: number, kind: string, x: number, y: number) => kind === 'garrison' ? canDeploy(t, x, y) : kind === 'fob' ? inPlay(x, y, 2) && nearEngineers(t, x, y) : inSpawn(t, x, y) || (ENG_BUILD.includes(kind) && inPlay(x, y, 2) && nearFob(t, x, y));
 export const cellPos = (i: number) => [(i % IW) * IC + 2, Math.floor(i / IW) * IC + 2];
 export function bldNear(x: number, y: number) { let n = 0; const c0 = Math.floor(x / C), r0 = Math.floor(y / C); for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) { const cx = c0 + dx, cy = r0 + dy; if (cx >= 0 && cy >= 0 && cx < GW && cy < GH && M.terr[cy * GW + cx] === T_BUILD) n++; } return n; }
 export function waterBetween(ax: number, ay: number, bx: number, by: number) { let n = 0; for (let k = 1; k < 40; k++) { const ci = cellOf(ax + (bx - ax) * k / 40, ay + (by - ay) * k / 40); if (ci >= 0 && (M.terr[ci] === T_WATER || M.terr[ci] === T_BRIDGE)) n++; } return n >= 2; }

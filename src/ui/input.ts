@@ -1,7 +1,7 @@
 import { NET } from '../state';
 import { C, GW, COST, TOOLDEF, MOVERS, CX, CY, segDist, clamp } from '../config';
 import { S, M } from '../state';
-import { nudge, canDeploy, bridgeNear, bridgeTouches, cellOf, canPlaceUnit, ENG_BUILD, ENG_R } from '../world';
+import { nudge, canDeploy, bridgeNear, bridgeTouches, cellOf, canPlaceUnit, ENG_BUILD, ENG_R, FOB_R } from '../world';
 import { SUPPORT_ROUND, spacingOk } from '../plan';
 import { M_PER_UNIT as MPU } from '../config';
 import { sqCenter, left, addSquad, addStruct, addSupport, lineCells, canRemove, removeItem } from '../plan';
@@ -130,7 +130,7 @@ export function initInput(cv: HTMLCanvasElement) {
         const br = M.bridges[bi]; done(actSupport('demo', { x: br.cx, y: br.cy }, null, 20, bi)); return;
       }
       if (t === 'barrage' || t === 'para') { done(actSupport(t, { x: w.x, y: w.y }, null, t === 'barrage' ? 15 : 30)); return; }
-      if (!canPlaceUnit(NET.me, t, w.x, w.y)) { toast(t === 'garrison' ? 'Pick a building on your own ground' : ENG_BUILD.includes(t) ? `Start area, or within ${Math.round(ENG_R * MPU)} m of your engineers` : 'New units go in your start area'); return; }
+      if (!canPlaceUnit(NET.me, t, w.x, w.y)) { toast(t === 'garrison' ? 'Pick a building on your own ground' : t === 'fob' ? `Engineers build FOBs: within ${Math.round(ENG_R * MPU)} m of your engineers` : ENG_BUILD.includes(t) ? `Start area, or within ${Math.round(FOB_R * MPU)} m of a finished FOB` : 'New units go in your start area'); return; }
       if (!spacingOk(NET.me, t, w.x, w.y)) { toast('Too close to another unit. Spread them out.'); return; }
       const s = actSquad(t, w.x, w.y); if (!s && NET.mode !== 'guest') { toast(t === 'garrison' ? 'Click a building on your ground that is not held yet' : 'No open ground there'); return; }
       done(s); return;

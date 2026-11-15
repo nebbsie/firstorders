@@ -1,9 +1,11 @@
 import { NET } from '../state';
-import { C, GW, K, M_PER_UNIT, PLATOONS, MOVERS, unitKind, CX, CY, COST, TOOLDEF, TEAM_COLORS, SUP_NAME, GRID_X0, GRID_Y0, grid } from '../config';
+import { KIND_NAME, C, GW, K, M_PER_UNIT, PLATOONS, MOVERS, unitKind, CX, CY, COST, TOOLDEF, TEAM_COLORS, SUP_NAME, GRID_X0, GRID_Y0, grid } from '../config';
 import { S, M } from '../state';
-import { canDeploy, opRange, canPlaceUnit, ENG_BUILD, ENG_R } from '../world';
+import { canDeploy, opRange, canPlaceUnit, ENG_BUILD, ENG_R, FOB_R } from '../world';
 import { sqCenter, left, lineCells, spacingOk } from '../plan';
-import { route } from '../sim';
+import { route, moveFactor } from '../sim';
+import { PHASE_LEN } from '../config';
+import { cellOf } from '../world';
 import { P, Pa, view, fpv } from './camera';
 import { input } from '../ui/input';
 
@@ -28,11 +30,30 @@ function unitIcon(kind: string, x: number, y: number, col: string) {
   if (kind === 'sniper') { ctx.arc(x + 7.5, y + 5.5, 2.6, 0, Math.PI * 2); ctx.moveTo(x + 2, y + 5.5); ctx.lineTo(x + 13, y + 5.5); }
   ctx.stroke();
 }
+// The order a unit is following: in planning, a new order, else one still under way from the last phase.
+const ordOf = (s: any, plan: boolean) => plan ? (s.order || (s.members && s.state === 'attack' ? s.cur : null)) : s.cur;
 // A line along the way the units will walk.
 function routeLine(s: any, a: any, b: any, col: string, dash: boolean, head: boolean) {
   if (!MOVERS.includes(s.kind)) { groundLine(a, b, col, dash, head); return; }
-  const r = route(a.x, a.y, b.x, b.y, !!K[unitKind(s.kind)]?.veh);
-  for (let i = 0; i < r.length - 1; i++) groundLine({ x: r[i][0], y: r[i][1] }, { x: r[i + 1][0], y: r[i + 1][1] }, col, dash, head && i === r.length - 2);
+  const k = K[unitKind(s.kind)], veh = !!k?.veh, r = route(a.x, a.y, b.x, b.y, veh);
+  // How far the unit gets in the time left this phase. Beyond that the line turns grey: it arrives next phase or later.
+  let time = S.phase === 'plan' ? PHASE_LEN : Math.max(0, PHASE_LEN - (S.t - S.phaseStart)), split: number[] = null, si = -1;
+  for (let i = 0; i < r.length - 1 && !split; i++) {
+    const L = Math.hypot(r[i + 1][0] - r[i][0], r[i + 1][1] - r[i][1]), n = Math.max(1, Math.ceil(L / 2));
+    for (let j = 0; j < n; j++) {
+      const f = (j + .5) / n, x = r[i][0] + (r[i + 1][0] - r[i][0]) * f, y = r[i][1] + (r[i + 1][1] - r[i][1]) * f;
+      time -= L / n / (k.speed * moveFactor(cellOf(x, y), veh));
+      if (time <= 0) { split = [x, y]; si = i; break; }
+    }
+  }
+  const NEXT = 'rgba(160,166,176,.75)';
+  for (let i = 0; i < r.length - 1; i++) {
+    const p0 = { x: r[i][0], y: r[i][1] }, p1 = { x: r[i + 1][0], y: r[i + 1][1] }, last = i === r.length - 2;
+    if (!split || i < si) groundLine(p0, p1, col, dash, head && last);
+    else if (i === si) { const m = { x: split[0], y: split[1] }; groundLine(p0, m, col, dash, false); groundLine(m, p1, NEXT, true, head && last); }
+    else groundLine(p0, p1, NEXT, true, head && last);
+  }
+  if (split) { const p = P(split[0], split[1], 2); ctx.fillStyle = col; ctx.fillRect(p[0] - 3, p[1] - 3, 6, 6); }
 }
 function groundLine(a: any, b: any, col: string, dash: boolean, head: boolean) {
   const n = Math.max(2, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 6)); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.setLineDash(dash ? [6, 4] : []); ctx.beginPath();
@@ -90,7 +111,7 @@ export function draw2D() {
   if (plan) for (const t of S.teams) { if (t.id !== NET.me && S.fog && !(S.hqKnown && S.hqKnown[NET.me].has(t.id))) continue; const c = P(t.zone.x, t.zone.y, 14); plate(c[0], c[1], t.id === NET.me ? 'YOUR HQ' : t.lost ? `${t.name} HQ · TAKEN` : `${t.name} HQ`, t.color); }
   ctx.globalAlpha = plan ? 1 : .4;
   for (const s of S.squads) {
-    if (s.team !== NET.me) continue; const o = plan ? s.order : s.cur; if (!o) continue; const c = sqCenter(s); if (!c) continue; const col = TEAM_COLORS[0];
+    if (s.team !== NET.me) continue; const o = ordOf(s, plan); if (!o) continue; const c = sqCenter(s); if (!c) continue; const col = TEAM_COLORS[0];
     if (o.type === 'defend') ring(o.x, o.y, 16, col, true);
     if (o.dir != null) groundLine(o, { x: o.x + Math.cos(o.dir) * 10, y: o.y + Math.sin(o.dir) * 10 }, col, false, true);
     routeLine(s, { x: c[0], y: c[1] }, o, col, o.type === 'defend', true);
@@ -103,14 +124,23 @@ export function draw2D() {
     else { ring(s.a.x, s.a.y, s.type === 'barrage' ? 14 : 9, col, false); const p = P(s.a.x, s.a.y, 6); if (plan) plate(p[0], p[1] - 12, lab, col); }
   }
   ctx.globalAlpha = 1;
+  // Heavy weapons and FOBs still being built show when they will be ready.
+  for (const s of S.squads) {
+    if (s.team !== NET.me || !(s.readyRound > S.round)) continue; const c = sqCenter(s); if (!c) continue; const p = P(c[0], c[1], 4);
+    plate(p[0], p[1] - 18, `${KIND_NAME[s.kind] || s.kind} · BUILDING · READY PHASE ${s.readyRound}`, '#e8c547');
+  }
   // Name tags: a map symbol for the unit type, the call sign, and its order (or NO ORDERS while planning).
   // Hovering a unit shows its route and target brightly.
   const hv = input.hover && !input.ptr ? S.squads.find((s: any) => s.team === NET.me && s.call && (() => { const c = sqCenter(s); return c && Math.hypot(c[0] - input.hover.x, c[1] - input.hover.y) < 7; })()) : null;
-  if (hv) { const o = plan ? hv.order : hv.cur, c = sqCenter(hv); if (o && c) { routeLine(hv, { x: c[0], y: c[1] }, o, '#ffffff', o.type === 'defend', true); const m = P(o.x, o.y, 3); plate(m[0], m[1] - 14, `${hv.call} ${o.type.toUpperCase()} ${grid(o.x, o.y)}`, '#ffffff'); } }
+  if (hv) { const o = ordOf(hv, plan), c = sqCenter(hv); if (o && c) { routeLine(hv, { x: c[0], y: c[1] }, o, '#ffffff', o.type === 'defend', true); const m = P(o.x, o.y, 3); plate(m[0], m[1] - 14, `${hv.call} ${o.type.toUpperCase()} ${grid(o.x, o.y)}`, '#ffffff'); } }
+  const placed: number[][] = [];
   for (const s of S.squads) {
     if (s.team !== NET.me || !s.call) continue; const c = sqCenter(s); if (!c) continue; const p = P(c[0], c[1], 5); if (p[0] < -500) continue;
-    const o = plan ? s.order : s.cur, tag = o ? `${o.type.toUpperCase()} ${grid(o.x, o.y)}` : plan && MOVERS.includes(s.kind) ? 'NO ORDERS' : '';
-    ctx.font = '11px Departure, monospace'; const wn = ctx.measureText(s.call).width, wt = tag ? ctx.measureText(tag).width + 8 : 0, w = 20 + wn + wt + 6, x0 = Math.round(p[0] - w / 2), y0 = Math.round(p[1] - 22);
+    const o = ordOf(s, plan), tag = o ? `${o.type.toUpperCase()} ${grid(o.x, o.y)}${plan && !s.order ? ' CONT.' : ''}` : plan && MOVERS.includes(s.kind) && (!s.members || s.state === 'hold') ? 'NO ORDERS' : s.members && s.state === 'defend' ? 'HOLDING' : '';
+    ctx.font = '11px Departure, monospace'; const wn = ctx.measureText(s.call).width, wt = tag ? ctx.measureText(tag).width + 8 : 0, w = 20 + wn + wt + 6, x0 = Math.round(p[0] - w / 2); let y0 = Math.round(p[1] - 22);
+    // Tags of units standing together stack upwards instead of covering each other.
+    for (let tries = 0; tries < 8 && placed.some(r => x0 < r[0] + r[2] && r[0] < x0 + w && y0 < r[1] + 15 && r[1] < y0 + 15); tries++) y0 -= 16;
+    placed.push([x0, y0, w]);
     ctx.fillStyle = s === hv ? 'rgba(40,44,52,.95)' : 'rgba(20,21,25,.8)'; ctx.fillRect(x0, y0, w, 14);
     unitIcon(s.kind, x0 + 3, y0 + 2, TEAM_COLORS[0]);
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#f4f1e8'; ctx.fillText(s.call, x0 + 20, y0 + 7.5);
@@ -195,10 +225,11 @@ function drawGhost() {
     const sup = S.tool === 'barrage' || S.tool === 'para' || S.tool === 'demo', placeOk = canPlaceUnit(NET.me, S.tool, hover.x, hover.y), apart = sup || spacingOk(NET.me, S.tool, hover.x, hover.y), mine = placeOk && apart, ok = (sup || mine) && left(NET.me) >= COST[S.tool];
     // Where new units can go: the start area, and for mortars, MG nests and posts, round your engineers too.
     if (!sup && S.tool !== 'garrison') {
-      const z = S.teams[NET.me].zone; ring(z.x, z.y, z.r, 'rgba(143,227,166,.75)', true, 1.5);
-      if (ENG_BUILD.includes(S.tool)) for (const s of S.squads) if (s.team === NET.me && s.kind === 'engineers' && s.members) { const c = sqCenter(s); if (c) ring(c[0], c[1], ENG_R, 'rgba(143,227,166,.55)', true, 1); }
+      const z = S.teams[NET.me].zone; if (S.tool !== 'fob') ring(z.x, z.y, z.r, 'rgba(143,227,166,.75)', true, 1.5);
+      if (S.tool === 'fob') for (const s of S.squads) if (s.team === NET.me && s.kind === 'engineers' && s.members) { const c = sqCenter(s); if (c) ring(c[0], c[1], ENG_R, 'rgba(143,227,166,.75)', true, 1.5); }
+      if (ENG_BUILD.includes(S.tool)) for (const s of S.squads) if (s.team === NET.me && s.kind === 'fob' && s.members && s.readyRound <= S.round) { const c = sqCenter(s); if (c) ring(c[0], c[1], FOB_R, 'rgba(143,227,166,.6)', true, 1.5); }
     }
     ring(hover.x, hover.y, S.tool === 'barrage' ? 14 : PLATOONS.includes(S.tool) ? 6 : 3, ok ? okC : badC, false);
-    const c = P(hover.x, hover.y, 4); plate(c[0], c[1] - 20, `${tool.name} ${COST[S.tool]}${!ok && !sup && !mine ? (!apart && placeOk ? ' · TOO CLOSE' : S.tool === 'garrison' ? ' · NOT YOUR GROUND' : ENG_BUILD.includes(S.tool) ? ' · START AREA OR ENGINEERS' : ' · START AREA ONLY') : ''}`, ok ? okC : badC);
+    const c = P(hover.x, hover.y, 4); plate(c[0], c[1] - 20, `${tool.name} ${COST[S.tool]}${!ok && !sup && !mine ? (!apart && placeOk ? ' · TOO CLOSE' : S.tool === 'garrison' ? ' · NOT YOUR GROUND' : S.tool === 'fob' ? ' · NEAR YOUR ENGINEERS' : ENG_BUILD.includes(S.tool) ? ' · START AREA OR FOB' : ' · START AREA ONLY') : ''}`, ok ? okC : badC);
   }
 }
