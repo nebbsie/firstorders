@@ -89,6 +89,7 @@ export function hostTick(now: number) {
     log: S.log.slice(0, 80), terrCount: S.terrCount, stats: S.stats, history: S.history, result: S.result,
     blown: M.bridges.map(br => br.blown), downs: M.B.filter(b => b.down != null).map(b => b.id), banner: S.netBanner,
   };
+  if (S.sndNet && S.sndNet.length) { snap.snd = S.sndNet; S.sndNet = []; }
   if (sk !== structSent) { snap.structs = S.structs.map((s: any) => ({ id: s.id, team: s.team, type: s.type, a: s.a, b: s.b, cells: s.cells, round: s.round, placedAt: s.placedAt, live: s.live })); structSent = sk; }
   if (ownKey !== ownSent || S.phase === 'plan') { snap.own = OWN; ownSent = ownKey; }
   if (S.phase === 'done' && S.rec && !recSent) { snap.rec = S.rec; recSent = true; }
@@ -123,6 +124,7 @@ function applySnap(m: any) {
   for (const id of m.downs || []) if (M.B[id].down == null) collapse(id, -1, false);
   if (m.own) OWN.set(m.own);
   if (m.rec) S.rec = m.rec;
+  if (m.snd) { if (!S.snd) S.snd = []; S.snd.push(...m.snd); }
   S.sel = selId != null ? (S.squads.find((s: any) => s.id === selId) || S.structs.find((s: any) => s.id === selId) || S.supports.find((s: any) => s.id === selId) || null) : null;
   S.selMany = S.squads.filter((s: any) => selIds.has(s.id));
   hooks.vision();

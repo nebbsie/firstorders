@@ -1,14 +1,15 @@
 import { NET } from '../state';
 import { PLAY_R, M_PER_UNIT, MOVERS, PHASE_LEN, COST, TOOLS, INFO, KIND_NAME, T_BUILD, T_WATER, T_BRIDGE, T_ROAD, T_WOOD, T_PARK, HS, grid, fmtT, clamp } from '../config';
 import { S, M, VIS0, SEEN0 } from '../state';
-import { cellOf, bldNear } from '../world';
-import { aliveMembers, sqCenter, itemCost, left, canRemove, removeItem } from '../plan';
+import { cellOf, bldNear, ENG_BUILD } from '../world';
+import { aliveMembers, sqCenter, itemCost, left, canRemove, removeItem, SUPPORT_ROUND } from '../plan';
 import { newBattle } from '../sim';
 import { actRemove, actOrders, actTime, actReady, actSpeed } from '../actions';
 import { startReplay, seek, exitReplay, refreshReplayFog } from '../replay';
 import { fit, cam, P } from '../render/camera';
 import { paintFog, paintTerritory, viewOpts, applyViews } from '../render/scene';
 import { BTYPES } from '../map/btypes';
+import { toggleMute, isMuted } from '../audio';
 
 const $ = (s: string) => document.querySelector(s) as HTMLElement;
 let toastT = 0, bannerT = 0;
@@ -59,11 +60,12 @@ function openTools(g: string) {
   if (!openGroup) { panel.hidden = true; setTool('select'); return; }
   // BUILD shows every group you can buy from, side by side; ORDERS shows the order tools.
   const groups = g === 'BUILD' ? TOOLS.filter(t => t.g !== 'ORDERS') : TOOLS.filter(t => t.g === g);
-  const tile = (t: any) => `<button class="btn tile" data-tool="${t[0]}"><span>${t[1]}</span><em>${COST[t[0]] ? (t[2] === 'line' && t[0] !== 'air' && t[0] !== 'spy' ? COST[t[0]] + '/c' : COST[t[0]]) : ''}</em></button>`;
+  const locked = (id: string) => ['spy', 'barrage', 'para', 'demo', 'air'].includes(id) && S.round < SUPPORT_ROUND;
+  const tile = (t: any) => `<button class="btn tile${locked(t[0]) ? ' locked' : ''}" data-tool="${t[0]}"><span>${t[1]}</span><em>${COST[t[0]] ? (t[2] === 'line' && t[0] !== 'air' && t[0] !== 'spy' ? COST[t[0]] + '/c' : COST[t[0]]) : ''}</em></button>`;
   panel.innerHTML = `<div class="groups">${groups.map(grp => `<div><h3>${grp.g}</h3><div class="tiles">${grp.items.map(tile).join('')}</div></div>`).join('')}</div>`;
   const btn = document.querySelector(`.cmd[data-g="${g}"]`) as HTMLElement; panel.hidden = false; panel.style.left = Math.max(10, btn.getBoundingClientRect().left) + 'px';
   panel.querySelectorAll('.tile').forEach((b: any) => {
-    b.onclick = () => setTool(S.tool === b.dataset.tool ? 'select' : b.dataset.tool);
+    b.onclick = () => { if (locked(b.dataset.tool)) { toast(`Support is ready from phase ${SUPPORT_ROUND}`); return; } setTool(S.tool === b.dataset.tool ? 'select' : b.dataset.tool); };
     b.onmouseenter = () => showInfo(b.dataset.tool, b); b.onmouseleave = () => { $('#info').hidden = true; };
   });
   setTool(S.tool);
@@ -72,7 +74,7 @@ export function closeTools() { if (openGroup) openTools(openGroup); }
 // Window beside the tool panel while hovering a tile: what it is and where it works.
 function showInfo(id: string, tile: HTMLElement) {
   const def = TOOLS.flatMap(g => g.items).find(t => t[0] === id), inf = INFO[id]; if (!def || !inf) return;
-  $('#info').innerHTML = `<div class="ph"><span>${def[1]}</span><span>${COST[id] ? COST[id] + (def[2] === 'line' && id !== 'air' && id !== 'spy' ? ' / CELL' : '') : ''}</span></div><div class="pb"><p class="hint">${inf[0]}</p>${inf[1] ? `<dl class="kv" style="margin-top:8px"><dt>Best</dt><dd>${inf[1]}</dd></dl>` : ''}<p class="note">${def[2] === 'line' ? 'Drag a line.' : def[2] === 'order' ? 'Select units first.' : ['spy', 'barrage', 'para', 'demo', 'air'].includes(id) ? 'Anywhere in the circle.' : 'On your own ground.'}</p></div>`;
+  $('#info').innerHTML = `<div class="ph"><span>${def[1]}</span><span>${COST[id] ? COST[id] + (def[2] === 'line' && id !== 'air' && id !== 'spy' ? ' / CELL' : '') : ''}</span></div><div class="pb"><p class="hint">${inf[0]}</p>${inf[1] ? `<dl class="kv" style="margin-top:8px"><dt>Best</dt><dd>${inf[1]}</dd></dl>` : ''}<p class="note">${def[2] === 'line' ? 'Drag a line.' : def[2] === 'order' ? 'Select units first.' : ['spy', 'barrage', 'para', 'demo', 'air'].includes(id) ? (S.round < SUPPORT_ROUND ? `Anywhere in the circle. Ready from phase ${SUPPORT_ROUND}.` : 'Anywhere in the circle.') : id === 'garrison' ? 'A building on your own ground.' : ENG_BUILD.includes(id) ? 'In your start area, or near your engineers.' : TOOLS.find(g => g.g === 'UNITS').items.some(i => i[0] === id) ? 'In your start area.' : 'On your own ground.'}</p></div>`;
   // A fixed spot just right of the tool panel, its bottom level with the panel's bottom.
   const el = $('#info'); el.hidden = false; el.style.left = $('#toolpanel').getBoundingClientRect().right + 6 + 'px';
 }
@@ -225,6 +227,7 @@ export function bindStrip(toMenu: () => void) {
   $('#cardOk').onclick = () => { $('#card').hidden = true; };
   $('#inspClose').onclick = () => setSel(null);
   $('#vArea').onclick = () => { viewOpts.area = !viewOpts.area; $('#vArea').classList.toggle('on', viewOpts.area); refreshFogPaint(); };
+  $('#vSound').classList.toggle('on', !isMuted()); $('#vSound').onclick = () => $('#vSound').classList.toggle('on', !toggleMute());
   $('#vXray').onclick = () => { viewOpts.xray = !viewOpts.xray; $('#vXray').classList.toggle('on', viewOpts.xray); applyViews(); };
   document.querySelectorAll('#speeds .btn').forEach((b: any) => b.onclick = () => { const v = +b.dataset.speed; if (S.phase === 'replay') { if (v === 0) S.paused = !S.paused; else { S.speed = v; S.paused = false; } } else actSpeed(v); syncSpeed(); });
   const tl = $('#tl'); let scrubbing = false;

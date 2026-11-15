@@ -1,7 +1,7 @@
 import { NET } from '../state';
 import { C, GW, K, M_PER_UNIT, PLATOONS, MOVERS, unitKind, CX, CY, COST, TOOLDEF, TEAM_COLORS, SUP_NAME, GRID_X0, GRID_Y0, grid } from '../config';
 import { S, M } from '../state';
-import { canDeploy, opRange } from '../world';
+import { canDeploy, opRange, canPlaceUnit, ENG_BUILD, ENG_R } from '../world';
 import { sqCenter, left, lineCells } from '../plan';
 import { P, Pa, view } from './camera';
 import { input } from '../ui/input';
@@ -123,7 +123,7 @@ function drawGhost() {
     const a = ptr && ptr.mode === 'aim' ? ptr.w0 : hover, w = ptr && ptr.mode === 'aim' ? ptr.w : null;
     const f = w && Math.hypot(w.x - a.x, w.y - a.y) > 3 ? Math.atan2(w.y - a.y, w.x - a.x) : Math.atan2(CY - a.y, CX - a.x);
     cone(a.x, a.y, f, K.sniper.arc, K.sniper.range, K.sniper.sight);
-    const ok = canDeploy(NET.me, a.x, a.y) && left(NET.me) >= COST.sniper, p = P(a.x, a.y, 4); plate(p[0], p[1] - 20, `SNIPER ${COST.sniper}${ptr ? '' : ' · DRAG TO AIM'}`, ok ? okC : badC); return;
+    const ok = canPlaceUnit(NET.me, 'sniper', a.x, a.y) && left(NET.me) >= COST.sniper, p = P(a.x, a.y, 4); plate(p[0], p[1] - 20, `SNIPER ${COST.sniper}${ptr ? '' : ' · DRAG TO AIM'}`, ok ? okC : badC); return;
   }
   // Engineers' demolish target: outline the building or mark the bridge under the cursor.
   if (S.tool === 'demolish') {
@@ -149,8 +149,13 @@ function drawGhost() {
       if (k.min) { ring(hover.x, hover.y, k.min, 'rgba(255,122,114,.5)', true, 1); const p = P(hover.x + k.min, hover.y, 1); plate(p[0], p[1], `MIN ${Math.round(k.min * M_PER_UNIT)} M`, '#ff7a72'); }
       if (sight) { ring(hover.x, hover.y, sight, 'rgba(200,220,240,.7)', true, 1.5); const p = P(hover.x - sight, hover.y, 1); plate(p[0], p[1], `SEES ${Math.round(sight * M_PER_UNIT)} M`, '#c8dcf0'); }
     }
-    const sup = S.tool === 'barrage' || S.tool === 'para' || S.tool === 'demo', mine = canDeploy(NET.me, hover.x, hover.y), ok = (sup || mine) && left(NET.me) >= COST[S.tool];
+    const sup = S.tool === 'barrage' || S.tool === 'para' || S.tool === 'demo', mine = canPlaceUnit(NET.me, S.tool, hover.x, hover.y), ok = (sup || mine) && left(NET.me) >= COST[S.tool];
+    // Where new units can go: the start area, and for mortars, MG nests and posts, round your engineers too.
+    if (!sup && S.tool !== 'garrison') {
+      const z = S.teams[NET.me].zone; ring(z.x, z.y, z.r, 'rgba(143,227,166,.75)', true, 1.5);
+      if (ENG_BUILD.includes(S.tool)) for (const s of S.squads) if (s.team === NET.me && s.kind === 'engineers' && s.members) { const c = sqCenter(s); if (c) ring(c[0], c[1], ENG_R, 'rgba(143,227,166,.55)', true, 1); }
+    }
     ring(hover.x, hover.y, S.tool === 'barrage' ? 14 : PLATOONS.includes(S.tool) ? 6 : 3, ok ? okC : badC, false);
-    const c = P(hover.x, hover.y, 4); plate(c[0], c[1] - 20, `${tool.name} ${COST[S.tool]}${!ok && !sup && !mine ? ' · NOT YOUR GROUND' : ''}`, ok ? okC : badC);
+    const c = P(hover.x, hover.y, 4); plate(c[0], c[1] - 20, `${tool.name} ${COST[S.tool]}${!ok && !sup && !mine ? (S.tool === 'garrison' ? ' · NOT YOUR GROUND' : ENG_BUILD.includes(S.tool) ? ' · START AREA OR ENGINEERS' : ' · START AREA ONLY') : ''}`, ok ? okC : badC);
   }
 }

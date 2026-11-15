@@ -1,7 +1,9 @@
 import { NET } from '../state';
 import { C, GW, COST, TOOLDEF, MOVERS, CX, CY, segDist, clamp } from '../config';
 import { S, M } from '../state';
-import { nudge, canDeploy, bridgeNear, bridgeTouches, cellOf } from '../world';
+import { nudge, canDeploy, bridgeNear, bridgeTouches, cellOf, canPlaceUnit, ENG_BUILD, ENG_R } from '../world';
+import { SUPPORT_ROUND } from '../plan';
+import { M_PER_UNIT as MPU } from '../config';
 import { sqCenter, left, addSquad, addStruct, addSupport, lineCells, canRemove, removeItem } from '../plan';
 import { cam, pick, panBy, P, fit } from '../render/camera';
 import { setSel, setTool, toast, cursorNote, syncSpeed, syncFollow, closeTools } from './hud';
@@ -106,12 +108,13 @@ export function initInput(cv: HTMLCanvasElement) {
       // Sniper: where it stands, and the way it watches (towards the centre if not dragged).
       const a = p.w0, dragged = Math.hypot(w.x - a.x, w.y - a.y) > 3, face = dragged ? Math.atan2(w.y - a.y, w.x - a.x) : Math.atan2(CY - a.y, CX - a.x);
       if (left(NET.me) < COST[t]) { toast('Not enough supply'); return; }
-      if (!canDeploy(NET.me, a.x, a.y)) { toast('You can only build on your own ground'); return; }
+      if (!canPlaceUnit(NET.me, t, a.x, a.y)) { toast('New units go in your start area'); return; }
       done(actSquad(t, a.x, a.y, face)); return;
     }
     if (p.mode === 'orderGroup') { const dragged = Math.hypot(w.x - p.w0.x, w.y - p.w0.y) > 4; orderGroup(S.selMany, t, p.w0, dragged ? Math.atan2(w.y - p.w0.y, w.x - p.w0.x) : undefined); setTool('select'); return; }
     if (p.mode === 'point') {
       if (left(NET.me) < COST[t]) { toast('Not enough supply'); return; }
+      if (['demo', 'barrage', 'para'].includes(t) && S.round < SUPPORT_ROUND) { toast(`Support is ready from phase ${SUPPORT_ROUND}`); return; }
       if (t === 'demo') {
         const bi = bridgeNear(w.x, w.y);
         if (bi < 0) {
@@ -126,12 +129,13 @@ export function initInput(cv: HTMLCanvasElement) {
         const br = M.bridges[bi]; done(actSupport('demo', { x: br.cx, y: br.cy }, null, 20, bi)); return;
       }
       if (t === 'barrage' || t === 'para') { done(actSupport(t, { x: w.x, y: w.y }, null, t === 'barrage' ? 15 : 30)); return; }
-      if (!canDeploy(NET.me, w.x, w.y)) { toast('You can only build on your own ground'); return; }
+      if (!canPlaceUnit(NET.me, t, w.x, w.y)) { toast(t === 'garrison' ? 'Pick a building on your own ground' : ENG_BUILD.includes(t) ? `Start area, or within ${Math.round(ENG_R * MPU)} m of your engineers` : 'New units go in your start area'); return; }
       const s = actSquad(t, w.x, w.y); if (!s && NET.mode !== 'guest') { toast(t === 'garrison' ? 'Click a building on your ground that is not held yet' : 'No open ground there'); return; }
       done(s); return;
     }
     if (p.mode === 'line') {
       const a = p.w0, b = w; if (Math.hypot(b.x - a.x, b.y - a.y) < 2) { toast('Drag to draw a line'); return; }
+      if ((t === 'air' || t === 'spy') && S.round < SUPPORT_ROUND) { toast(`Support is ready from phase ${SUPPORT_ROUND}`); return; }
       if (t === 'air' || t === 'spy') { if (left(NET.me) < COST[t]) { toast('Not enough supply'); return; } done(actSupport(t, { x: a.x, y: a.y }, { x: b.x, y: b.y }, t === 'spy' ? 5 : 25)); return; }
       const cells = lineCells(NET.me, a, b); if (!cells.length) { toast('Defences go on open ground you hold'); return; }
       if (left(NET.me) < cells.length * COST[t]) { toast('Not enough supply'); return; }

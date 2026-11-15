@@ -9,6 +9,11 @@ let rnd = Math.random;
 const gauss = () => { const u = rnd() || 1e-9, v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(6.283 * v); };
 
 // team -1 is a message for everyone.
+// Sound events for the speakers here and, on the host, for the guest's.
+function snd(k: string, x: number, y: number, size = 0) {
+  if (!S.snd) S.snd = []; if (S.snd.length < 200) S.snd.push([k, x, y, size]);
+  if (NET.mode === 'host') { if (!S.sndNet) S.sndNet = []; if (S.sndNet.length < 200) S.sndNet.push([k, Math.round(x), Math.round(y), size]); }
+}
 export function log(team: number, msg: string) { S.log.unshift({ t: S.t, team, msg }); if (S.log.length > 400) S.log.pop(); S.logDirty = true; }
 export const income = (t: number) => S.teams[t].lost ? 0 : 200 + Math.round((S.terrCount[t] || 0) * 1.2);
 
@@ -184,13 +189,14 @@ function kill(v: any, team: number) {
 function contact(sq: any) { if (sq) sq.contact = S.t; }
 function tankFire(u: any, e: any, k: any) {
   const d = Math.hypot(e.x - u.x, e.y - u.y), hit = rnd() < k.acc * (1 - .5 * d / k.range), x = hit ? e.x : e.x + gauss() * 4, y = hit ? e.y : e.y + gauss() * 4;
-  S.tracers.push({ x0: u.x, y0: u.y, x1: x, y1: y, life: .15, team: u.team, u: u.i }); S.rec.tracers.push([S.t, u.x, u.y, x, y, u.team, u.i]);
+  S.tracers.push({ x0: u.x, y0: u.y, x1: x, y1: y, life: .15, team: u.team, u: u.i }); S.rec.tracers.push([S.t, u.x, u.y, x, y, u.team, u.i]); snd('gun', u.x, u.y);
   if (hit && e.kind === 'tank') { e.hp -= 3; if (e.hp <= 0) { kill(e, u.team); u.kills++; } } else explode(x, y, 3.5, .75, u.team);
   contact(S.squads.find((s: any) => s.id === u.sq));
 }
 function shoot(u: any, e: any, k: any) {
   u.hd = Math.atan2(-(e.y - u.y), e.x - u.x); if (u.kind === 'tank') { tankFire(u, e, k); return; }
   const tr = { x0: u.x, y0: u.y, x1: e.x + (rnd() - .5) * 2, y1: e.y + (rnd() - .5) * 2, life: .09, team: u.team, u: u.i };
+  snd(u.kind === 'mg' ? 'mg' : u.kind === 'sniper' ? 'snipe' : u.kind === 'at' ? 'gun' : 'shot', u.x, u.y);
   S.tracers.push(tr); if (S.rec.tracers.length < 150000) S.rec.tracers.push([S.t, tr.x0, tr.y0, tr.x1, tr.y1, u.team, u.i]);
   const d = Math.hypot(e.x - u.x, e.y - u.y), hb = clamp((unitH(u.x, u.y) - unitH(e.x, e.y)) * .02, 0, .15), p = (k.acc + hb) * (1 - coverAt(e)) * (1 - .5 * d / k.range);
   if (rnd() < p) { e.hp -= u.kind === 'at' ? 4 : 1; if (e.hp <= 0 && !saved(e)) { kill(e, u.team); u.kills++; } }
@@ -214,7 +220,7 @@ function damageBuildings(x: number, y: number, r: number, power: number, team: n
   hit.forEach((d, id) => { const b = M.B[id]; b.hp -= power * 8 * (1 - d / r * .7); if (b.hp <= 0) collapse(id, team); });
 }
 function explode(x: number, y: number, r: number, power: number, team: number) {
-  damageBuildings(x, y, r, power, team);
+  damageBuildings(x, y, r, power, team); snd('boom', x, y, r);
   S.fx.push({ x, y, r, life: .6, max: .6 }); S.craters.push({ x, y, r: r * .55 }); if (S.craters.length > 600) S.craters.shift(); S.rec.booms.push([S.t, x, y, r]);
   for (const v of S.units) {
     if (!v.alive || v.drop > 0) continue; const d = Math.hypot(v.x - x, v.y - y); if (d > r) continue;
@@ -372,7 +378,7 @@ export function step() {
     const k = K[u.kind]; u.cd -= DT; u.scan -= DT;
     if (u.kind === 'op') continue;
     if (u.kind === 'mortar') {
-      if (u.cd <= 0 && u.scan <= 0) { u.scan = .6; const t = mortarTarget(u); if (t >= 0) { const e = U[t], d = Math.hypot(e.x - u.x, e.y - u.y); addShell({ x0: u.x, y0: u.y, x1: e.x + gauss() * 5, y1: e.y + gauss() * 5, t: 0, dur: .8 + d / 60, team: u.team, r: 6.5, power: .8 }); u.rounds = (u.rounds ?? k.salvo) - 1; if (u.rounds <= 0) { u.rounds = k.salvo; u.cd = k.reload * (.9 + rnd() * .2); u.reloading = true; } else { u.cd = k.cd * (.85 + rnd() * .3); u.reloading = false; } } }
+      if (u.cd <= 0 && u.scan <= 0) { u.scan = .6; const t = mortarTarget(u); if (t >= 0) { const e = U[t], d = Math.hypot(e.x - u.x, e.y - u.y); snd('launch', u.x, u.y); addShell({ x0: u.x, y0: u.y, x1: e.x + gauss() * 5, y1: e.y + gauss() * 5, t: 0, dur: .8 + d / 60, team: u.team, r: 6.5, power: .8 }); u.rounds = (u.rounds ?? k.salvo) - 1; if (u.rounds <= 0) { u.rounds = k.salvo; u.cd = k.reload * (.9 + rnd() * .2); u.reloading = true; } else { u.cd = k.cd * (.85 + rnd() * .3); u.reloading = false; } } }
       continue;
     }
     if (u.scan <= 0) { u.scan = .35 + rnd() * .25; u.tgt = findTarget(u, k.range); }

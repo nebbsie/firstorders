@@ -14,7 +14,7 @@ export function exec(team: number, m: any): any {
   switch (m.cmd) {
     case 'squad': return live(addSquad(team, m.kind, m.x, m.y, m.face));
     case 'struct': return live(addStruct(team, m.type, m.a, m.b));
-    case 'support': { const s = addSupport(team, m.type, m.a, m.b, m.t); if (m.bridge != null) s.bridge = m.bridge; if (m.bld != null) s.bld = m.bld; return live(s); }
+    case 'support': { const s = addSupport(team, m.type, m.a, m.b, m.t); if (!s) return null; if (m.bridge != null) s.bridge = m.bridge; if (m.bld != null) s.bld = m.bld; return live(s); }
     case 'orders': for (const o of m.list) { const s = S.squads.find((q: any) => q.id === o.id && q.team === team); if (!s) continue; s.order = o.type ? { type: o.type, x: o.x, y: o.y, dir: o.dir, bridge: o.bridge, bld: o.bld } : null; if (S.phase === 'battle' && s.order) applyOrder(s); } return null;
     case 'remove': { const it = byId(m.id); if (it && it.team === team && it.round === S.round && !it.members && !it.live && S.phase === 'plan') removeItem(it); return null; }
     case 'time': { const it = byId(m.id); if (it && it.team === team && !it.fired) it.t = m.t; return null; }

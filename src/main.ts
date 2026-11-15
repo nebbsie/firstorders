@@ -16,6 +16,8 @@ import { connected, sendMap, guestLoaded, closeNet, hostTick } from './net';
 import { menuStatus, type MapSpec } from './ui/menu';
 import { initMenu, showMenu } from './ui/menu';
 import type { RawMap } from './map/types';
+import { initAudio, tickAudio } from './audio';
+initAudio();
 
 const gl = document.getElementById('gl') as HTMLCanvasElement, cv = document.getElementById('cv') as HTMLCanvasElement;
 initRenderer(gl); initOverlay(cv); initInput(cv); setTool('select');
@@ -68,7 +70,7 @@ function frame(now: number) {
     // The view keeps fitting the battle circle until the player moves the camera.
     if (!cam.userMoved) fit();
     keyCam(dt); applyCam(); update3D(V); render(); draw2D();
-    tickHud(dt); pulse -= dt; if (pulse <= 0) { pulse = .25; hudPulse(); }
+    tickAudio(dt); tickHud(dt); pulse -= dt; if (pulse <= 0) { pulse = .25; hudPulse(); }
   }
   requestAnimationFrame(frame);
 }

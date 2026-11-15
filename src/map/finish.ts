@@ -48,7 +48,8 @@ function paintGround(raw: RawMap, wd: Float32Array, hAt: (x: number, y: number) 
       const i = y * gw + x, wx = (x + .5) / GS, wy = (y + .5) / GS, ci = Math.min(GH - 1, Math.floor(wy / C)) * GW + Math.min(GW - 1, Math.floor(wx / C));
       const t = raw.terr[ci]; let r: number, gg: number, b: number; const h = hAt(wx, wy); row[x] = h;
       if (isWet(t)) { const c = WATER[Math.min(4, Math.floor(wd[ci] / 2.4))]; r = c[0]; gg = c[1]; b = c[2]; }
-      else if (t === T_ROAD) { r = 58; gg = 56; b = 50; }
+      // Imported maps paint smooth roads over the texture; the blocky road cells stay plain ground under them.
+      else if (t === T_ROAD && !raw.paintOver) { r = 58; gg = 56; b = 50; }
       else if (t === T_WOOD) { const tr = hashf(Math.floor(wx / 1.4), Math.floor(wy / 1.4), 9) > .5; r = tr ? 44 : 56; gg = tr ? 64 : 76; b = tr ? 36 : 44; }
       else if (t === T_PARK) { r = 84; gg = 106; b = 62; }
       else {

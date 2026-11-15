@@ -24,6 +24,28 @@ const ilayer = document.createElement('canvas'); ilayer.width = IW; ilayer.heigh
 const terrTex = new THREE.CanvasTexture(ilayer); terrTex.magFilter = THREE.LinearFilter; terrTex.minFilter = THREE.LinearFilter;
 const flayer = document.createElement('canvas'); flayer.width = IW; flayer.height = IH; const fctx = flayer.getContext('2d');
 const fogTex = new THREE.CanvasTexture(flayer); fogTex.magFilter = THREE.LinearFilter; fogTex.minFilter = THREE.LinearFilter;
+// Ground never looked at loses its colour. The red channel holds 255 where it is undiscovered.
+const ulayer = document.createElement('canvas'); ulayer.width = IW; ulayer.height = IH; const uctx = ulayer.getContext('2d');
+const unseenTex = new THREE.CanvasTexture(ulayer); unseenTex.magFilter = THREE.LinearFilter; unseenTex.minFilter = THREE.LinearFilter; unseenTex.flipY = false;
+function greyUnseen<T extends THREE.Material>(m: T): T {
+  m.onBeforeCompile = (sh: any) => {
+    sh.uniforms.unseenMap = { value: unseenTex };
+    sh.vertexShader = `varying vec3 vFoW;
+` + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
+      vec4 fowP = vec4(transformed, 1.0);
+      #ifdef USE_INSTANCING
+        fowP = instanceMatrix * fowP;
+      #endif
+      vFoW = (modelMatrix * fowP).xyz;`);
+    sh.fragmentShader = `uniform sampler2D unseenMap;
+varying vec3 vFoW;
+` + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+      float fowU = texture2D(unseenMap, vec2(vFoW.x / ${W.toFixed(1)} + .5, vFoW.z / ${H.toFixed(1)} + .5)).r;
+      float fowL = dot(diffuseColor.rgb, vec3(.3, .59, .11));
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(fowL) * .95, fowU * .9);`);
+  };
+  return m;
+}
 
 export function initRenderer(canvas: HTMLCanvasElement) {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -51,6 +73,9 @@ export function paintFog(vis: Uint8Array, seen: Uint8Array, on: boolean) {
   const img = fctx.createImageData(IW, IH), px = img.data;
   if (on) for (let i = 0; i < IW * IH; i++) { if (!inPlay((i % IW) * IC + 2, Math.floor(i / IW) * IC + 2)) continue; px[i * 4] = 11; px[i * 4 + 1] = 14; px[i * 4 + 2] = 18; px[i * 4 + 3] = vis[i] ? 0 : seen[i] ? 95 : 150; }
   fctx.putImageData(img, 0, 0); fogTex.needsUpdate = true;
+  const ui = uctx.createImageData(IW, IH), up = ui.data;
+  if (on) for (let i = 0; i < IW * IH; i++) { up[i * 4] = seen[i] ? 0 : 255; up[i * 4 + 3] = 255; }
+  uctx.putImageData(ui, 0, 0); unseenTex.needsUpdate = true;
 }
 
 let mapGroup: THREE.Group = null;
@@ -82,7 +107,7 @@ export function buildMap3D() {
   for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) { vtx(i, j); vtx(i, j + 1); vtx(i + 1, j); vtx(i + 1, j); vtx(i, j + 1); vtx(i + 1, j + 1); }
   const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.BufferAttribute(pos, 3)); tg.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); tg.computeVertexNormals();
   const gt = new THREE.CanvasTexture(M.ground); gt.anisotropy = renderer.capabilities.getMaxAnisotropy(); gt.colorSpace = THREE.NoColorSpace;
-  const terrain = new THREE.Mesh(tg, new THREE.MeshLambertMaterial({ map: gt })); terrain.receiveShadow = true; mapGroup.add(terrain);
+  const terrain = new THREE.Mesh(tg, greyUnseen(new THREE.MeshLambertMaterial({ map: gt }))); terrain.receiveShadow = true; mapGroup.add(terrain);
   const over = new THREE.Mesh(tg, new THREE.MeshBasicMaterial({ map: terrTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })); over.renderOrder = 1; mapGroup.add(over);
   // Square, solid map edge: a wall from the ground line down to a flat base on all four sides.
   const skirt: number[] = [], BASE = -8, edge = (pts: number[][]) => { for (let k = 0; k < pts.length - 1; k++) { const [x0, y0] = pts[k], [x1, y1] = pts[k + 1], h0 = M.hAt(x0, y0), h1 = M.hAt(x1, y1); const q = (x: number, y: number, h: number) => skirt.push(x - W / 2, h, y - H / 2); q(x0, y0, h0); q(x0, y0, BASE); q(x1, y1, h1); q(x1, y1, h1); q(x0, y0, BASE); q(x1, y1, BASE); } };
@@ -99,7 +124,7 @@ export function buildMap3D() {
     wp.push(...a, ...d, ...b, ...b, ...d, ...e);
   }
   const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3)); wg.computeVertexNormals();
-  const water = new THREE.Mesh(wg, new THREE.MeshLambertMaterial({ color: '#3f6874', transparent: true, opacity: .82 })); water.renderOrder = 2; mapGroup.add(water);
+  const water = new THREE.Mesh(wg, greyUnseen(new THREE.MeshLambertMaterial({ color: '#3f6874', transparent: true, opacity: .82 }))); water.renderOrder = 2; mapGroup.add(water);
 
   // Buildings: one merged mesh of flat-shaded walls and roofs. Roofs are triangulated, so L-shapes work.
   const Pa: number[] = [], Na: number[] = [], Ca: number[] = [];
@@ -146,7 +171,7 @@ export function buildMap3D() {
     b.vr = [vStart, Pa.length / 3 - vStart];
   }
   const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(Pa, 3)); bldGeo = bg; bldY = new Float32Array(Pa.filter((_, i) => i % 3 === 1)); downKey = ''; bg.setAttribute('normal', new THREE.Float32BufferAttribute(Na, 3)); bg.setAttribute('color', new THREE.Float32BufferAttribute(Ca, 3));
-  const bm = new THREE.Mesh(bg, new THREE.MeshLambertMaterial({ vertexColors: true })); bm.castShadow = true; bm.receiveShadow = true; mapGroup.add(bm); xrayable.push(bm);
+  const bm = new THREE.Mesh(bg, greyUnseen(new THREE.MeshLambertMaterial({ vertexColors: true }))); bm.castShadow = true; bm.receiveShadow = true; mapGroup.add(bm); xrayable.push(bm);
 
   for (const br of M.bridges) {
     // One straight deck from bank to bank, with piers down into the water.
@@ -164,7 +189,7 @@ export function buildMap3D() {
   }
   for (const inside of [true, false]) {
     const list = M.trees.filter(t => inPlay(t[0], t[1]) === inside); if (!list.length) continue;
-    const tm = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 5), new THREE.MeshLambertMaterial({ color: inside ? '#3d5832' : '#4b4f4b' }), list.length);
+    const tm = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 5), greyUnseen(new THREE.MeshLambertMaterial({ color: inside ? '#3d5832' : '#4b4f4b' })), list.length);
     list.forEach((t, i) => { _q.setFromAxisAngle(_up, t[0]); _p.set(t[0] - W / 2, M.hAt(t[0], t[1]) + t[2] / 2, t[1] - H / 2); _s.set(1.3 + t[2] * .18, t[2], 1.3 + t[2] * .18); _m.compose(_p, _q, _s); tm.setMatrixAt(i, _m); });
     tm.castShadow = inside; tm.receiveShadow = true; mapGroup.add(tm); xrayable.push(tm);
   }

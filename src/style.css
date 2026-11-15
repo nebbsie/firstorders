@@ -67,6 +67,7 @@ button:focus-visible { outline: 1px solid var(--gold); outline-offset: 1px; }
 .topleft { top: 8px; left: 8px; display: flex; gap: 4px; }
 .topleft .btn { font-family: var(--f-title); font-size: 16px; padding: 4px 10px; }
 .strip .btn { font-family: var(--f-title); font-size: 16px; padding: 5px 10px; white-space: nowrap; }
+.tile.locked { opacity: .38; }
 .qbar { display: flex; gap: 2px; padding: 2px; background: var(--window); border: 1px solid var(--line); transform: translate(-50%, -100%); white-space: nowrap; }
 .qbar .btn { padding: 3px 7px; }
 .qbar .btn.on { border-color: var(--warn); color: var(--warn); }
