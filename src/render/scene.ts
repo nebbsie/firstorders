@@ -156,9 +156,12 @@ export function buildMap3D() {
   mapGroup.add(new THREE.Mesh(sg, new THREE.MeshLambertMaterial({ color: '#3a3529', side: THREE.DoubleSide })));
   // Water: a surface over the wet cells only, each at its own level.
   const wp: number[] = [], isW = (c: number) => M.terr0[c] === T_WATER || M.terr0[c] === T_BRIDGE;
-  const vh = (i: number, j: number) => { let s = 0, k = 0; for (const [ci, cj] of [[i - 1, j - 1], [i, j - 1], [i - 1, j], [i, j]]) if (ci >= 0 && cj >= 0 && ci < GW && cj < GH && isW(cj * GW + ci)) { s += M.wl[cj * GW + ci]; k++; } return s / k; };
+  const vh = (i: number, j: number) => { let s = 0, k = 0; for (const [ci, cj] of [[i - 1, j - 1], [i, j - 1], [i - 1, j], [i, j]]) if (ci >= 0 && cj >= 0 && ci < GW && cj < GH) { s += M.wl[cj * GW + ci]; k++; } return s / k; };
   for (let c = 0; c < GW * GH; c++) {
-    if (!isW(c)) continue; const i = c % GW, j = (c / GW) | 0, x0 = i * C - W / 2, z0 = j * C - H / 2;
+    const i = c % GW, j = (c / GW) | 0, x0 = i * C - W / 2, z0 = j * C - H / 2;
+    // Water also lies under the cells next to wet ones; the ground hides it above the shore line.
+    let near = isW(c); for (let dj = -1; dj <= 1 && !near; dj++) for (let di = -1; di <= 1; di++) { const ni = i + di, nj = j + dj; if (ni >= 0 && nj >= 0 && ni < GW && nj < GH && isW(nj * GW + ni)) { near = true; break; } }
+    if (!near) continue;
     const a = [x0, vh(i, j), z0], b = [x0 + C, vh(i + 1, j), z0], d = [x0, vh(i, j + 1), z0 + C], e = [x0 + C, vh(i + 1, j + 1), z0 + C];
     wp.push(...a, ...d, ...b, ...b, ...d, ...e);
   }

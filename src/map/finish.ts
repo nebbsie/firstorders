@@ -66,10 +66,10 @@ function paintGround(raw: RawMap, wd: Float32Array, hAt: (x: number, y: number) 
   return cv;
 }
 
-// A light blur takes the pixel steps off road and field edges, so they read as smooth lines up close.
+// A very light blur works as anti-aliasing: road and field edges stay sharp but lose their pixel steps.
 function soften(cv: HTMLCanvasElement) {
   const out = document.createElement('canvas'); out.width = cv.width; out.height = cv.height; const g = out.getContext('2d');
-  g.drawImage(cv, 0, 0); g.filter = 'blur(1.6px)'; g.drawImage(cv, 0, 0); g.filter = 'none'; return out;
+  g.drawImage(cv, 0, 0); g.filter = 'blur(.7px)'; g.drawImage(cv, 0, 0); g.filter = 'none'; return out;
 }
 // Outside the battle circle the map is scenery: grey, darker, with a thin light ring at the edge.
 function greyOutside(cv: HTMLCanvasElement) {
@@ -101,7 +101,10 @@ export function finishMap(raw: RawMap): MapData {
     let s = 0, n = 0, lv = 0;
     for (const [ci, cj] of [[i - 1, j - 1], [i, j - 1], [i - 1, j], [i, j]]) if (ci >= 0 && cj >= 0 && ci < GW && cj < GH) { s += wd[cj * GW + ci]; lv += wl[cj * GW + ci]; n++; }
     const w = s / n, t = ss(-9, 0, w), base = raw.baseH[j * VW + i];
-    TH[j * VW + i] = base * (1 - t) + (Math.min(base, lv / n) - .7 - clamp(w, 0, 12) * .22) * t;
+    // The ground meets the water level right at the shore (w = 0) and drops away under it, so the water's edge
+    // is where the smooth ground surface cuts the water surface, not a line of square cells.
+    const L = Math.min(base, lv / n);
+    TH[j * VW + i] = w <= 0 ? base * (1 - t) + (L + .2) * t : L + .2 - clamp(w, 0, 12) * .45;
   }
   const hAt = (x: number, y: number) => {
     const fx = clamp(x, 0, W) / C, fy = clamp(y, 0, H) / C, i = Math.min(GW - 1, Math.floor(fx)), j = Math.min(GH - 1, Math.floor(fy)), u = fx - i, v = fy - j;
