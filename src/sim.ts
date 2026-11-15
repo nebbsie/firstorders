@@ -121,7 +121,7 @@ function endRound() {
 }
 
 // An order may go by one waypoint first (for a flank). The unit heads for it, then for the goal.
-function useVia(sq: any, o: any) { sq.goal = { x: o.x, y: o.y }; sq.via = o.via || null; sq.fellBack = false; sq.sprung = false; if (sq.via) { sq.tx = sq.via.x; sq.ty = sq.via.y; } }
+function useVia(sq: any, o: any) { sq.goal = { x: o.x, y: o.y }; sq.via = o.via || null; sq.followId = o.type === 'follow' ? o.follow : null; sq.fellBack = false; sq.sprung = false; if (sq.via) { sq.tx = sq.via.x; sq.ty = sq.via.y; } }
 function spawnSquad(sq: any, drop?: boolean) {
   sq.members = []; const kind = unitKind(sq.kind);
   for (const p of sq.pos) {
@@ -133,12 +133,14 @@ function spawnSquad(sq: any, drop?: boolean) {
 }
 function assignSlots(sq: any) {
   const mem = aliveMembers(sq); if (!mem.length) return;
+  // Suppressing fire is given from where the unit stands.
+  if (sq.state === 'suppress') { for (const u of mem) { u.sx = u.x; u.sy = u.y; } return; }
   // Tanks need a spot with room round it.
   const vok = mem[0].kind === 'tank' ? (x: number, y: number) => passable(cellOf(x, y), true) : undefined;
   // Facing: the order's direction, else the way from the unit to the target.
   const c0x = mem.reduce((a: number, u: any) => a + u.x, 0) / mem.length, c0y = mem.reduce((a: number, u: any) => a + u.y, 0) / mem.length;
   const face = sq.dir != null ? sq.dir : Math.atan2(sq.ty - c0y, sq.tx - c0x), fx = Math.cos(face), fy = Math.sin(face);
-  if (sq.state === 'attack' || sq.state === 'demolish') {
+  if (sq.state === 'attack' || sq.state === 'demolish' || sq.state === 'follow') {
     // A line across the facing direction: eight wide, ranks behind.
     // Spread out as real sections do: about 10 m between men, so one shell does not take a whole platoon.
     let i = 0; for (const u of mem) { const col = i % 6 - 2.5, row = Math.floor(i / 6); i++; const q = nudge(sq.tx - fy * col * 4.5 - fx * row * 5 + (rnd() - .5) * 1.5, sq.ty + fx * col * 4.5 - fy * row * 5 + (rnd() - .5) * 1.5, vok) || [sq.tx, sq.ty]; u.sx = q[0]; u.sy = q[1]; if (!vok) u.hd = Math.atan2(-fy, fx); }
@@ -252,6 +254,13 @@ function tankFire(u: any, e: any, k: any) {
 function suppress(v: any, a: number) {
   if (!v.alive || v.kind === 'tank' || v.kind === 'fob') return; const sq = v.sqo;
   v.sup = Math.min(1.6, (v.sup || 0) + a * (1 - coverAt(v) * .5) * (sq && sq.stance === 'careful' ? .7 : 1));
+  // Surprise: a unit that was not in a fight when the first shots land is shaken. Its men go to ground
+  // and take a moment before they fire back. Careful units are surprised less.
+  if (sq && sq.members && (!sq.shotAt || S.t - sq.shotAt > 15) && !(sq.contact && S.t - sq.contact < 6 && sq.state !== 'hold')) {
+    const k = sq.stance === 'careful' ? .5 : 1;
+    for (const i of sq.members) { const m = S.units[i]; if (!m.alive) continue; m.sup = Math.min(1.6, (m.sup || 0) + .5 * k); m.cd = Math.max(m.cd, (1.2 + rnd() * 1.4) * k); }
+    if (sq.call) log(sq.team, `${sqName(sq)}: surprised, under fire at ${grid(v.x, v.y)}`);
+  }
   if (sq) sq.shotAt = S.t;
 }
 const pinAt = (sq: any) => sq && sq.stance === 'rush' ? 1.2 : sq && sq.stance === 'careful' ? .5 : .75;
@@ -263,7 +272,7 @@ function shoot(u: any, e: any, k: any) {
   const d = Math.hypot(e.x - u.x, e.y - u.y), hb = clamp((unitH(u.x, u.y) - unitH(e.x, e.y)) * .02, 0, .15), rushing = u.sqo && u.sqo.stance === 'rush' && u.moving;
   // Suppressed men shoot badly; men rushing and firing on the move too.
   const p = (k.acc + hb) * (1 - coverAt(e)) * (1 - .5 * d / k.range) * (1 - .6 * Math.min(1, u.sup || 0)) * (rushing ? .6 : 1);
-  u.fired = S.t; suppress(e, u.kind === 'mg' ? .16 : u.kind === 'sniper' ? .25 : u.kind === 'at' ? .1 : u.kind === 'assault' ? .1 : .09);
+  u.fired = S.t; suppress(e, u.kind === 'mg' ? .16 : u.kind === 'sniper' ? .25 : u.kind === 'at' ? .1 : u.kind === 'assault' ? .12 : .14);
   // Near misses keep the men beside the target down too: MG fire sweeps a whole section.
   if (u.kind === 'mg' && rnd() < .5) for (const i of (e.sqo && e.sqo.members) || []) { const v = S.units[i]; if (v !== e && v.alive && Math.abs(v.x - e.x) < 7 && Math.abs(v.y - e.y) < 7) suppress(v, .07); }
   if (rnd() < p) { e.hp -= u.kind === 'at' ? 4 : 1; if (e.hp <= 0 && !saved(e)) { kill(e, u.team); u.kills++; } }
@@ -356,6 +365,16 @@ function updateSquads() {
   const tick = Math.floor(S.t * 2) !== Math.floor((S.t - DT) * 2);
   for (const sq of S.squads) {
     if (sq.members && tick) squadStatus(sq);
+    if (sq.members && sq.state === 'follow' && tick) {
+      // Follow: stay about 12 behind the leader, on the side this unit came from.
+      const lead = S.squads.find((q: any) => q.id === sq.followId), lm = lead && lead.members ? aliveMembers(lead) : [], m = aliveMembers(sq);
+      if (!lm.length) { if (m.length) { sq.state = 'defend'; sq.tx = m[0].x; sq.ty = m[0].y; assignSlots(sq); } continue; }
+      if (!m.length) continue;
+      const lx = lm.reduce((a: number, u: any) => a + u.x, 0) / lm.length, ly = lm.reduce((a: number, u: any) => a + u.y, 0) / lm.length, cx = m.reduce((a: number, u: any) => a + u.x, 0) / m.length, cy = m.reduce((a: number, u: any) => a + u.y, 0) / m.length;
+      const d = Math.hypot(cx - lx, cy - ly) || 1, q = nudge(lx + (cx - lx) / d * 12, ly + (cy - ly) / d * 12);
+      if (q && Math.hypot(q[0] - sq.tx, q[1] - sq.ty) > 5) { sq.tx = q[0]; sq.ty = q[1]; sq.dir = Math.atan2(ly - cy, lx - cx); sq.pace = 1; sq.stance = lead.stance; assignSlots(sq); }
+      continue;
+    }
     if (sq.members && sq.via) {
       // Waypoint reached: go on to the goal.
       const m = aliveMembers(sq); if (m.length) { const cx = m.reduce((a: number, u: any) => a + u.x, 0) / m.length, cy = m.reduce((a: number, u: any) => a + u.y, 0) / m.length;
@@ -391,7 +410,7 @@ function squadStatus(sq: any) {
   const sup = m.filter((u: any) => (u.sup || 0) > pinAt(sq)).length >= m.length / 3 ? 9 : 0, firing = m.some((u: any) => u.fired && S.t - u.fired < 2);
   const was = sq.status;
   sq.status = sq.readyRound > S.round ? 'BUILDING' : sq.fellBack && sq.state === 'defend' && m.some((u: any) => u.moving) ? 'FALLING BACK'
-    : sup > pinAt(sq) ? 'PINNED' : firing ? 'ENGAGING' : sq.state === 'demolish' ? 'DEMOLISHING'
+    : sup > pinAt(sq) ? 'PINNED' : firing ? (sq.state === 'suppress' ? 'SUPPRESSING' : 'ENGAGING') : sq.state === 'follow' ? 'FOLLOWING' : sq.state === 'demolish' ? 'DEMOLISHING'
     : m.some((u: any) => u.moving) ? (sq.via ? 'FLANKING' : 'MOVING') : sq.state === 'defend' ? 'HOLDING' : sq.state === 'attack' ? 'MOVING' : 'IDLE';
   if (sq.status === 'PINNED' && was !== 'PINNED' && sq.call) log(sq.team, `${sqName(sq)}: pinned down at ${grid(m[0].x, m[0].y)}`);
 }
@@ -527,7 +546,7 @@ export function step() {
   for (const su of S.supports) if (su.round === S.round && !su.fired && pt >= su.t) { su.fired = true; launchSupport(su); }
   for (let i = 0; i < U.length; i++) {
     const u = U[i]; if (!u.alive) continue; if (u.drop > 0) { u.drop -= DT; continue; }
-    const k = K[u.kind]; u.cd -= DT; u.scan -= DT; if (u.sup) u.sup = Math.max(0, u.sup - DT * .2);
+    const k = K[u.kind]; u.cd -= DT; u.scan -= DT; if (u.sup) u.sup = Math.max(0, u.sup - DT * .11);
     // Under construction this phase (FOBs and heavy weapons): no fire and no movement yet.
     if (u.ready > S.round) continue;
     if (u.kind === 'op' || u.kind === 'fob') continue;
@@ -543,6 +562,15 @@ export function step() {
     // Pinned men stop and keep their heads down; badly pinned men do not fire at all.
     const pinned = !k.veh && (u.sup || 0) > pinAt(sq), headsDown = !k.veh && (u.sup || 0) > 1.15;
     if (headsDown) e = null;
+    // Suppressing fire: with no enemy in sight, fire at the ordered spot to keep heads down there.
+    if (!e && !headsDown && sq && sq.state === 'suppress' && u.cd <= 0 && !k.veh) {
+      const d = Math.hypot(sq.ty - u.y, sq.tx - u.x);
+      if (d <= k.range * 1.15 && los(u.x, u.y, sq.tx, sq.ty)) {
+        const tx = sq.tx + gauss() * 3, ty = sq.ty + gauss() * 3; u.hd = Math.atan2(-(ty - u.y), tx - u.x); u.fired = S.t; u.cd = k.cd * (.8 + rnd() * .6);
+        S.tracers.push({ x0: u.x, y0: u.y, x1: tx, y1: ty, life: .09, team: u.team, u: u.i }); if (S.rec.tracers.length < 150000) S.rec.tracers.push([S.t, u.x, u.y, tx, ty, u.team, u.i]); snd('shot', u.x, u.y);
+        for (const v of U) { if (!v.alive || v.team === u.team || v.drop > 0) continue; const dv = Math.hypot(v.x - tx, v.y - ty); if (dv > 7) continue; suppress(v, .1); if (dv < 2.5 && v.kind !== 'tank' && rnd() < k.acc * .35 * (1 - coverAt(v))) { v.hp -= 1; if (v.hp <= 0 && !saved(v)) { kill(v, u.team); u.kills++; } } }
+      }
+    }
     if (e && k.veh) {
       // A tank stops, turns its hull onto the target, and fires only when it is lined up.
       const want = Math.atan2(-(e.y - u.y), e.x - u.x), d = Math.atan2(Math.sin(want - u.hd), Math.cos(want - u.hd));

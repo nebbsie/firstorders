@@ -34,7 +34,7 @@ function unitIcon(kind: string, x: number, y: number, col: string) {
 export const labelHits: { x: number; y: number; w: number; h: number; s: any }[] = [];
 export const labelAt = (x: number, y: number) => { for (let i = labelHits.length - 1; i >= 0; i--) { const l = labelHits[i]; if (x >= l.x && x <= l.x + l.w && y >= l.y && y <= l.y + l.h) return l.s; } return null; };
 // The order a unit is following: in planning, a new order, else one still under way from the last phase.
-const ordOf = (s: any, plan: boolean) => plan ? (s.order || (s.members && s.state === 'attack' ? s.cur : null)) : s.cur;
+const ordOf = (s: any, plan: boolean) => plan ? (s.order || (s.members && ['attack', 'suppress', 'follow'].includes(s.state) ? s.cur : null)) : s.cur;
 // A line along the way the units will walk.
 function routeLine(s: any, a: any, b: any, col: string, dash: boolean, head: boolean) {
   if (!MOVERS.includes(s.kind)) { groundLine(a, b, col, dash, head); return; }
@@ -118,9 +118,13 @@ export function draw2D() {
   ctx.globalAlpha = plan ? 1 : .4;
   for (const s of S.squads) {
     if (s.team !== NET.me) continue; const o = ordOf(s, plan); if (!o) continue; const c = sqCenter(s); if (!c) continue; const col = TEAM_COLORS[0];
-    if (o.type === 'defend') ring(o.x, o.y, 16, col, true);
-    if (o.dir != null) groundLine(o, { x: o.x + Math.cos(o.dir) * 10, y: o.y + Math.sin(o.dir) * 10 }, col, false, true);
-    routeLine(s, { x: c[0], y: c[1] }, o, col, o.type === 'defend', true);
+    if (o.type === 'suppress') { ring(o.x, o.y, 7, '#ff7a72', true); groundLine({ x: c[0], y: c[1] }, o, 'rgba(255,122,114,.8)', true, true); }
+    else if (o.type === 'follow') { const L = S.squads.find((q: any) => q.id === o.follow), lc = L && sqCenter(L); if (lc) groundLine({ x: c[0], y: c[1] }, { x: lc[0], y: lc[1] }, col, true, true); }
+    else {
+      if (o.type === 'defend') ring(o.x, o.y, 16, col, true);
+      if (o.dir != null) groundLine(o, { x: o.x + Math.cos(o.dir) * 10, y: o.y + Math.sin(o.dir) * 10 }, col, false, true);
+      routeLine(s, { x: c[0], y: c[1] }, o, col, o.type === 'defend', true);
+    }
     if (plan && (S.selMany || []).includes(s)) { const m = P(o.x, o.y, 3); plate(m[0], m[1] - 14, `${s.call || ''} ${o.type.toUpperCase()} ${grid(o.x, o.y)}`.trim(), col); }
   }
   for (const s of S.supports) {
@@ -218,6 +222,16 @@ function drawGhost() {
     for (const s of S.selMany || []) { const c = sqCenter(s); if (c && MOVERS.includes(s.kind)) routeLine(s, { x: c[0], y: c[1] }, ptr.w0, 'rgba(232,197,71,.5)', S.tool === 'defend', false); }
     if (d > 4) { const a = Math.atan2(ptr.w.y - ptr.w0.y, ptr.w.x - ptr.w0.x), px = -Math.sin(a), py = Math.cos(a), n = (S.selMany || []).length, half = Math.max(8, n * 6); groundLine({ x: ptr.w0.x - px * half, y: ptr.w0.y - py * half }, { x: ptr.w0.x + px * half, y: ptr.w0.y + py * half }, '#e8c547', false, false); groundLine(ptr.w0, { x: ptr.w0.x + Math.cos(a) * 14, y: ptr.w0.y + Math.sin(a) * 14 }, '#e8c547', false, true); }
     const p = P(ptr.w0.x, ptr.w0.y, 3); plate(p[0], p[1] - 16, `${S.tool.toUpperCase()} ${grid(ptr.w0.x, ptr.w0.y)}${d > 4 ? ' · FACING' : ''}`, '#e8c547'); return;
+  }
+  // What the order under the cursor will do.
+  if (!ptr && (S.selMany || []).length && ['attack', 'defend', 'suppress', 'follow'].includes(S.tool)) {
+    let lab = S.tool.toUpperCase();
+    if (S.tool === 'defend') { let tr = 0, sb = 0; const c0 = Math.floor(hover.x / C), r0 = Math.floor(hover.y / C); for (let dy = -8; dy <= 8; dy++) for (let dx = -8; dx <= 8; dx++) { const cx = c0 + dx, cy = r0 + dy; if (cx < 0 || cy < 0 || cx >= GW || dx * dx + dy * dy > 64) continue; const cv = S.cover ? S.cover[cy * GW + cx] : 0; if (cv === 2) tr++; else if (cv === 1) sb++; }
+      for (const st of S.structs) if (st.team === NET.me && (st.type === 'trench' || st.type === 'sandbag') && st.placedAt == null && st.cells.some((ci: number) => Math.hypot((ci % GW) * C + 1 - hover.x, Math.floor(ci / GW) * C + 1 - hover.y) < 16)) { if (st.type === 'trench') tr++; else sb++; }
+      lab = tr ? 'DEFEND · MAN THE TRENCH' : sb ? 'DEFEND · BEHIND THE SANDBAGS' : 'DEFEND · IN THE OPEN'; }
+    if (S.tool === 'suppress') { ring(hover.x, hover.y, 7, '#ff7a72', true); lab = 'SUPPRESSING FIRE HERE'; for (const s of S.selMany) { const c = sqCenter(s); if (c) groundLine({ x: c[0], y: c[1] }, hover, 'rgba(255,122,114,.7)', true, false); } }
+    if (S.tool === 'follow') lab = 'CLICK THE UNIT TO FOLLOW';
+    const hp = P(hover.x, hover.y, 3); plate(hp[0], hp[1] + 22, lab, S.tool === 'suppress' ? '#ff7a72' : '#e8c547');
   }
   if ((S.tool === 'attack' || S.tool === 'defend') && !ptr) { for (const s of S.selMany || []) { const c = sqCenter(s); if (c && MOVERS.includes(s.kind)) routeLine(s, { x: c[0], y: c[1] }, hover, 'rgba(232,197,71,.6)', S.tool === 'defend', true); } }
   if (ptr && ptr.mode === 'order') { const c = sqCenter(ptr.sq); if (!c) return; routeLine(ptr.sq, { x: c[0], y: c[1] }, ptr.w, '#e8c547', S.tool === 'defend', true); const b = P(ptr.w.x, ptr.w.y, 3); plate(b[0], b[1] - 16, `${S.tool.toUpperCase()} ${grid(ptr.w.x, ptr.w.y)}`, '#e8c547'); return; }

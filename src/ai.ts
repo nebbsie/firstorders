@@ -44,7 +44,11 @@ export function aiPlan(team: number) {
     if (s > bs) { bs = s; D = q; }
   }
   if (!D) { const q = nudge(ox, oy, (x, y) => canDeploy(team, x, y)); if (!q) return; D = { x: q[0], y: q[1] }; }
-  const B0 = left(team), supReserve = B0 * pr.arty * .3;
+  // Infantry first: keep supply back for the platoons this side still needs, so guns and earthworks never crowd them out.
+  const infNow = S.squads.filter((s: any) => s.team === team && (s.kind === 'rifles' || s.kind === 'assault') && (!s.members || aliveMembers(s).length > 0)).length;
+  const infReserve = Math.max(0, 3 + Math.floor(S.round / 2) - infNow) * 100;
+  const B0 = left(team); let supReserve = B0 * pr.arty * .2 + infReserve;
+  const dig = (type: string, a: any, b: any) => left(team) - supReserve >= 60 ? addStruct(team, type, a, b) : null;
   const urban = bldNear(D.x, D.y) >= 12, foeTanks = foes.filter(e => e.kind === 'tank').length;
   const alive = (s: any) => !s.members || aliveMembers(s).length > 0;
   const count = (kind: string) => S.squads.filter((s: any) => s.team === team && s.kind === kind && alive(s)).length;
@@ -62,9 +66,9 @@ export function aiPlan(team: number) {
     const cand = [...ids].map(id => M.B[id]).sort((a, b) => b.top - a.top); let g = count('garrison');
     for (const b of cand) { if (g >= (pr.aggr < .5 ? 2 : 1) || S.round > 3 || left(team) - supReserve < 110) break; if (addSquad(team, 'garrison', b.cx, b.cy)) g++; }
   } else if (!S.structs.some((s: any) => s.team === team && s.type === 'trench' && segDist(D, s.a, s.b) < 14)) {
-    const L = clamp(B0 * (.5 - pr.aggr * .3) / 5 / 1.3, 8, 26); addStruct(team, 'trench', { x: D.x - px * L, y: D.y - py * L }, { x: D.x + px * L, y: D.y + py * L });
+    const L = clamp(B0 * (.5 - pr.aggr * .3) / 5 / 1.3, 8, 26); dig('trench', { x: D.x - px * L, y: D.y - py * L }, { x: D.x + px * L, y: D.y + py * L });
   }
-  if (!urban && pr.aggr < .7 && left(team) - supReserve > 200) { const c = { x: D.x + dx * 7, y: D.y + dy * 7 }; addStruct(team, 'wire', { x: c.x - px * 14, y: c.y - py * 14 }, { x: c.x + px * 14, y: c.y + py * 14 }); }
+  if (!urban && pr.aggr < .7 && left(team) - supReserve > 200) { const c = { x: D.x + dx * 7, y: D.y + dy * 7 }; dig('wire', { x: c.x - px * 14, y: c.y - py * 14 }, { x: c.x + px * 14, y: c.y + py * 14 }); }
   if (!haveNear('mg', 25) && count('mg') < 2 && left(team) - supReserve >= 80) {
     let mx = D.x - dx * 3, my = D.y - dy * 3;
     for (let k = 0; k < 30; k++) { const x = D.x + (r() - .5) * 30, y = D.y + (r() - .5) * 30, ci = cellOf(x, y); if (ci >= 0 && M.terr[ci] === T_WOOD && canDeploy(team, x, y)) { mx = x; my = y; break; } }
@@ -75,14 +79,14 @@ export function aiPlan(team: number) {
   if ((foeTanks > 0 || roadToUs >= 9) && !haveNear('at', 30)) for (let a = 0; a < (foeTanks > 1 ? 2 : 1) && left(team) - supReserve >= 90; a++) place('at', D.x + px * (a ? 12 : -12) - dx * 2, D.y + py * (a ? 12 : -12) - dy * 2);
   if ((foeTanks > 0 || urban) && left(team) - supReserve >= 80) {
     let rx: any = null; for (let k = 0; k < 40; k++) { const x = D.x + (r() - .5) * 36, y = D.y + (r() - .5) * 36, ci = cellOf(x, y); if (ci >= 0 && M.terr[ci] === T_ROAD && canDeploy(team, x, y)) { rx = { x, y }; break; } }
-    if (rx) addStruct(team, 'tanktrap', { x: rx.x - px * 7, y: rx.y - py * 7 }, { x: rx.x + px * 7, y: rx.y + py * 7 });
+    if (rx) dig('tanktrap', { x: rx.x - px * 7, y: rx.y - py * 7 }, { x: rx.x + px * 7, y: rx.y + py * 7 });
   }
   // Engineers up to the front, then a FOB where they stand, so heavy weapons can come up behind the line.
   const engs = S.squads.filter((s: any) => s.team === team && s.kind === 'engineers' && alive(s));
-  if (!engs.length && left(team) - supReserve >= 120) { const e = place('engineers', D.x, D.y); if (e) e.order = { type: 'defend', x: D.x, y: D.y }; }
+  if (!engs.length && S.round >= 2 && left(team) - supReserve >= 120) { const e = place('engineers', D.x, D.y); if (e) e.order = { type: 'defend', x: D.x, y: D.y }; }
   if (!S.squads.some((s: any) => s.team === team && s.kind === 'fob' && alive(s)) && left(team) >= 150) for (const e of engs) { const c = e.members && sqCenter(e); if (c && addSquad(team, 'fob', c[0], c[1])) break; }
   const mortars = S.squads.filter((s: any) => s.team === team && s.kind === 'mortar' && alive(s)).length;
-  for (let m = mortars; m < 1 + Math.round(pr.arty * 2) && left(team) - supReserve >= 90; m++) place('mortar', D.x - dx * (22 + r() * 14) + px * (r() - .5) * 24, D.y - dy * (22 + r() * 14) + py * (r() - .5) * 24);
+  for (let m = mortars; m < (S.round < 3 ? 1 : 1 + Math.round(pr.arty * 2)) && left(team) - supReserve >= 90; m++) place('mortar', D.x - dx * (22 + r() * 14) + px * (r() - .5) * 24, D.y - dy * (22 + r() * 14) + py * (r() - .5) * 24);
   // High ground in our area: an observation post.
   if (!S.squads.some((s: any) => s.team === team && s.kind === 'op' && alive(s)) && left(team) - supReserve >= 70) {
     let best: number[] = null, bh = M.hAt(D.x, D.y) + 1.5;
@@ -111,9 +115,11 @@ export function aiPlan(team: number) {
   if (hqs.length && r() < .35 + pr.aggr * .4 + (S.round - 1) * .12) A = { x: hqs[0].zone.x, y: hqs[0].zone.y };
   // No HQ found yet: from phase 3, push towards where the enemy came from, to find it.
   else if (!hqs.length && th.zone && S.round >= 3 && r() < .3 + S.round * .12) A = { x: th.zone.x, y: th.zone.y };
+  // The last phases: everything goes for the nearest enemy HQ (or where the enemy came from), to force a result.
+  const allIn = S.round >= 5; if (allIn) { const t = hqs[0] || S.teams.filter((o: any) => o.id !== team && !o.lost).sort((a: any, b: any) => Math.hypot(a.zone.x - ox, a.zone.y - oy) - Math.hypot(b.zone.x - ox, b.zone.y - oy))[0]; if (t) A = { x: t.zone.x, y: t.zone.y }; }
   // Attackers move carefully in town and rush across open ground when bold; all pull back if badly hurt.
   const go = (s: any, tx: number, ty: number) => { const q = nudge(tx, ty); if (!q) return; s.order = { type: 'attack', x: q[0], y: q[1] }; s.fallback = true;
-    s.stance = s.kind === 'tank' ? undefined : bldNear(tx, ty) >= 8 ? 'careful' : pr.aggr > .7 && r() < .5 ? 'rush' : undefined;
+    s.stance = s.kind === 'tank' ? undefined : foesNear(tx, ty, 40) > 2 && bldNear(tx, ty) >= 8 ? 'careful' : pr.aggr > .7 && r() < .5 ? 'rush' : undefined;
     // Smoke to cover a long advance over open ground.
     if (S.round >= 1 && left(team) >= 90 && r() < .35 && bldNear((D.x + tx) / 2, (D.y + ty) / 2) < 6) addSupport(team, 'smoke', { x: (D.x + tx) / 2 + (tx - D.x) * .2, y: (D.y + ty) / 2 + (ty - D.y) * .2 }, null, 6); };
   // Always keep a guard on our own HQ.
@@ -126,19 +132,19 @@ export function aiPlan(team: number) {
     if (m.length < s.members.length * .35) { if (Math.hypot(c[0] - D.x, c[1] - D.y) > 15) s.order = { type: 'defend', x: D.x, y: D.y }; continue; }
     // As the battle goes on, fewer units stay back. The HQ guard never leaves.
     if (s.guard || s.kind === 'engineers') continue;
-    if ((PLATOONS.includes(s.kind) || s.kind === 'tank') && s.kind !== 'medics' && r() < pr.aggr + S.round * .1) { side++; go(s, A.x + px * (side % 2 ? 1 : -1) * side * 5, A.y + py * (side % 2 ? 1 : -1) * side * 5); }
+    if ((PLATOONS.includes(s.kind) || s.kind === 'tank') && s.kind !== 'medics' && (allIn || r() < pr.aggr + S.round * .1)) { side++; go(s, A.x + px * (side % 2 ? 1 : -1) * side * 5, A.y + py * (side % 2 ? 1 : -1) * side * 5); }
   }
   // Open ground to the objective suits tanks.
   if (A && pr.aggr >= .45 && left(team) - supReserve >= 220) {
     let open = 0; for (let k = 1; k <= 10; k++) if (bldNear(D.x + (A.x - D.x) * k / 10, D.y + (A.y - D.y) * k / 10) < 6) open++;
     if (open >= 6) { const nT = pr.aggr > .7 && left(team) - supReserve >= 440 ? 2 : 1; for (let k = 0; k < nT; k++) { const s = place('tank', D.x - dx * 8 + px * (k ? 8 : -8), D.y - dy * 8 + py * (k ? 8 : -8)); if (s) go(s, A.x + px * (k ? 8 : -8), A.y + py * (k ? 8 : -8)); } }
   }
-  let n = 0;
+  supReserve -= infReserve; let n = 0;
   while (left(team) - supReserve >= 100 && n < 4) {
     // Assault platoons for fights in town; rifles elsewhere.
     const kind = A && bldNear(A.x, A.y) >= 8 && r() < .6 && left(team) - supReserve >= 130 ? 'assault' : 'rifles';
     const s = place(kind, D.x - dx * 10 + px * (r() - .5) * 30, D.y - dy * 10 + py * (r() - .5) * 30); if (!s) break; n++;
-    if (A && r() < pr.aggr + .15) { side++; go(s, A.x + px * (side % 2 ? 1 : -1) * side * 5, A.y + py * (side % 2 ? 1 : -1) * side * 5); } else s.order = { type: 'defend', x: D.x, y: D.y };
+    if (A && r() < .55 + pr.aggr * .4) { side++; go(s, A.x + px * (side % 2 ? 1 : -1) * side * 5, A.y + py * (side % 2 ? 1 : -1) * side * 5); } else s.order = { type: 'defend', x: D.x, y: D.y };
   }
   // Support, timed to land just before the assault arrives.
   const tA = A ? clamp(Math.hypot(A.x - D.x, A.y - D.y) / 5.5 - 4, 5, 50) : 10;

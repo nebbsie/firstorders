@@ -15,7 +15,9 @@ import { exec } from './actions';
 import { NET } from './state';
 import { connected, sendMap, guestLoaded, closeNet, hostTick } from './net';
 import { menuStatus, type MapSpec } from './ui/menu';
-import { initMenu, showMenu } from './ui/menu';
+import { initMenu, showMenu, showLoading } from './ui/menu';
+import { sampleTown } from './map/procgen';
+import { CX, CY } from './config';
 import type { RawMap } from './map/types';
 import { initAudio, tickAudio } from './audio';
 initAudio();
@@ -38,11 +40,11 @@ let pending: (() => void) | null = null;
 function startMap(raw: RawMap, spec: MapSpec) {
   // Hosting: wait for the friend, then have them load the same map before the battle starts.
   if (NET.mode === 'host' && !connected()) { menuStatus('Waiting for your friend to join with your code.'); pending = () => startMap(raw, spec); return; }
-  const busy = document.getElementById('busy'); busy.hidden = false;
+  showLoading('BUILDING THE MAP');
   setTimeout(async () => {
     buildMap(raw); if (spec.spawn == null) spec.spawn = (Math.random() * 1e9) | 0; S.spawnSeed = spec.spawn;
-    if (NET.mode === 'host') { busy.textContent = 'WAITING FOR YOUR FRIEND TO LOAD THE MAP'; await sendMap(spec, S.nTeams); busy.textContent = 'BUILDING MAP'; }
-    showMenu(false); busy.hidden = true; makeTeams(); newBattle(); refreshFogPaint(); phaseCard();
+    if (NET.mode === 'host') { showLoading('WAITING FOR YOUR FRIEND TO LOAD THE MAP'); await sendMap(spec, S.nTeams); }
+    showMenu(false); showLoading(null); makeTeams(); newBattle(); refreshFogPaint(); phaseCard();
   }, 30);
 }
 // Guest: same map, same teams; the host's state fills everything else in.
@@ -52,7 +54,7 @@ function startGuest(raw: RawMap) {
   S.hqKnown = S.teams.map((t: any) => new Set([t.id])); for (const t of S.teams) { t.lost = false; t.per = { label: '' }; }
   showMenu(false); guestLoaded(); refreshFogPaint(); phaseCard(); syncUI();
 }
-function toMenu() { closeNet(); S.phase = 'menu'; showMenu(true); syncUI(); }
+function toMenu() { closeNet(); S.phase = 'menu'; showMenu(true); syncUI(); refreshFogPaint(); }
 bindStrip(toMenu);
 initMenu(startMap, startGuest, () => { if (pending) { const p = pending; pending = null; p(); } }, () => { toast(NET.mode === 'guest' ? 'The host left the game' : 'Your friend left. The AI takes their side.'); if (NET.mode === 'guest') toMenu(); });
 
@@ -92,8 +94,13 @@ function frame(now: number) {
     keyCam(dt); applyCam(); update3D(V); render(); draw2D();
     tickAudio(dt); tickHud(dt); pulse -= dt; if (pulse <= 0) { pulse = .25; hudPulse(); }
   }
+  // Menu: the camera circles slowly over the map behind it.
+  else if (S.phase === 'menu' && M) { cam.tx = CX; cam.ty = CY; cam.dist = 250; cam.pitch = .5; cam.yaw += dt * .05; applyCam(); render(); }
   requestAnimationFrame(frame);
 }
+// A town to show behind the menu, built after the first paint so the loading screen shows first.
+showMenu(true);
+setTimeout(() => { try { setMap(finishMap(sampleTown(4242))); buildMap3D(); refreshFogPaint(); } finally { showLoading(null); } }, 60);
 (document.fonts ? Promise.all([document.fonts.load('11px Departure'), document.fonts.load('16px KenneyMono')]).catch(() => { }) : Promise.resolve()).then(() => requestAnimationFrame(frame));
 // Developer hook for checking state in the browser console (dev server only).
 if (import.meta.env.DEV) (window as any).__fo = { S, NET, VIS0, SEEN0, OWN, renderer, exec, cam, fpv, step, refreshFogPaint, get M() { return M; } };

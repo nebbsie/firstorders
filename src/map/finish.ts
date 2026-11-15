@@ -66,6 +66,11 @@ function paintGround(raw: RawMap, wd: Float32Array, hAt: (x: number, y: number) 
   return cv;
 }
 
+// A light blur takes the pixel steps off road and field edges, so they read as smooth lines up close.
+function soften(cv: HTMLCanvasElement) {
+  const out = document.createElement('canvas'); out.width = cv.width; out.height = cv.height; const g = out.getContext('2d');
+  g.drawImage(cv, 0, 0); g.filter = 'blur(1.6px)'; g.drawImage(cv, 0, 0); g.filter = 'none'; return out;
+}
 // Outside the battle circle the map is scenery: grey, darker, with a thin light ring at the edge.
 function greyOutside(cv: HTMLCanvasElement) {
   const g = cv.getContext('2d'), img = g.getImageData(0, 0, cv.width, cv.height), px = img.data, s = W / cv.width;
@@ -103,7 +108,7 @@ export function finishMap(raw: RawMap): MapData {
     const a = TH[j * VW + i], b = TH[j * VW + i + 1], c = TH[(j + 1) * VW + i], d = TH[(j + 1) * VW + i + 1];
     return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
   };
-  const ground = raw.ground || paintGround(raw, wd, hAt); greyOutside(ground);
+  const ground = soften(raw.ground || paintGround(raw, wd, hAt)); greyOutside(ground);
   const play = new Uint8Array(GW * GH); for (let i = 0; i < play.length; i++) play[i] = inPlay((i % GW) * C + 1, Math.floor(i / GW) * C + 1) ? 1 : 0;
 
   const bldTop = new Float32Array(GW * GH), bldId = new Int32Array(GW * GH).fill(-1);

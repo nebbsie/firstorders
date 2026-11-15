@@ -5,8 +5,12 @@ import { S, M, OWN } from '../state';
 import { smokeR } from '../sim';
 import { unitH } from '../world';
 import { camera, cam, FOV, view, fpv } from './camera';
-import { MODELS } from './models';
+import { MODELS, DEFENCES } from './models';
 import { BTYPES } from '../map/btypes';
+import { input } from '../ui/input';
+import { K, COST, TOOLDEF, MOVERS, PLATOON_SIZE, unitKind } from '../config';
+import { canPlaceUnit } from '../world';
+import { spacingOk, left } from '../plan';
 const WALLS = [[170, 108, 86], [216, 205, 180], [184, 176, 158], [228, 223, 210], [146, 98, 80], [198, 172, 140]];
 const ROOFS = [[94, 99, 106], [152, 88, 64], [114, 84, 66], [74, 78, 84], [130, 74, 58]];
 const FLAT = new Set(['castle', 'tower', 'industrial', 'office', 'station', 'hospital', 'police', 'fire']);
@@ -63,8 +67,8 @@ varying vec3 vFoW;
         vec3 fowN = normalize(cross(dFdx(vFoW), dFdy(vFoW)));
         if (abs(fowN.y) < .3) {
           vec2 fowH = normalize(vec2(-fowN.z, fowN.x) + 1e-5);
-          vec2 fowG = vec2(fract(dot(vFoW.xz, fowH) * winScale), fract(vFoW.y * winScale * .9));
-          float fowW = step(.28, fowG.x) * step(fowG.x, .72) * step(.3, fowG.y) * step(fowG.y, .78);
+          vec2 fowG = vec2(fract(dot(vFoW.xz, fowH) * winScale), fract(vFoW.y * winScale * 1.3));
+          float fowW = step(.3, fowG.x) * step(fowG.x, .7) * step(.28, fowG.y) * step(fowG.y, .74);
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.16, .18, .22), fowW * .45);
         }
       #endif
@@ -75,13 +79,17 @@ varying vec3 vFoW;
   return m;
 }
 
+let sun: THREE.DirectionalLight = null;
+// Shadows can be turned off in the settings, for slow computers.
+export const shadowsOn = () => { try { return localStorage.getItem('fo-shadows') !== '0'; } catch { return true; } };
+export function setShadows(v: boolean) { try { localStorage.setItem('fo-shadows', v ? '1' : '0'); } catch { } if (sun) sun.castShadow = v; }
 export function initRenderer(canvas: HTMLCanvasElement) {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   // Intensities times pi give the classic (non-physical) light levels the colours were picked for.
   scene.add(new THREE.HemisphereLight('#dfe2d2', '#3a3528', 0.62 * Math.PI));
-  const sun = new THREE.DirectionalLight('#fff0d8', 0.78 * Math.PI); sun.position.set(-150, 240, -110); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+  sun = new THREE.DirectionalLight('#fff0d8', 0.78 * Math.PI); sun.position.set(-150, 240, -110); sun.castShadow = shadowsOn(); sun.shadow.mapSize.set(2048, 2048);
   Object.assign(sun.shadow.camera, { left: -300, right: 300, top: 300, bottom: -300, near: 10, far: 900 }); sun.shadow.bias = -0.0008;
   scene.add(sun); scene.add(sun.target);
   createDynamic();
@@ -215,7 +223,7 @@ export function buildMap3D() {
     b.vr = [vStart, Pa.length / 3 - vStart];
   }
   const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(Pa, 3)); bldGeo = bg; bldY = new Float32Array(Pa.filter((_, i) => i % 3 === 1)); downKey = ''; bg.setAttribute('normal', new THREE.Float32BufferAttribute(Na, 3)); bg.setAttribute('color', new THREE.Float32BufferAttribute(Ca, 3));
-  winScale.value = M_PER_UNIT / 3;
+  winScale.value = M_PER_UNIT / 4.4;
   const bm = new THREE.Mesh(bg, greyUnseen(new THREE.MeshLambertMaterial({ vertexColors: true }), true)); bm.castShadow = true; bm.receiveShadow = true; mapGroup.add(bm); xrayable.push(bm);
 
   for (const br of M.bridges) {
@@ -257,9 +265,9 @@ function pointsObj(cap: number, size: number, opacity: number) {
 }
 function createDynamic() {
   const box = new THREE.BoxGeometry(1, 1, 1);
-  mTrench = inst(box, lam('#3a2c1e'), 4000); mTrenchLip = inst(box, lam('#6b583e'), 4000); mSand = inst(box, lam('#b39d74'), 4000, true);
-  mWire = inst(new THREE.BoxGeometry(2.6, .5, .12), lam('#a39f95'), 8000); mWall = inst(box, lam('#8f8a7e'), 4000, true);
-  mTrap = inst(new THREE.BoxGeometry(2.2, .3, .3), lam('#4c4b47'), 9000, true); mRubble = inst(box, lam('#ffffff'), 20000, true);
+  const dm = () => new THREE.MeshLambertMaterial({ vertexColors: true });
+  mTrench = inst(DEFENCES.trench, dm(), 4000); mSand = inst(DEFENCES.sandbag, dm(), 4000, true); mWire = inst(DEFENCES.wire, dm(), 4000, true); mWall = inst(DEFENCES.wall, dm(), 4000, true);
+  mTrap = inst(DEFENCES.tanktrap, dm(), 4000, true); mRubble = inst(box, lam('#ffffff'), 20000, true);
   for (const k of Object.keys(MODELS)) mModel[k] = inst(MODELS[k], new THREE.MeshLambertMaterial({ vertexColors: true }), k === 'hq' || k === 'flag' ? 8 : 400, true);
   mPlane = inst(box, new THREE.MeshLambertMaterial({ color: '#c87a2a' }), 40, true);
   mCrater = inst(new THREE.CircleGeometry(1, 7).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#211b14', transparent: true, opacity: .75, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }), 700);
@@ -293,14 +301,14 @@ function updateStructs(V: View) {
     const yaw = Math.atan2(-(s.b.y - s.a.y), s.b.x - s.a.x);
     for (const ci of s.cells) {
       const x = (ci % GW) * C + 1, y = Math.floor(ci / GW) * C + 1, h = M.hAt(x, y);
-      if (s.type === 'trench') { setI(mTrench, nt++, x, y, h + .04, 2, .1, 2, 0); setI(mTrenchLip, nl++, x, y, h + .18, 2.1, .35, .5, yaw); }
-      else if (s.type === 'sandbag') setI(mSand, ns++, x, y, h + .4, 2.05, .8, 1.1, yaw);
-      else if (s.type === 'wire') { setI(mWire, nw++, x, y, h + .3, 1, 1, 1, yaw + .78); setI(mWire, nw++, x, y, h + .3, 1, 1, 1, yaw - .78); }
-      else if (s.type === 'tanktrap') { setI(mTrap, nk++, x, y, h + .35, 1, 1, 1, yaw + .78); setI(mTrap, nk++, x, y, h + .35, 1, 1, 1, yaw - .78); setI(mTrap, nk++, x, y, h + .75, .6, 1, 1, yaw); }
-      else setI(mWall, nwl++, x, y, h + 1.2, 2.02, 2.4, 2.02, 0);
+      if (s.type === 'trench') setI(mTrench, nt++, x, y, h + .02, 1, 1, 1, yaw);
+      else if (s.type === 'sandbag') setI(mSand, ns++, x, y, h, 1.05, 1.1, 1.3, yaw);
+      else if (s.type === 'wire') setI(mWire, nw++, x, y, h, 1.05, 1, 1, yaw);
+      else if (s.type === 'tanktrap') setI(mTrap, nk++, x, y, h, 1, 1, 1, yaw + (nk % 3) * .5);
+      else setI(mWall, nwl++, x, y, h, 1, 1, 1, 0);
     }
   }
-  done(mTrap, nk); done(mTrench, nt); done(mTrenchLip, nl); done(mSand, ns); done(mWire, nw); done(mWall, nwl);
+  done(mTrap, nk); done(mTrench, nt); done(mSand, ns); done(mWire, nw); done(mWall, nwl);
 }
 
 export function update3D(V: View) {
@@ -341,6 +349,25 @@ export function update3D(V: View) {
     const hd0 = Math.atan2(-(H / 2 - s.pos[0][1]), W / 2 - s.pos[0][0]);
     for (const p of s.pos) { if (MODEL_KINDS.has(s.kind)) putU(p[0], p[1], unitH(p[0], p[1]) + .9, c, .75); else man({ x: p[0], y: p[1], hd: hd0 }, unitH(p[0], p[1]), c, .75); }
     if (MODEL_KINDS.has(s.kind)) emp(s.kind, s.pos[0][0], s.pos[0][1], c, Math.atan2(-(H / 2 - s.pos[0][1]), W / 2 - s.pos[0][0]));
+  }
+  // Previews while planning: the unit you are about to place, or where the selected units will stand.
+  const hv = input.hover, tl = TOOLDEF[S.tool];
+  if (plan && hv && !input.ptr && tl) {
+    const ghost = (kind: string, x: number, y: number, c: number[], hd: number) => {
+      const uk = unitKind(kind);
+      if (MODEL_KINDS.has(uk)) { const m = mModel[uk]; if (m && nModel[uk] < 400) setI(m, nModel[uk]++, x, y, unitH(x, y), 1.6, 1.6, 1.6, hd, c); return; }
+      const n = PLATOON_SIZE[kind] || 1, fx = Math.cos(-hd), fy = Math.sin(-hd);
+      for (let i = 0; i < n; i++) { const col = (i % 4 - 1.5) * 2.3, row = (Math.floor(i / 4) - 1.5) * 2.3, px = x - fy * col - fx * row, py = y + fx * col - fy * row; man({ x: px, y: py, hd }, unitH(px, py), c, 1); }
+    };
+    const toMid = Math.atan2(-(H / 2 - hv.y), W / 2 - hv.x);
+    if ((tl.mode === 'point' || tl.mode === 'aim') && K[unitKind(S.tool)] && S.tool !== 'garrison') {
+      const ok = canPlaceUnit(NET.me, S.tool, hv.x, hv.y) && spacingOk(NET.me, S.tool, hv.x, hv.y) && left(NET.me) >= COST[S.tool];
+      ghost(S.tool, hv.x, hv.y, ok ? [.55, 1, .65] : [1, .4, .36], toMid);
+    } else if (S.tool === 'attack' || S.tool === 'defend') {
+      const sel = (S.selMany || []).filter((s: any) => s.team === NET.me && MOVERS.includes(s.kind)); let gx = 0, gy = 0, k = 0;
+      for (const s of sel) { gx += s.x; gy += s.y; k++; }
+      if (k) { const a = Math.atan2(hv.y - gy / k, hv.x - gx / k), dx = Math.cos(a), dy = Math.sin(a); sel.forEach((s: any, j: number) => { const off = (j - (k - 1) / 2) * 11; ghost(s.kind, hv.x - dy * off, hv.y + dx * off, [.5, .78, 1], -a); }); }
+    }
   }
   // Last known enemy positions, shown faded.
   for (const g of V.ghosts) { if (ng >= 3000) break; const c = TRGB[sw(g.team)]; gp[ng * 3] = g.x - W / 2; gp[ng * 3 + 1] = unitH(g.x, g.y) + .9; gp[ng * 3 + 2] = g.y - H / 2; gc[ng * 3] = c[0]; gc[ng * 3 + 1] = c[1]; gc[ng * 3 + 2] = c[2]; ng++; }

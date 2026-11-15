@@ -10,7 +10,7 @@
 </head>
 <body>
 <div class="game" id="game">
-  <div class="stage"><canvas id="gl"></canvas><canvas id="cv" aria-label="Battle map"></canvas><div class="busy" id="busy" hidden>BUILDING MAP</div></div>
+  <div class="stage"><canvas id="gl"></canvas><canvas id="cv" aria-label="Battle map"></canvas><div class="busy" id="busy"><div class="load"><div class="title">FIRST ORDERS</div><div id="busyText">LOADING</div><div class="loadbar"><i></i></div></div></div></div>
 
   <div class="hud topleft"><button class="btn" id="bMenu" title="Pick another place">MENU</button><button class="btn side" id="bHelp">HELP</button></div>
   <div class="hud speedreq" id="speedReq" hidden><span id="srText"></span><button class="btn" id="srAgree">AGREE</button></div>
@@ -53,7 +53,31 @@
 
   <div class="hud toast" id="toast" hidden></div>
   <button class="hud btn fpvexit" id="fpvExit" hidden title="Back to the map (Esc)">EXIT FIRST PERSON · ESC</button>
-  <div class="hud qbar" id="qbar" hidden><button class="btn" data-q="attack">ATTACK</button><button class="btn" data-q="defend">DEFEND</button><button class="btn" data-q="demolish">DEMOLISH</button><button class="btn" data-q="stop">STOP</button><span class="sep"></span><button class="btn" data-st="careful" title="Slow, uses cover, hard to pin down">CAREFUL</button><button class="btn" data-st="rush" title="Fast, keeps moving under fire, shoots worse">RUSH</button><button class="btn" data-st="ambush" title="Hidden, holds fire until the enemy is close">AMBUSH</button><button class="btn" data-st="fallback" title="Pull back when half the unit is lost">FALL BACK</button></div>
+  <div class="hud qbar" id="qbar" hidden>
+    <div class="qhead"><b id="qName"></b><span id="qInfo"></span></div>
+    <div class="qrow"><span class="ql">ORDER</span>
+      <button class="btn qo" data-q="attack" title="Go there and take it. Click the ground; drag to set facing; Shift-click first for a waypoint."><svg viewBox="0 0 12 12"><path d="M1 6h8M6 2l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>ATTACK<kbd>1</kbd></button>
+      <button class="btn qo" data-q="defend" title="Go there, dig in and hold."><svg viewBox="0 0 12 12"><path d="M6 1l4 1.5v3.2c0 2.6-1.7 4.3-4 5.3-2.3-1-4-2.7-4-5.3V2.5z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>DEFEND<kbd>2</kbd></button>
+      <button class="btn qo" data-q="demolish" title="Engineers: blow up a bridge or building."><svg viewBox="0 0 12 12"><path d="M6 1v3M6 8v3M1 6h3M8 6h3M2.5 2.5l2 2M7.5 7.5l2 2M9.5 2.5l-2 2M4.5 7.5l-2 2" stroke="currentColor" stroke-width="1.3"/></svg>DEMOLISH</button>
+      <button class="btn qx" data-q="stop" title="Clear this unit's order">CLEAR</button>
+    </div>
+    <div class="qrow"><span class="ql"></span>
+      <button class="btn qo" data-q="suppress" title="Stay put and fire on a spot to pin the enemy there, seen or not.">SUPPRESS<kbd>6</kbd></button>
+      <button class="btn qo" data-q="follow" title="Follow another of your units, a little behind it.">FOLLOW<kbd>7</kbd></button>
+    </div>
+    <div class="qrow"><span class="ql">PACE</span>
+      <div class="seg">
+        <button class="btn" data-st="normal" title="Walk, stop to fight">NORMAL</button>
+        <button class="btn" data-st="careful" title="Slow, uses cover, hard to pin down">CAREFUL<kbd>3</kbd></button>
+        <button class="btn" data-st="rush" title="Fast, keeps moving under fire, shoots worse">RUSH<kbd>4</kbd></button>
+        <button class="btn" data-st="ambush" title="Hidden, holds fire until the enemy is close">AMBUSH<kbd>5</kbd></button>
+      </div>
+    </div>
+    <div class="qrow"><span class="ql">IF HURT</span>
+      <button class="btn qf" data-st="fallback" title="Pull back towards home when half the unit is lost"><i class="tick"></i>FALL BACK<kbd>F</kbd></button>
+    </div>
+    <i class="qstem"></i>
+  </div>
   <div class="hud panel banner" id="banner" hidden><b id="bannerBig"></b><span id="bannerSmall"></span></div>
   <div class="hud panel card" id="card" hidden><div class="ph"><span id="cardTitle"></span></div><div class="pb"><div id="cardBody"></div><div class="row"><button class="btn go" id="cardOk">GOT IT</button></div></div></div>
   <div class="hud panel result" id="result" hidden></div>
@@ -62,7 +86,7 @@
     <div class="ph"><span>How it works</span><button class="btn x" id="helpClose" title="Close">X</button></div>
     <div class="pb helpbody">
       <h3>A BATTLE</h3>
-      <p>Take the enemy HQ and hold your own. An HQ falls when enemy troops hold its ground for a full minute (one phase); a bar at the top shows the count. Driven off, it runs back down. Each phase lasts 60 seconds: before it you build, buy and give orders, then it plays out on its own. At the end, watch the replay.</p>
+      <p>Take the enemy HQ and hold your own. An HQ falls when enemy troops hold its ground for 40 seconds; a bar at the top shows the count. Driven off, it runs back down. Each phase lasts 60 seconds: before it you build, buy and give orders, then it plays out on its own. At the end, watch the replay.</p>
       <h3>GROUND</h3>
       <p>The battle is the circle (1, 2 or 3 km across); the grey ring around it is scenery. You can only build on ground you hold, tinted your colour. Troops that clearly hold ground take it. Supply each phase comes from the ground you hold.</p>
       <h3>DEPLOYING</h3>
@@ -71,9 +95,9 @@
       <p>Each unit has its own speed: riflemen cover about 125 m a phase, tanks about twice that, more on roads. The order line is solid as far as the unit gets this phase, then grey to where it arrives later. Units carry on with an order in later phases. BEGIN warns you about units with no orders.</p>
       <h3>FIRE AND MOVEMENT</h3>
       <p>Fire pins men down: MGs and blasts most, cover less. Pinned men stop and shoot badly; badly pinned men stop shooting. Pin an enemy with MGs or mortars, then move round them. Smoke (from phase 1) blocks sight for about 30 s.</p>
-      <p>Orders: Shift-click sets a waypoint first, for a flank. CAREFUL is slow, hard to pin. RUSH is fast and keeps moving under fire but shoots worse. AMBUSH hides and holds fire until the enemy is close. FALL BACK pulls a unit back when it loses half its men. In battle, each tag shows what the unit is doing and its strength.</p>
+      <p>Orders: Shift-click sets a waypoint first, for a flank. SUPPRESS makes a unit stay put and fire on a spot, to pin whoever is there. FOLLOW sends it along behind another unit. DEFEND near a trench or sandbags mans them. A unit caught by surprise goes to ground and is slow to fire back. CAREFUL is slow, hard to pin and hard to surprise. RUSH is fast and keeps moving under fire but shoots worse. AMBUSH hides and holds fire until the enemy is close. FALL BACK pulls a unit back when it loses half its men. In battle, each tag shows what the unit is doing and its strength.</p>
       <h3>WINNING</h3>
-      <p>Hold the enemy HQ ground for a full minute; a bar at the top shows the count. If nobody has won after 10 phases, the side holding more ground wins. An HQ under attack at the end gives up to three phases of overtime.</p>
+      <p>Hold the enemy HQ ground for 40 seconds; a bar at the top shows the count. If nobody has won after 10 phases, the side holding more ground wins. An HQ under attack at the end gives up to three phases of overtime.</p>
       <h3>CAMPAIGN AND FRIENDS</h3>
       <p>The campaign is seven battles; each win unlocks more units. With a friend: HOST A GAME, send the code, and choose AGAINST ME or ON MY TEAM. Speed and pause change only when you both agree.</p>
       <h3>FOG OF WAR</h3>
@@ -89,31 +113,54 @@
       </tbody></table>
       <h3>CONTROLS</h3>
       <p>Click or drag a box to select your units. Pick ATTACK or DEFEND, then click the ground. Middle-drag pans, right-drag turns, scroll zooms. WASD pans, Q and E turn, Home resets the view. Right-click or Esc drops the tool. Space pauses. Delete removes what you placed this phase.</p>
-      <p class="note">Map data © OpenStreetMap contributors. Elevation: AWS Terrain Tiles.</p>
+      <p class="note">Map data (c) OpenStreetMap contributors. Elevation: AWS Terrain Tiles.</p>
     </div>
   </div>
 
   <div class="menu" id="menu">
-    <div class="panel menubox">
+    <div class="menuside">
       <div class="title">FIRST ORDERS</div>
-      <p class="hint">Battles on real places. Plan, watch, reinforce, replay.</p>
-      <h3 class="soloonly">CAMPAIGN</h3>
-      <div class="hint soloonly">Win each battle to unlock more units for the next.</div>
-      <div class="missions soloonly" id="mCampaign"></div>
-      <h3>PLAY A FRIEND</h3>
-      <div class="row" style="margin-top:0"><button class="btn side guestonly" id="mHost" title="Get a code to send to your friend, then pick the map">HOST A GAME</button><input id="mCode" class="input hostonly" placeholder="CODE" maxlength="5" autocomplete="off" style="max-width:90px;flex:none;text-transform:uppercase"><button class="btn hostonly" id="mJoin">JOIN</button><button class="btn" id="mSolo" title="Play against the AI instead">VS AI</button></div>
-      <div class="row" id="mSideRow" hidden style="margin-top:6px"><span class="k" style="align-self:center">FRIEND</span><button class="btn on" data-side="against" title="Your friend leads the other side">AGAINST ME</button><button class="btn" data-side="with" title="You share one side and its supply, against the AI">ON MY TEAM</button></div>
-      <div class="hint" id="mNet">Or play against the AI. Your friend needs the same website.</div>
-      <h3 class="hostonly">FIGHT IN A REAL PLACE</h3>
-      <div class="searchrow hostonly"><input id="mQuery" class="input" placeholder="Town, street or postcode" autocomplete="off"><button class="btn" id="mSearch">SEARCH</button></div>
-      <div class="results hostonly" id="mResults"></div>
-      <div class="hint" id="mStatus">Each place downloads once, then it is kept in this browser.</div>
-      <h3 class="hostonly">BATTLE SIZE</h3>
-      <div class="row hostonly" id="mSize" style="margin-top:0"><button class="btn" data-km="1" title="Close fighting, fast battles">1 KM</button><button class="btn" data-km="2" title="Room to manoeuvre">2 KM</button><button class="btn" data-km="3" title="A whole town; larger download">3 KM</button></div>
-      <h3 class="hostonly">TEAMS</h3>
-      <div class="row hostonly" id="mTeams"><button class="btn" data-n="2">2</button><button class="btn" data-n="3">3</button><button class="btn" data-n="4">4</button><button class="btn" data-n="6">6</button></div>
-      <div class="row menuact hostonly"><button class="btn go mapbtn" id="mImport" disabled>IMPORT AND PLAY</button><button class="btn side mapbtn" id="mSample">PLAY SAMPLE TOWN</button></div>
-      <p class="note">Map data © OpenStreetMap contributors. Elevation: AWS Terrain Tiles.</p>
+      <div class="mscreen" data-s="home">
+        <button class="btn mbig" data-go="campaign"><b>CAMPAIGN</b><span>Seven battles. Each win unlocks more units.</span></button>
+        <button class="btn mbig" data-go="skirmish"><b>SKIRMISH</b><span>One battle against the AI, in any town.</span></button>
+        <button class="btn mbig" data-go="multi"><b>MULTIPLAYER</b><span>With a friend: against each other or on one team.</span></button>
+        <button class="btn mbig" data-go="settings"><b>SETTINGS</b><span>Sound, shadows, campaign progress.</span></button>
+      </div>
+      <div class="mscreen" data-s="campaign" hidden>
+        <h3>CAMPAIGN</h3>
+        <div class="hint">Win each battle to unlock more units for the next.</div>
+        <div class="missions" id="mCampaign"></div>
+      </div>
+      <div class="mscreen" data-s="skirmish" hidden>
+        <h3>SKIRMISH</h3>
+        <div id="mapSlotSkirmish"></div>
+      </div>
+      <div class="mscreen" data-s="multi" hidden>
+        <h3>MULTIPLAYER</h3>
+        <div class="row" style="margin-top:0"><button class="btn side" id="mHost" title="Get a code to send to your friend, then pick the map">HOST A GAME</button><span class="k" id="mOr" style="align-self:center">OR</span><input id="mCode" class="input" placeholder="CODE" maxlength="5" autocomplete="off" style="max-width:90px;flex:none;text-transform:uppercase"><button class="btn" id="mJoin">JOIN</button></div>
+        <div class="row" id="mSideRow" hidden style="margin-top:6px"><span class="k" style="align-self:center">FRIEND</span><button class="btn on" data-side="against" title="Your friend leads the other side">AGAINST ME</button><button class="btn" data-side="with" title="You share one side and its supply, against the AI">ON MY TEAM</button></div>
+        <div class="hint" id="mNet">Host a game and send the code to your friend, or type their code and join.</div>
+        <div id="mapSlotMulti"></div>
+      </div>
+      <div class="mscreen" data-s="settings" hidden>
+        <h3>SETTINGS</h3>
+        <div class="setrow"><span>SOUND</span><button class="btn" id="sSound"></button></div>
+        <div class="setrow"><span>SHADOWS</span><button class="btn" id="sShadow"></button></div>
+        <div class="setrow"><span>CAMPAIGN PROGRESS</span><button class="btn stop" id="sReset">RESET</button></div>
+        <div class="hint" id="sNote"></div>
+      </div>
+      <button class="btn mback" id="mBack" hidden>&lt; BACK</button>
+      <p class="note">Map data (c) OpenStreetMap contributors. Elevation: AWS Terrain Tiles.</p>
+    </div>
+    <div id="mapPick" hidden>
+      <div class="searchrow"><input id="mQuery" class="input" placeholder="Town, street or postcode" autocomplete="off"><button class="btn" id="mSearch">SEARCH</button></div>
+      <div class="results" id="mResults"></div>
+      <div class="hint" id="mStatus">Search for a real place, or play a sample town. Each place downloads once.</div>
+      <h3>BATTLE SIZE</h3>
+      <div class="row" id="mSize" style="margin-top:0"><button class="btn" data-km="1" title="Close fighting, fast battles">1 KM</button><button class="btn" data-km="2" title="Room to manoeuvre">2 KM</button><button class="btn" data-km="3" title="A whole town; larger download">3 KM</button></div>
+      <h3>TEAMS</h3>
+      <div class="row" id="mTeams"><button class="btn" data-n="2">2</button><button class="btn" data-n="3">3</button><button class="btn" data-n="4">4</button><button class="btn" data-n="6">6</button></div>
+      <div class="row menuact"><button class="btn go mapbtn" id="mImport" disabled>PLAY THIS PLACE</button><button class="btn side mapbtn" id="mSample">PLAY SAMPLE TOWN</button></div>
     </div>
   </div>
 </div>

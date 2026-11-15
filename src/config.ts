@@ -8,7 +8,7 @@ export function clampPlay(x: number, y: number, margin = 6) { const dx = x - CX,
 export let M_PER_UNIT = 2.5, BATTLE_KM = 1;
 export function setBattleSize(km: number) { BATTLE_KM = km; M_PER_UNIT = 2.5 * km; }
 // A battle runs phase after phase until one HQ is left. PHASES is a safety limit.
-export const DT = 0.05, BUDGET = 700, PHASES = 10, PHASE_LEN = 60, HS = 0.3, HQ_HOLD = 60;
+export const DT = 0.05, BUDGET = 700, PHASES = 10, PHASE_LEN = 60, HS = 0.3, HQ_HOLD = 40;
 // Ground-control grid: 4 x 4 unit cells.
 export const IW = 140, IH = 140, IC = 4;
 
@@ -79,6 +79,8 @@ export const TOOLDEF: Record<string, { id: string; name: string; mode: ToolMode;
 TOOLS.forEach(g => g.items.forEach(t => TOOLDEF[t[0]] = { id: t[0], name: t[1], mode: t[2], tip: t[3] }));
 TOOLDEF.select = { id: 'select', name: 'SELECT', mode: 'select', tip: '' };
 TOOLDEF.demolish = { id: 'demolish', name: 'DEMOLISH', mode: 'order', tip: '' };
+TOOLDEF.suppress = { id: 'suppress', name: 'SUPPRESS', mode: 'order', tip: '' };
+TOOLDEF.follow = { id: 'follow', name: 'FOLLOW', mode: 'order', tip: '' };
 // Hover window text for each tool: what it is, where it works, what beats it.
 export const INFO: Record<string, [string, string, string]> = {
   smoke: ['Six mortar smoke rounds make a screen about 100 m wide. No one sees through it for about 30 s. Cover an advance or blind an MG.', 'Between your attack and their guns', 'Wind of time: it thins out'],

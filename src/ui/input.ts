@@ -66,7 +66,7 @@ export function initInput(cv: HTMLCanvasElement) {
     if (tool.mode === 'order') {
       // Press on the target for the selected units; drag from there to set the way they face.
       const sel = (S.selMany || []).filter((s: any) => S.tool === 'demolish' ? s.kind === 'engineers' : MOVERS.includes(s.kind));
-      if (sel.length) { input.ptr = { mode: 'orderGroup', w0: w, w, shift: e.shiftKey }; return; }
+      if (sel.length) { input.ptr = { mode: 'orderGroup', w0: w, w, shift: e.shiftKey, x0: sx, y0: sy }; return; }
       toast('Select your platoons, snipers or tanks first'); return;
     }
     input.ptr = { mode: tool.mode, w0: w, w };
@@ -116,6 +116,15 @@ export function initInput(cv: HTMLCanvasElement) {
       done(actSquad(t, a.x, a.y, face)); return;
     }
     // Shift-click first sets a waypoint (to go round a flank); the next click sets the goal.
+    if (p.mode === 'orderGroup' && t === 'suppress') {
+      const sel = (S.selMany || []).filter((s: any) => MOVERS.includes(s.kind) && s.kind !== 'tank');
+      actOrders(sel.map((s: any) => ({ id: s.id, type: 'suppress', x: p.w0.x, y: p.w0.y }))); setSel(null); setTool('select'); toast('They will fire on that spot from where they stand.'); return;
+    }
+    if (p.mode === 'orderGroup' && t === 'follow') {
+      const hit = labelAt(p.x0 ?? -1, p.y0 ?? -1) || hitTest(p.w0, true), sel = (S.selMany || []).filter((s: any) => MOVERS.includes(s.kind) && s !== hit);
+      if (!hit || hit.team !== NET.me || !MOVERS.includes(hit.kind)) { toast('Click one of your own platoons or tanks to follow'); return; }
+      actOrders(sel.map((s: any) => ({ id: s.id, type: 'follow', x: hit.x, y: hit.y, follow: hit.id }))); setSel(null); setTool('select'); toast(`Following ${hit.call || 'the unit'}`); return;
+    }
     if (p.mode === 'orderGroup' && p.shift && S.tool !== 'demolish') { S.via = { x: p.w0.x, y: p.w0.y }; toast('Waypoint set. Now click the goal.'); return; }
     if (p.mode === 'orderGroup') { const dragged = Math.hypot(w.x - p.w0.x, w.y - p.w0.y) > 4; orderGroup(S.selMany, t, p.w0, dragged ? Math.atan2(w.y - p.w0.y, w.x - p.w0.x) : undefined); setTool('select'); return; }
     if (p.mode === 'point') {
@@ -159,6 +168,9 @@ export function initInput(cv: HTMLCanvasElement) {
   window.addEventListener('keydown', e => {
     if ((e.target as HTMLElement).closest && (e.target as HTMLElement).closest('input,textarea')) return; keys.add(e.key.toLowerCase());
     if (e.key === 'Home') { cam.userMoved = false; fit(); }
+    // Order panel keys: 1 attack, 2 defend, 3 careful, 4 rush, 5 ambush, F fall back.
+    const qk: Record<string, string> = { '1': '[data-q="attack"]', '2': '[data-q="defend"]', '3': '[data-st="careful"]', '4': '[data-st="rush"]', '5': '[data-st="ambush"]', '6': '[data-q="suppress"]', '7': '[data-q="follow"]', f: '[data-st="fallback"]' }, qb = qk[e.key.toLowerCase()], qel = document.getElementById('qbar');
+    if (qb && qel && !qel.hidden) { const b = qel.querySelector(qb) as HTMLElement; if (b && b.onclick) { b.click(); e.preventDefault(); return; } }
     if (e.key === 'Escape' && S.fpv != null) { S.fpv = null; return; }
     if (e.key === 'Escape') { if (S.tool !== 'select') setTool('select'); else setSel(null); }
     if ((e.key === 'Delete' || e.key === 'Backspace') && S.sel && canRemove(S.sel)) { actRemove(S.sel.id); setSel(null); e.preventDefault(); }

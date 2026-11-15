@@ -16,7 +16,7 @@ export function exec(team: number, m: any, player = 0): any {
     case 'squad': return live(addSquad(team, m.kind, m.x, m.y, m.face));
     case 'struct': return live(addStruct(team, m.type, m.a, m.b));
     case 'support': { const s = addSupport(team, m.type, m.a, m.b, m.t); if (!s) return null; if (m.bridge != null) s.bridge = m.bridge; if (m.bld != null) s.bld = m.bld; return live(s); }
-    case 'orders': for (const o of m.list) { const s = S.squads.find((q: any) => q.id === o.id && q.team === team); if (!s) continue; s.order = o.type ? { type: o.type, x: o.x, y: o.y, dir: o.dir, bridge: o.bridge, bld: o.bld, via: o.via || null } : null; if (S.phase === 'battle' && s.order) applyOrder(s); } return null;
+    case 'orders': for (const o of m.list) { const s = S.squads.find((q: any) => q.id === o.id && q.team === team); if (!s) continue; s.order = o.type ? { type: o.type, x: o.x, y: o.y, dir: o.dir, bridge: o.bridge, bld: o.bld, via: o.via || null, follow: o.follow } : null; if (S.phase === 'battle' && s.order) applyOrder(s); } return null;
     // How a unit moves and fights: normal, careful, rush or ambush; and whether it falls back when badly hurt.
     case 'stance': for (const id of m.ids) { const s = S.squads.find((q: any) => q.id === id && q.team === team); if (!s) continue; if (m.stance) s.stance = m.stance === 'normal' ? undefined : m.stance; if (m.fallback != null) s.fallback = m.fallback; } return null;
     case 'remove': { const it = byId(m.id); if (it && it.team === team && it.round === S.round && !it.members && !it.live && S.phase === 'plan') removeItem(it); return null; }

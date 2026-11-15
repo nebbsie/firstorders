@@ -4,7 +4,9 @@ import { searchPlaces, importPlace, type Place } from '../map/osm';
 import { sampleTown } from '../map/procgen';
 import { host, join, closeNet } from '../net';
 import type { RawMap } from '../map/types';
-import { MISSIONS, progress, useMission, unlockedAt } from '../campaign';
+import { MISSIONS, progress, useMission } from '../campaign';
+import { toggleMute, isMuted } from '../audio';
+import { setShadows, shadowsOn } from '../render/scene';
 
 const $ = (s: string) => document.querySelector(s) as HTMLElement;
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -42,8 +44,9 @@ export function initMenu(start: (raw: RawMap, spec: MapSpec) => void, guestMap: 
   const busy = (v: boolean) => document.querySelectorAll('#menu .mapbtn').forEach((b: any) => b.disabled = v || (b.id === 'mImport' && !chosen));
   $('#mImport').onclick = async () => {
     if (!chosen) return; useMission(null); busy(true); const spec: MapSpec = { kind: 'osm', place: chosen, km: BATTLE_KM };
-    try { const raw = await loadSpec(spec, s => menuStatus(s)); menuStatus('Ready'); start(raw, spec); }
-    catch (e: any) { menuStatus(e.message || 'Import failed', true); }
+    showLoading('GETTING THE MAP');
+    try { const raw = await loadSpec(spec, s => { menuStatus(s); showLoading(s.toUpperCase()); }); menuStatus('Ready'); start(raw, spec); }
+    catch (e: any) { showLoading(null); menuStatus(e.message || 'Import failed', true); }
     finally { busy(false); }
   };
   $('#mSample').onclick = () => { useMission(null); const spec: MapSpec = { kind: 'sample', seed: 1000 + Math.floor(Math.random() * 9000), km: BATTLE_KM }; start(sampleTown(spec.seed), spec); };
@@ -60,17 +63,46 @@ export function initMenu(start: (raw: RawMap, spec: MapSpec) => void, guestMap: 
   window.addEventListener('fo-mission', (e: any) => { if (e.detail < MISSIONS.length) mission(e.detail); });
   window.addEventListener('fo-campaign', camp);
   document.querySelectorAll('#mSideRow .btn').forEach((b: any) => b.onclick = () => { S.coop = b.dataset.side === 'with'; document.querySelectorAll('#mSideRow .btn').forEach((x: any) => x.classList.toggle('on', x === b)); });
-  // Play a friend. The host picks the map; the guest gets the same map and plays the second team.
-  $('#mHost').onclick = () => { useMission(null); host({ status: netStatus, joined: () => { S.guestOn = true; onJoined(); }, left: onLeft }); $('#mNet').style.color = 'var(--gold)'; document.querySelectorAll('.guestonly,.soloonly').forEach((e: any) => e.hidden = true); $('#mSideRow').hidden = false; };
+  // Screens: home, then campaign, skirmish, multiplayer or settings. The map chooser is one block that
+  // moves to the screen that needs it (skirmish, or multiplayer once you host).
+  const pick = $('#mapPick');
+  const show = (name: string) => {
+    document.querySelectorAll('.mscreen').forEach((e: any) => e.hidden = e.dataset.s !== name); $('#mBack').hidden = name === 'home';
+    if (name !== 'multi' && NET.mode !== 'solo') { closeNet(); S.coop = false; }
+    if (name === 'skirmish') { useMission(null); $('#mapSlotSkirmish').appendChild(pick); pick.hidden = false; }
+    else pick.hidden = true;
+    if (name === 'multi') { $('#mSideRow').hidden = true; for (const id of ['#mHost', '#mOr', '#mCode', '#mJoin']) $(id).hidden = false; netStatus('Host a game and send the code to your friend, or type their code and join.'); $('#mNet').style.color = ''; }
+    if (name === 'campaign') camp();
+    if (name === 'settings') settings();
+  };
+  document.querySelectorAll('.mbig').forEach((b: any) => b.onclick = () => show(b.dataset.go));
+  $('#mBack').onclick = () => show('home');
+  window.addEventListener('fo-menu', () => show('home'));
+  // Multiplayer. The host picks the map; the guest gets the same map.
+  $('#mHost').onclick = () => {
+    useMission(null); host({ status: netStatus, joined: () => { S.guestOn = true; onJoined(); }, left: onLeft }); $('#mNet').style.color = 'var(--gold)';
+    for (const id of ['#mHost', '#mOr', '#mCode', '#mJoin']) $(id).hidden = true; $('#mSideRow').hidden = false; $('#mapSlotMulti').appendChild(pick); pick.hidden = false;
+  };
   $('#mJoin').onclick = () => {
     const c = ($('#mCode') as HTMLInputElement).value.trim(); if (c.length < 5) { netStatus('Type the 5-letter code from your friend.'); return; }
     join(c, {
       status: netStatus, left: onLeft,
-      map: async (spec: MapSpec) => { netStatus('Loading the map'); try { guestMap(await loadSpec(spec, netStatus)); } catch (e: any) { netStatus(e.message || 'Map failed to load'); } },
+      map: async (spec: MapSpec) => { showLoading('LOADING THE MAP'); try { guestMap(await loadSpec(spec, t => showLoading(t.toUpperCase()))); } catch (e: any) { netStatus(e.message || 'Map failed to load'); } showLoading(null); },
     });
-    document.querySelectorAll('.hostonly,.soloonly').forEach((e: any) => e.hidden = true);
+    $('#mHost').hidden = true; $('#mOr').hidden = true;
   };
-  $('#mSolo').onclick = () => { closeNet(); S.coop = false; netStatus('Playing against the AI.'); document.querySelectorAll('.hostonly,.guestonly,.soloonly').forEach((e: any) => e.hidden = false); $('#mSideRow').hidden = true; };
+  // Settings: kept in this browser.
+  const settings = () => {
+    $('#sSound').textContent = isMuted() ? 'OFF' : 'ON'; $('#sSound').classList.toggle('on', !isMuted());
+    $('#sShadow').textContent = shadowsOn() ? 'ON' : 'OFF'; $('#sShadow').classList.toggle('on', shadowsOn());
+    $('#sNote').textContent = `Campaign: ${progress()} of ${MISSIONS.length} missions won.`;
+  };
+  $('#sSound').onclick = () => { toggleMute(); settings(); const b = document.getElementById('vSound'); if (b) b.classList.toggle('on', !isMuted()); };
+  $('#sShadow').onclick = () => { setShadows(!shadowsOn()); settings(); };
+  let resetArmed = 0;
+  $('#sReset').onclick = () => { if (performance.now() - resetArmed > 4000) { resetArmed = performance.now(); $('#sNote').textContent = 'Press RESET again to clear your campaign progress.'; return; } try { localStorage.removeItem('fo-campaign'); } catch { } resetArmed = 0; settings(); };
 }
-export function showMenu(v: boolean) { $('#menu').hidden = !v; }
+// The loading screen: a line of text, or null to hide it.
+export function showLoading(text: string | null) { const b = $('#busy'); if (text == null) { b.hidden = true; return; } $('#busyText').textContent = text; b.hidden = false; }
+export function showMenu(v: boolean) { $('#menu').hidden = !v; $('#game').classList.toggle('inmenu', v); if (v) window.dispatchEvent(new Event('fo-menu')); }
 export const isGuest = () => NET.mode === 'guest';

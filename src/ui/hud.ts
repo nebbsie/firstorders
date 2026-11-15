@@ -28,19 +28,23 @@ function quickBar() {
   if (!mine.length || S.phase !== 'plan') { el.hidden = true; return; }
   let x = 0, y = 0, n = 0; for (const s of mine) { const c = sqCenter(s); if (c) { x += c[0]; y += c[1]; n++; } }
   if (!n) { el.hidden = true; return; }
-  const [sx, sy] = P(x / n, y / n, 4); el.hidden = false; el.style.left = sx + 'px'; el.style.top = (sy - 30) + 'px';
+  // Above the unit, clear of its name tag, and kept on the screen.
+  const [sx, sy] = P(x / n, y / n, 4); el.hidden = false; const hw = el.offsetWidth / 2 + 6;
+  el.style.left = clamp(sx, hw + 190, window.innerWidth - hw) + 'px'; el.style.top = Math.max(el.offsetHeight + 46, sy - 46) + 'px';
+  $('#qName').textContent = mine.length === 1 ? (mine[0].call || KIND_NAME[mine[0].kind]) : `${mine.length} UNITS`;
+  $('#qInfo').textContent = mine.length === 1 ? `${KIND_NAME[mine[0].kind].toUpperCase()} · ${mine[0].members ? aliveMembers(mine[0]).length : mine[0].pos.length} MEN` : mine.map((s: any) => s.call).join(' ');
   const eng = mine.some((s: any) => s.kind === 'engineers'), st = mine[0].stance || 'normal', fb = mine.every((s: any) => s.fallback), key = eng + S.tool + mine.some((s: any) => s.order) + st + fb + mine.map((s: any) => s.id).join(',');
   if (el.dataset.k === key) return; el.dataset.k = key;
   el.querySelectorAll('.btn[data-st]').forEach((b: any) => {
     const v = b.dataset.st; b.classList.toggle('on', v === 'fallback' ? fb : v === st);
-    b.onclick = () => { const ids = mine.map((s: any) => s.id); if (v === 'fallback') actStance(ids, undefined, !fb); else actStance(ids, v === st ? 'normal' : v); el.dataset.k = ''; };
+    b.onclick = () => { const ids = mine.map((s: any) => s.id); if (v === 'fallback') actStance(ids, undefined, !fb); else actStance(ids, v); el.dataset.k = ''; };
   });
   el.querySelectorAll('.btn[data-q]').forEach((b: any) => {
     const q = b.dataset.q; b.hidden = q === 'demolish' ? !eng : q === 'stop' ? !mine.some((s: any) => s.order) : false; b.classList.toggle('on', S.tool === q);
     b.onclick = () => {
       if (q === 'stop') { actOrders(S.selMany.map((s: any) => ({ id: s.id, type: null }))); renderInspector(); return; }
       if (S.tool === q) { setTool('select'); return; }
-      closeTools(); setTool(q); toast(q === 'demolish' ? 'Click the bridge or building to blow up.' : 'Click the ground. Drag to set the way they face.');
+      closeTools(); setTool(q); toast(q === 'demolish' ? 'Click the bridge or building to blow up.' : q === 'suppress' ? 'Click the spot to fire on.' : q === 'follow' ? 'Click the unit to follow.' : 'Click the ground. Drag to set the way they face.');
     };
   });
 }
@@ -61,7 +65,7 @@ function phaseReport(r: number) {
 const esc = (s: string) => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 export function phaseCard() {
   const r = S.round, body = r === 1
-    ? `<p><b>Take the enemy HQ. Hold your own.</b> An HQ falls when enemy troops hold its ground for a full minute.</p><p>Your ground is tinted blue. You can only build there.</p><p>Open <b>DEFENCES</b>, <b>UNITS</b> and <b>SUPPORT</b> below to buy. Select your units, then use <b>ORDERS</b> to send them.</p><p>You do not know where the enemy HQ is. A <b>SPY PLANE</b> or forward troops will find it.</p><p>Press <b>BEGIN PHASE 1</b> when ready.</p>`
+    ? `<p><b>Take the enemy HQ. Hold your own.</b> An HQ falls when enemy troops hold its ground for 40 seconds.</p><p>Your ground is tinted blue. You can only build there.</p><p>Open <b>DEFENCES</b>, <b>UNITS</b> and <b>SUPPORT</b> below to buy. Select your units, then use <b>ORDERS</b> to send them.</p><p>You do not know where the enemy HQ is. A <b>SPY PLANE</b> or forward troops will find it.</p><p>Press <b>BEGIN PHASE 1</b> when ready.</p>`
     : phaseReport(r);
   const mi = S.campaign; if (r === 1 && mi != null) { const m = MISSIONS[mi]; $('#cardTitle').textContent = `MISSION ${mi + 1} · ${m.name}`; $('#cardBody').innerHTML = `<p><b>${m.brief}</b></p>` + body; $('#card').hidden = false; return; }
   $('#cardTitle').textContent = r === 1 ? 'PHASE 1 · DEPLOY' : `PHASE ${r - 1} REPORT`; $('#cardBody').innerHTML = body; $('#card').hidden = false;
@@ -144,7 +148,7 @@ export function renderInspector() {
     if (HINT[it.kind]) h += `<p class="hint" style="margin-top:8px">${HINT[it.kind]}</p>`;
     const mover = MOVERS.includes(it.kind);
     if (it.team === NET.me && it.members && MOVERS.includes(it.kind) && S.phase !== 'replay') h += `<div class="row"><button class="btn${S.fpv === it.id ? ' on' : ''}" id="iFpv">${S.fpv === it.id ? 'LEAVE FIRST PERSON' : 'FIRST PERSON'}</button></div>`;
-    if (S.phase === 'plan' && it.team === NET.me) h += `<div class="row">${mover ? '<button class="btn" id="iAtk">ATTACK</button><button class="btn" id="iDef">DEFEND</button>' : ''}${it.kind === 'engineers' ? '<button class="btn" id="iDemo">DEMOLISH</button>' : ''}${it.order ? '<button class="btn" id="iClear">CLEAR ORDER</button>' : ''}${canRemove(it) ? '<button class="btn stop" id="iDel">REMOVE</button>' : ''}</div>`;
+    if (S.phase === 'plan' && it.team === NET.me) h += `<div class="row">${canRemove(it) ? '<button class="btn stop" id="iDel">REMOVE</button>' : ''}</div>`;
   } else if (it && it.building) {
     const bd = it.building, T = BTYPES[bd.btype || 'house'];
     title.textContent = bd.name || T.label;
