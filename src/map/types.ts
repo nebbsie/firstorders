@@ -4,6 +4,7 @@ export interface Building {
   v: number;            // random value for colour variation
   mat: number[];        // roof colour, 0..255
   id?: number; base?: number; top?: number; cx?: number; cy?: number;
+  btype?: string; name?: string;  // what the building is (church, police, castle...) and its real name, if known
 }
 export interface Bridge {
   cells: number[]; ramp: number[]; ends: number[]; deck: number; cx: number; cy: number;

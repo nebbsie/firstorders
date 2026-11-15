@@ -1,5 +1,6 @@
 import { W, H, C, GW, GH, GS, HS, M_PER_UNIT, T_GROUND, T_ROAD, T_PARK, T_WATER, T_BRIDGE, T_WOOD, clamp, mod, mulberry32, makeNoise } from '../config';
 import type { RawMap, Building } from './types';
+import { BTYPES } from './btypes';
 
 function townName(seed: number) {
   const a = ['ASH', 'MARL', 'HOLT', 'BRAN', 'KEL', 'DUN', 'WEX', 'ORM', 'TAV', 'LYN'], b = ['FORD', 'BRIDGE', 'MOUTH', 'WICK', 'STOW', 'HAVEN', 'MERE', 'BURY'];
@@ -89,6 +90,18 @@ export function sampleTown(seed: number): RawMap {
         }
       }
     }
+  }
+  // A few landmarks: town hall near the centre, churches, services, a castle on the highest ground.
+  if (B.length > 20) {
+    const cen = (b: Building) => [b.p.reduce((a, q) => a + q[0], 0) / b.p.length, b.p.reduce((a, q) => a + q[1], 0) / b.p.length];
+    const byDist = B.map(b => { const c = cen(b); return [b, Math.hypot(c[0] - D[0].cx, c[1] - D[0].cy)] as [Building, number]; }).sort((a, b) => a[1] - b[1]);
+    const set = (b: Building, t: string, name: string, minH = 0) => { b.btype = t; b.name = name; const T = BTYPES[t]; b.mat = T.roof; b.h = Math.max(b.h, (minH || T.minH || 0) / M_PER_UNIT); };
+    set(byDist[0][0], 'townhall', 'Town Hall');
+    const pick = () => B[Math.floor(rng() * B.length)];
+    const plan: [string, string][] = [['church', "St Mary's Church"], ["church", "St John's Church"], ['police', 'Police Station'], ['fire', 'Fire Station'], ['hospital', 'General Hospital'], ['school', 'Grammar School'], ['station', 'Railway Station'], ['pub', 'The Red Lion'], ['pub', 'The Crown']];
+    for (const [t, nm] of plan) { const b = pick(); if (!b.btype) set(b, t, nm); }
+    let hi: Building = null, hh = -1; for (const b of B) { const c = cen(b), h = hg(c[0], c[1]); if (!b.btype && h > hh) { hh = h; hi = b; } }
+    if (hi) set(hi, 'castle', townName(seed).charAt(0) + townName(seed).slice(1).toLowerCase() + ' Castle', 14);
   }
   return { seed, name: townName(seed) + ' · SAMPLE', source: 'sample', terr, baseH, B, ground: cv };
 }

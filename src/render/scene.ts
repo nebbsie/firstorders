@@ -5,6 +5,7 @@ import { S, M, OWN } from '../state';
 import { unitH } from '../world';
 import { camera, cam, FOV, view } from './camera';
 import { MODELS } from './models';
+import { BTYPES } from '../map/btypes';
 
 // Colours are given in sRGB and used as they are, like the 2D interface.
 THREE.ColorManagement.enabled = false;
@@ -86,11 +87,20 @@ export function buildMap3D() {
   for (const b of M.B) {
     // Buildings outside the battle circle are grey scenery.
     const out0 = !inPlay(b.cx, b.cy), j = (b.v * 37 % 1 - .5) * 14, lum = (b.mat[0] * .3 + b.mat[1] * .59 + b.mat[2] * .11 + j) / 255;
-    const roof = out0 ? [lum * .62, lum * .63, lum * .65] : b.mat.map(v => (v + j) / 255), wall = roof.map(v => v * .8), p = b.p;
+    const BT = BTYPES[b.btype || 'house'], roof = out0 ? [lum * .62, lum * .63, lum * .65] : b.mat.map(v => (v + j) / 255);
+    const wall = out0 || !BT.wall ? roof.map(v => v * .8) : BT.wall.map(v => v * .82 / 255), p = b.p;
     let area = 0; for (let i = 0; i < p.length; i++) { const a = p[i], c = p[(i + 1) % p.length]; area += a[0] * c[1] - c[0] * a[1]; }
     const T = p.map(q => [q[0] - W / 2, b.top, q[1] - H / 2]), Bt = p.map(q => [q[0] - W / 2, b.base, q[1] - H / 2]);
     const faces = THREE.ShapeUtils.triangulateShape(p.map(q => new THREE.Vector2(q[0], q[1])), []);
-    for (const f of faces) tri(T[f[0]], T[f[1]], T[f[2]], roof, _up);
+    // Churches and town halls get a pointed tower roof; castles get battlements along the walls.
+    if (BT.spire && !out0) { const apex = [b.cx - W / 2, b.top + Math.min(14, b.h * .9 + 3), b.cy - H / 2]; for (let i = 0; i < p.length; i++) { const n = (i + 1) % p.length, ex = p[n][0] - p[i][0], ey = p[n][1] - p[i][1]; if (area > 0) out.set(ey, 1, -ex); else out.set(-ey, 1, ex); tri(T[i], T[n], apex, roof, out); } }
+    else for (const f of faces) tri(T[f[0]], T[f[1]], T[f[2]], roof, _up);
+    if (BT.battlements && !out0) for (let i = 0; i < p.length; i++) {
+      const n = (i + 1) % p.length, len = Math.hypot(p[n][0] - p[i][0], p[n][1] - p[i][1]), k = Math.max(1, Math.floor(len / 1.6));
+      for (let s = 0; s < k; s += 2) { const f0 = s / k, f1 = Math.min(1, (s + 1) / k), a0 = [p[i][0] + (p[n][0] - p[i][0]) * f0, p[i][1] + (p[n][1] - p[i][1]) * f0], a1 = [p[i][0] + (p[n][0] - p[i][0]) * f1, p[i][1] + (p[n][1] - p[i][1]) * f1];
+        const lo0 = [a0[0] - W / 2, b.top, a0[1] - H / 2], lo1 = [a1[0] - W / 2, b.top, a1[1] - H / 2], hi0 = [a0[0] - W / 2, b.top + .9, a0[1] - H / 2], hi1 = [a1[0] - W / 2, b.top + .9, a1[1] - H / 2];
+        const ex = a1[0] - a0[0], ey = a1[1] - a0[1]; if (area > 0) out.set(ey, 0, -ex); else out.set(-ey, 0, ex); tri(lo0, lo1, hi1, wall, out); tri(lo0, hi1, hi0, wall, out); tri(hi0, hi1, [hi1[0], hi1[1], hi1[2]], roof, _up); }
+    }
     for (let i = 0; i < p.length; i++) {
       const n = (i + 1) % p.length, ex = p[n][0] - p[i][0], ey = p[n][1] - p[i][1];
       if (area > 0) out.set(ey, 0, -ex); else out.set(-ey, 0, ex);

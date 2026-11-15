@@ -1,6 +1,7 @@
 import { W, H, C, GW, GH, M_PER_UNIT, BATTLE_KM, CX, PLAY_R, T_GROUND, T_ROAD, T_PARK, T_WATER, T_BRIDGE, T_WOOD, hashf } from '../config';
 import type { RawMap, Building } from './types';
 import { cacheGet, cachePut } from './cache';
+import { BTYPES, btypeFromTags } from './btypes';
 
 export interface Place { name: string; full: string; lat: number; lon: number }
 
@@ -140,7 +141,8 @@ way["leisure"~"^(park|garden|pitch|golf_course|nature_reserve|common)$"](${bb});
       let ar = 0; for (let i = 0; i < ring.length; i++) { const a = ring[i], c = ring[(i + 1) % ring.length]; ar += a[0] * c[1] - c[0] * a[1]; }
       if (Math.abs(ar) / 2 < 1.2) continue; // smaller than about one cell: sheds and kiosks at large battle sizes
       const r = hashf(el.id % 100000, 7, 3);
-      B.push({ p: ring, h: buildingHeight(t, r) / M_PER_UNIT, v: r, mat: buildingColour(t, hashf(el.id % 100000, 2, 9)) });
+      const bt = btypeFromTags(t), BT = BTYPES[bt];
+      B.push({ p: ring, h: Math.max(buildingHeight(t, r), BT.minH || 0) / M_PER_UNIT, v: r, mat: bt === 'house' || bt === 'flats' ? buildingColour(t, hashf(el.id % 100000, 2, 9)) : BT.roof, btype: bt, name: t.name });
     } else if (t.highway) {
       if (t.tunnel && t.tunnel !== 'no') continue;
       if (PATHS.has(t.highway)) { paths.push(rings[0]); continue; }

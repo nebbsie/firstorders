@@ -1,7 +1,7 @@
 import { NET } from '../state';
 import { COST, TOOLDEF, segDist, clamp } from '../config';
 import { S, M } from '../state';
-import { nudge, canDeploy, bridgeNear, bridgeTouches } from '../world';
+import { nudge, canDeploy, bridgeNear, bridgeTouches, cellOf } from '../world';
 import { sqCenter, left, addSquad, addStruct, addSupport, lineCells, canRemove, removeItem } from '../plan';
 import { cam, pick, panBy, P, fit } from '../render/camera';
 import { setSel, setTool, toast, cursorNote, syncSpeed, syncFollow, closeTools } from './hud';
@@ -80,7 +80,9 @@ export function initInput(cv: HTMLCanvasElement) {
     if (p.mode === 'box') {
       const b = input.box; input.box = null;
       if (b) { const found = boxSelect(b); setSel(found.length === 1 ? found[0] : null, p.shift ? [...new Set([...(S.selMany || []), ...found])] : found); return; }
-      const hit = p.w ? hitTest(p.w) : null;
+      // Nothing of yours under the click: a building there shows what it is.
+      let hit = p.w ? hitTest(p.w) : null;
+      if (!hit && p.w) { const ci = cellOf(p.w.x, p.w.y), id = ci >= 0 ? M.bldId[ci] : -1; if (id >= 0) hit = { building: M.B[id] }; }
       if (p.shift && hit && hit.pos && hit.team === NET.me) { const many = new Set(S.selMany || []); many.has(hit) ? many.delete(hit) : many.add(hit); const arr = [...many]; setSel(arr.length === 1 ? arr[0] : null, arr); }
       else setSel(hit);
       return;

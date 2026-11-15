@@ -13,7 +13,7 @@ export function resizeOverlay() { cv.width = Math.round(view.cw * view.dpr); cv.
 function plate(x: number, y: number, text: string, col: string) {
   if (x < -500) return; ctx.font = '11px Departure, ui-monospace, monospace';
   const w = Math.round(ctx.measureText(text).width + 10); x = Math.round(x); y = Math.round(y);
-  ctx.fillStyle = 'rgba(22,23,18,.92)'; ctx.fillRect(x - (w >> 1), y - 8, w, 16); ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.strokeRect(x - (w >> 1) + .5, y - 7.5, w - 1, 15);
+  ctx.fillStyle = 'rgba(20,21,25,.94)'; ctx.fillRect(x - (w >> 1), y - 8, w, 16); ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.strokeRect(x - (w >> 1) + .5, y - 7.5, w - 1, 15);
   ctx.fillStyle = '#f4f1e8'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, x, y + 1);
 }
 function groundLine(a: any, b: any, col: string, dash: boolean, head: boolean) {
@@ -58,6 +58,7 @@ export function draw2D() {
     if (it.pos) { c = sqCenter(it); r = it.kind === 'rifles' ? 9 : 4; }
     else if (it.cells) { c = [(it.a.x + it.b.x) / 2, (it.a.y + it.b.y) / 2]; r = Math.hypot(it.b.x - it.a.x, it.b.y - it.a.y) / 2 + 3; }
     else if (it.a) { c = it.b ? [(it.a.x + it.b.x) / 2, (it.a.y + it.b.y) / 2] : [it.a.x, it.a.y]; r = it.b ? Math.hypot(it.b.x - it.a.x, it.b.y - it.a.y) / 2 : 16; }
+    if (it.building) { const p = it.building.p; for (let i = 0; i < p.length; i++) { const n = (i + 1) % p.length; groundLine({ x: p[i][0], y: p[i][1] }, { x: p[n][0], y: p[n][1] }, '#e8c547', false, false); } c = null; }
     if (c && !it.pos) ring(c[0], c[1], r, '#e8c547', false, 2);
   }
   for (const s of S.selMany || []) { const c = sqCenter(s); if (c) ring(c[0], c[1], s.kind === 'rifles' ? 9 : 4, '#e8c547', false, 2); }

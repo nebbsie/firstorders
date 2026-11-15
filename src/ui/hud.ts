@@ -8,6 +8,7 @@ import { actRemove, actOrders, actTime, actReady, actSpeed } from '../actions';
 import { startReplay, seek, exitReplay, refreshReplayFog } from '../replay';
 import { fit, cam } from '../render/camera';
 import { paintFog, paintTerritory, viewOpts, applyViews } from '../render/scene';
+import { BTYPES } from '../map/btypes';
 
 const $ = (s: string) => document.querySelector(s) as HTMLElement;
 let toastT = 0, bannerT = 0;
@@ -96,6 +97,10 @@ export function renderInspector() {
     if (HINT[it.kind]) h += `<p class="hint" style="margin-top:8px">${HINT[it.kind]}</p>`;
     const mover = ['rifles', 'sniper', 'tank'].includes(it.kind);
     if (S.phase === 'plan' && it.team === NET.me) h += `<div class="row">${mover ? '<button class="btn" id="iAtk">ATTACK</button><button class="btn" id="iDef">DEFEND</button>' : ''}${it.order ? '<button class="btn" id="iClear">CLEAR ORDER</button>' : ''}${canRemove(it) ? '<button class="btn stop" id="iDel">REMOVE</button>' : ''}</div>`;
+  } else if (it && it.building) {
+    const bd = it.building, T = BTYPES[bd.btype || 'house'];
+    title.textContent = bd.name || T.label;
+    h = `<dl class="kv">${bd.name ? `<dt>Type</dt><dd>${T.label}</dd>` : ''}<dt>Grid</dt><dd>${grid(bd.cx, bd.cy)}</dd><dt>Height</dt><dd>${Math.round(bd.h * M_PER_UNIT)} M</dd><dt>Garrison cover</dt><dd>${Math.round((T.cover || .85) * 100)}%</dd>${T.sight ? `<dt>Extra sight</dt><dd>+${Math.round(T.sight * M_PER_UNIT)} M</dd>` : ''}</dl>${T.note ? `<p class="hint" style="margin-top:8px">${T.note}</p>` : ''}`;
   } else if (it && it.cells) {
     title.textContent = { trench: 'Trench', sandbag: 'Sandbags', wall: 'Wall', wire: 'Wire', tanktrap: 'Tank traps' }[it.type];
     h = `<dl class="kv"><dt>Length</dt><dd>${it.cells.length} cells</dd><dt>Effect</dt><dd>${{ trench: '70% cover', sandbag: '50% cover', wall: 'blocks sight', wire: '1/3 speed', tanktrap: 'stops tanks' }[it.type]}</dd><dt>Cost</dt><dd>${itemCost(it)}</dd></dl>` + (canRemove(it) ? `<div class="row"><button class="btn stop" id="iDel">REMOVE</button></div>` : '');

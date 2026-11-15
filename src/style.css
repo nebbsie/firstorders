@@ -2,12 +2,13 @@
 @font-face { font-family: "KenneyMono"; src: url("/fonts/KenneyMono.ttf") format("truetype"); font-display: swap; }
 @font-face { font-family: "Departure"; src: url("/fonts/DepartureMono-Regular.otf") format("opentype"); font-display: swap; }
 :root {
-  --backdrop: #0e0f0b; --map: #121410; --bar: #12130f; --window: #1b1d17; --chip: #23261e;
-  --plate: #2d3027; --plate-hi: #3b3f33; --plate-off: #202219; --track: #10110c;
-  --edge: #565b47; --edge-hi: #7a8066; --edge-soft: #30342a;
-  --text: #e0ddcf; --soft: #c0bca8; --muted: #95927c; --ink: #f4f1e8;
-  --gold: #e8c547; --good: #6ad38a; --bad: #ff7a72; --info: #5aa8e6; --warn: #ffc457;
-  --on: #6e5a2a; --go: #3c5e34; --side: #3b4f5f; --stop: #7a2b2e;
+  /* Graphite panels with amber highlights: dark and neutral, so the UI stands apart from the olive map. */
+  --backdrop: #0d0e10; --map: #121410; --bar: #121316; --window: #18191d; --chip: #212329;
+  --plate: #272a31; --plate-hi: #343842; --plate-off: #1c1e23; --track: #0e0f12;
+  --edge: #4d525e; --edge-hi: #737a8a; --edge-soft: #2c2f37;
+  --text: #e2e4e8; --soft: #babec8; --muted: #8b909c; --ink: #f6f4ef;
+  --gold: #f0b43c; --good: #7fd6a0; --bad: #ff7a72; --info: #6aa8e8; --warn: #ffc457;
+  --on: #6b4a14; --go: #2c5a74; --side: #3b3f63; --stop: #7a2b2e;
   --f-title: "KenneyMono", "Departure", ui-monospace, monospace;
   --f-ui: "Departure", ui-monospace, "Cascadia Mono", monospace;
   color-scheme: dark;
@@ -30,9 +31,9 @@ button:focus-visible { outline: 1px solid var(--gold); outline-offset: 1px; }
 .btn { background: var(--plate); border: 1px solid var(--edge); color: #fff; padding: 4px 7px; cursor: pointer; text-transform: uppercase; font-family: var(--f-ui); font-size: 11px; line-height: 1.2; border-radius: 0; }
 .btn:hover { background: var(--plate-hi); border-color: var(--edge-hi); }
 .btn.on { background: var(--on); border-color: var(--gold); }
-.btn.go { background: var(--go); border-color: #5f8a50; }
-.btn.go:hover { background: #4a7040; }
-.btn.side { background: var(--side); border-color: #5b7488; }
+.btn.go { background: var(--go); border-color: #4f8db0; }
+.btn.go:hover { background: #366d8c; }
+.btn.side { background: var(--side); border-color: #5f6596; }
 .btn.stop { background: var(--stop); border-color: #a8494d; }
 .btn:disabled { background: var(--plate-off); border-color: var(--edge-soft); color: var(--muted); cursor: default; }
 
@@ -67,7 +68,7 @@ button:focus-visible { outline: 1px solid var(--gold); outline-offset: 1px; }
 .topleft .btn { font-family: var(--f-title); font-size: 16px; padding: 4px 10px; }
 .strip .btn { font-family: var(--f-title); font-size: 16px; padding: 5px 10px; white-space: nowrap; }
 .toast { left: 50%; bottom: 108px; transform: translateX(-50%); padding: 6px 10px; background: var(--window); border: 1px solid var(--warn); color: var(--ink); pointer-events: none; white-space: nowrap; }
-.banner { left: 50%; top: 22%; transform: translateX(-50%); padding: 10px 22px; text-align: center; pointer-events: none; background: rgba(27, 29, 23, .94); }
+.banner { left: 50%; top: 22%; transform: translateX(-50%); padding: 10px 22px; text-align: center; pointer-events: none; background: rgba(24, 25, 29, .95); }
 .banner b { display: block; font-family: var(--f-title); font-size: 32px; font-weight: normal; color: var(--good); line-height: 1; }
 .banner span { display: block; margin-top: 8px; color: var(--gold); text-transform: uppercase; letter-spacing: .08em; }
 .result { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(460px, 92%); z-index: 4; }
@@ -84,7 +85,7 @@ table.cat { width: 100%; border-collapse: collapse; }
 table.cat td { padding: 3px 6px; border-top: 1px solid var(--edge-soft); color: var(--soft); vertical-align: top; }
 table.cat td:first-child { color: var(--ink); white-space: nowrap; }
 
-.menu { position: absolute; inset: 0; z-index: 10; display: grid; place-items: center; background: rgba(14, 15, 11, .82); }
+.menu { position: absolute; inset: 0; z-index: 10; display: grid; place-items: center; background: rgba(13, 14, 16, .84); }
 .menubox { width: min(520px, 94vw); padding: 20px; display: flex; flex-direction: column; gap: 8px; }
 .menubox .title { font-family: var(--f-title); font-size: 32px; color: var(--good); line-height: 1; }
 .menubox h3 { margin: 12px 0 2px; font: inherit; color: var(--gold); letter-spacing: .08em; }
@@ -127,6 +128,6 @@ table.cat td:first-child { color: var(--ink); white-space: nowrap; }
 .card #cardBody b { color: var(--ink); font-weight: normal; }
 /* Radio: the last few messages, bottom left. */
 .radio { left: 10px; bottom: 54px; width: 420px; display: flex; flex-direction: column; gap: 2px; pointer-events: none; }
-.radio p { margin: 0; padding: 2px 6px; background: rgba(20, 21, 16, .82); border-left: 2px solid var(--edge); color: var(--soft); width: fit-content; max-width: 100%; transition: opacity .6s; }
+.radio p { margin: 0; padding: 2px 6px; background: rgba(18, 19, 22, .82); border-left: 2px solid var(--edge); color: var(--soft); width: fit-content; max-width: 100%; transition: opacity .6s; }
 .radio p b { font-weight: normal; color: var(--muted); margin-right: 6px; }
-.cursornote { pointer-events: none; padding: 2px 6px; background: rgba(20, 21, 16, .9); border: 1px solid var(--edge); color: var(--soft); white-space: nowrap; z-index: 3; }
+.cursornote { pointer-events: none; padding: 2px 6px; background: rgba(18, 19, 22, .9); border: 1px solid var(--edge); color: var(--soft); white-space: nowrap; z-index: 3; }

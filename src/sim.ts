@@ -3,6 +3,7 @@ import { S, M, OWN, VIS0, SEEN0, NET, hooks } from './state';
 import { cellOf, unitH, passable, nudge, opRange } from './world';
 import { aliveMembers, spentNow, sqName, nextCall, rollPersonalities, initOwn } from './plan';
 import { aiPlan } from './ai';
+import { BTYPES } from './map/btypes';
 
 let rnd = Math.random;
 const gauss = () => { const u = rnd() || 1e-9, v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(6.283 * v); };
@@ -114,7 +115,7 @@ export function los(ax: number, ay: number, bx: number, by: number) {
   }
   return true;
 }
-function coverAt(u: any) { if (u.gar) return .85; const ci = cellOf(u.x, u.y); if (ci < 0) return 0; const c = S.cover[ci]; if (c === 2) return .7; if (c === 1) return .5; if (M.terr[ci] === T_WOOD) return .35; const t = M.terr; if ((ci % GW > 0 && t[ci - 1] === T_BUILD) || (ci % GW < GW - 1 && t[ci + 1] === T_BUILD) || t[ci - GW] === T_BUILD || t[ci + GW] === T_BUILD) return .3; return 0; }
+function coverAt(u: any) { if (u.gar) { const b = M.B[M.bldId[cellOf(u.x, u.y)]]; return (b && BTYPES[b.btype || 'house'].cover) || .85; } const ci = cellOf(u.x, u.y); if (ci < 0) return 0; const c = S.cover[ci]; if (c === 2) return .7; if (c === 1) return .5; if (M.terr[ci] === T_WOOD) return .35; const t = M.terr; if ((ci % GW > 0 && t[ci - 1] === T_BUILD) || (ci % GW < GW - 1 && t[ci + 1] === T_BUILD) || t[ci - GW] === T_BUILD || t[ci + GW] === T_BUILD) return .3; return 0; }
 // AT guns shoot only tanks, small arms ignore tanks, tanks shoot anything. Woods make targets harder to see.
 function findTarget(u: any, range: number) {
   let best = -1, bd = range * range; const U = S.units, wantTank = u.kind === 'at', any = u.kind === 'tank';
@@ -232,7 +233,7 @@ function recFrame() {
 
 // Who sees whom. A unit sees an enemy inside its sight range with a clear line of sight.
 // Troops in woods are seen only at half range. A spy plane sees everything near its path.
-const sightOf = (u: any) => u.kind === 'op' ? opRange(u) : K[u.kind].sight + (u.gar ? 15 : 0);
+const sightOf = (u: any) => { if (u.kind === 'op') return opRange(u); let s = K[u.kind].sight; if (u.gar) { const b = M.B[M.bldId[cellOf(u.x, u.y)]]; s += 15 + ((b && BTYPES[b.btype || 'house'].sight) || 0); } return s; };
 function spyPos(p: any) { return p.kind === 'spy' && p.s > -10 && p.s < p.len + 10 ? [p.ax + p.ux * p.s, p.ay + p.uy * p.s] : null; }
 export function updateVision() {
   const U = S.units, N = S.teams.length, newContacts = S.teams.map(() => new Map<string, number>()), contactAt: string[] = S.teams.map(() => '');
