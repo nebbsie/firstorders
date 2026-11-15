@@ -51,10 +51,8 @@ export function closeTools() { if (openGroup) openTools(openGroup); }
 function showInfo(id: string, tile: HTMLElement) {
   const def = TOOLS.flatMap(g => g.items).find(t => t[0] === id), inf = INFO[id]; if (!def || !inf) return;
   $('#info').innerHTML = `<div class="ph"><span>${def[1]}</span><span>${COST[id] ? COST[id] + (def[2] === 'line' && id !== 'air' && id !== 'spy' ? ' / CELL' : '') : ''}</span></div><div class="pb"><p class="hint">${inf[0]}</p>${inf[1] ? `<dl class="kv" style="margin-top:8px"><dt>Best</dt><dd>${inf[1]}</dd><dt>Beaten by</dt><dd>${inf[2]}</dd></dl>` : ''}<p class="note">${def[2] === 'line' ? 'Drag a line.' : def[2] === 'order' ? 'Select units first.' : ['spy', 'barrage', 'para', 'demo', 'air'].includes(id) ? 'Anywhere in the circle.' : 'On your own ground.'}</p></div>`;
-  // Beside the tool panel, level with the hovered tile, kept on screen.
-  const el = $('#info'), pr = $('#toolpanel').getBoundingClientRect(), tr = tile.getBoundingClientRect();
-  el.hidden = false; el.style.left = pr.right + 6 + 'px';
-  el.style.top = Math.max(8, Math.min(window.innerHeight - el.offsetHeight - 8, tr.top + tr.height / 2 - el.offsetHeight / 2)) + 'px';
+  // A fixed spot just right of the tool panel, its bottom level with the panel's bottom.
+  const el = $('#info'); el.hidden = false; el.style.left = $('#toolpanel').getBoundingClientRect().right + 6 + 'px';
 }
 function buildCommands() {
   $('#cmds').innerHTML = TOOLS.map(t => `<button class="btn cmd" data-g="${t.g}">${t.g}</button>`).join('');
