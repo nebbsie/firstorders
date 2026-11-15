@@ -30,6 +30,9 @@ function unitIcon(kind: string, x: number, y: number, col: string) {
   if (kind === 'sniper') { ctx.arc(x + 7.5, y + 5.5, 2.6, 0, Math.PI * 2); ctx.moveTo(x + 2, y + 5.5); ctx.lineTo(x + 13, y + 5.5); }
   ctx.stroke();
 }
+// Screen boxes of the unit name tags, so a click on a tag selects its unit (even over a building).
+export const labelHits: { x: number; y: number; w: number; h: number; s: any }[] = [];
+export const labelAt = (x: number, y: number) => { for (let i = labelHits.length - 1; i >= 0; i--) { const l = labelHits[i]; if (x >= l.x && x <= l.x + l.w && y >= l.y && y <= l.y + l.h) return l.s; } return null; };
 // The order a unit is following: in planning, a new order, else one still under way from the last phase.
 const ordOf = (s: any, plan: boolean) => plan ? (s.order || (s.members && s.state === 'attack' ? s.cur : null)) : s.cur;
 // A line along the way the units will walk.
@@ -136,7 +139,7 @@ export function draw2D() {
   // Hovering a unit shows its route and target brightly.
   const hv = input.hover && !input.ptr ? S.squads.find((s: any) => s.team === NET.me && s.call && (() => { const c = sqCenter(s); return c && Math.hypot(c[0] - input.hover.x, c[1] - input.hover.y) < 7; })()) : null;
   if (hv) { const o = ordOf(hv, plan), c = sqCenter(hv); if (o && c) { routeLine(hv, { x: c[0], y: c[1] }, o, '#ffffff', o.type === 'defend', true); const m = P(o.x, o.y, 3); plate(m[0], m[1] - 14, `${hv.call} ${o.type.toUpperCase()} ${grid(o.x, o.y)}`, '#ffffff'); } }
-  const placed: number[][] = [];
+  const placed: number[][] = []; labelHits.length = 0;
   for (const s of S.squads) {
     if (s.team !== NET.me || !s.call) continue; const c = sqCenter(s); if (!c) continue; const p = P(c[0], c[1], 5); if (p[0] < -500) continue;
     const o = ordOf(s, plan), extra = (s.stance ? ' · ' + s.stance.toUpperCase() : '') + (s.fallback ? ' · FB' : '');
@@ -147,7 +150,7 @@ export function draw2D() {
     ctx.font = '11px Departure, monospace'; const wn = ctx.measureText(s.call).width, wt = tag ? ctx.measureText(tag).width + 8 : 0, w = 20 + wn + wt + 6, x0 = Math.round(p[0] - w / 2); let y0 = Math.round(p[1] - 22);
     // Tags of units standing together stack upwards instead of covering each other.
     for (let tries = 0; tries < 8 && placed.some(r => x0 < r[0] + r[2] && r[0] < x0 + w && y0 < r[1] + 15 && r[1] < y0 + 15); tries++) y0 -= 16;
-    placed.push([x0, y0, w]);
+    placed.push([x0, y0, w]); labelHits.push({ x: x0, y: y0, w, h: 14, s });
     ctx.fillStyle = s === hv ? 'rgba(40,44,52,.95)' : 'rgba(20,21,25,.8)'; ctx.fillRect(x0, y0, w, 14);
     unitIcon(s.kind, x0 + 3, y0 + 2, TEAM_COLORS[0]);
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#f4f1e8'; ctx.fillText(s.call, x0 + 20, y0 + 7.5);

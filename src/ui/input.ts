@@ -1,3 +1,4 @@
+import { labelAt } from '../render/overlay';
 import { NET } from '../state';
 import { C, GW, COST, TOOLDEF, MOVERS, CX, CY, segDist, clamp } from '../config';
 import { S, M } from '../state';
@@ -10,7 +11,7 @@ import { setSel, setTool, toast, cursorNote, syncSpeed, syncFollow, closeTools }
 import { actSquad, actStruct, actSupport, actOrders, actRemove, actSpeed } from '../actions';
 
 // Left button selects and uses tools. Middle button pans. Right button turns the camera; a right click drops the tool.
-export const input: { ptr: any; hover: any; box: any } = { ptr: null, hover: null, box: null };
+export const input: { ptr: any; hover: any; box: any; mx?: number; my?: number } = { ptr: null, hover: null, box: null };
 const keys = new Set<string>();
 
 const visibleNow = (u: any) => u.team === NET.me || !S.fog || (S.vis[NET.me] && S.vis[NET.me][u.i]);
@@ -47,7 +48,7 @@ function orderGroup(group: any[], type: string, w: any, face?: number) {
 const stopFollow = () => { cam.userMoved = true; if (S.phase === 'replay' && S.follow) { S.follow = false; syncFollow(); } };
 function hoverCursor(cv: HTMLCanvasElement, w: any) {
   if (S.tool !== 'select' && S.phase === 'plan') { cv.style.cursor = 'crosshair'; return; }
-  cv.style.cursor = w && S.phase !== 'replay' && hitTest(w) ? 'pointer' : 'default';
+  cv.style.cursor = S.phase !== 'replay' && ((input.mx != null && labelAt(input.mx, input.my)) || (w && hitTest(w))) ? 'pointer' : 'default';
 }
 
 export function initInput(cv: HTMLCanvasElement) {
@@ -75,7 +76,7 @@ export function initInput(cv: HTMLCanvasElement) {
     if (ptr && ptr.mode === 'rot') { const dx = sx - ptr.lx, dy = sy - ptr.ly; ptr.lx = sx; ptr.ly = sy; if (fpv.on && Math.abs(dx) + Math.abs(dy) > 0) { ptr.moved = true; fpv.look += dx * .005; fpv.pitch = clamp(fpv.pitch - dy * .004, -.9, .6); return; } if (Math.abs(dx) + Math.abs(dy) > 0) { ptr.moved = true; cam.yaw -= dx * .006; cam.pitch = clamp(cam.pitch + dy * .005, .3, 1.45); stopFollow(); } return; }
     if (ptr && ptr.mode === 'pan') { const dx = sx - ptr.lx, dy = sy - ptr.ly; ptr.lx = sx; ptr.ly = sy; if (dx || dy) { panBy(dx, dy); stopFollow(); } return; }
     if (ptr && ptr.mode === 'box') { if (Math.abs(sx - ptr.x0) + Math.abs(sy - ptr.y0) > 5) input.box = { x0: ptr.x0, y0: ptr.y0, x1: sx, y1: sy }; return; }
-    const w = pick(sx, sy); input.hover = w; if (ptr && w) ptr.w = w;
+    const w = pick(sx, sy); input.hover = w; input.mx = sx; input.my = sy; if (ptr && w) ptr.w = w;
     cursorNote(w, sx, sy); if (!ptr) hoverCursor(cv, w);
   });
   cv.addEventListener('pointerup', () => {
@@ -87,7 +88,7 @@ export function initInput(cv: HTMLCanvasElement) {
       const b = input.box; input.box = null;
       if (b) { const found = boxSelect(b); setSel(found.length === 1 ? found[0] : null, p.shift ? [...new Set([...(S.selMany || []), ...found])] : found); return; }
       // Nothing of yours under the click: a building there shows what it is.
-      let hit = p.w ? hitTest(p.w) : null;
+      let hit = labelAt(p.x0, p.y0) || (p.w ? hitTest(p.w) : null);
       if (!hit && p.w) { const ci = cellOf(p.w.x, p.w.y), id = ci >= 0 ? M.bldId[ci] : -1; if (id >= 0) hit = { building: M.B[M.B[id].parent ?? id] }; }
       if (p.shift && hit && hit.pos && hit.team === NET.me) { const many = new Set(S.selMany || []); many.has(hit) ? many.delete(hit) : many.add(hit); const arr = [...many]; setSel(arr.length === 1 ? arr[0] : null, arr); }
       else setSel(hit);
