@@ -4,6 +4,7 @@ import { nudge, canDeploy, bridgeNear, bridgeTouches } from '../world';
 import { sqCenter, left, addSquad, addStruct, addSupport, lineCells, canRemove, removeItem } from '../plan';
 import { cam, pick, panBy, P, fit } from '../render/camera';
 import { setSel, setTool, toast, cursorNote, syncSpeed, syncFollow, closeTools } from './hud';
+import { goLive, applyOrder } from '../sim';
 
 // Left button selects and uses tools. Middle button pans. Right button turns the camera; a right click drops the tool.
 export const input: { ptr: any; hover: any; box: any } = { ptr: null, hover: null, box: null };
@@ -32,12 +33,12 @@ function orderGroup(group: any[], type: string, w: any) {
   if (!movers.length) { toast('Select platoons, snipers or tanks to give them orders'); return; }
   let gx = 0, gy = 0; const cs = movers.map(s => sqCenter(s)); cs.forEach(c => { gx += c[0]; gy += c[1]; }); gx /= cs.length; gy /= cs.length;
   let dx = w.x - gx, dy = w.y - gy; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
-  movers.forEach((s, k) => { const off = (k - (movers.length - 1) / 2) * 11, q = nudge(w.x - dy * off, w.y + dx * off); if (q) s.order = { type, x: q[0], y: q[1] }; });
+  movers.forEach((s, k) => { const off = (k - (movers.length - 1) / 2) * 11, q = nudge(w.x - dy * off, w.y + dx * off); if (q) { s.order = { type, x: q[0], y: q[1] }; if (S.phase === 'battle') applyOrder(s); } });
   setSel(movers.length === 1 ? movers[0] : null, movers);
 }
 const stopFollow = () => { cam.userMoved = true; if (S.phase === 'replay' && S.follow) { S.follow = false; syncFollow(); } };
 function hoverCursor(cv: HTMLCanvasElement, w: any) {
-  if (S.tool !== 'select' && S.phase === 'plan') { cv.style.cursor = 'crosshair'; return; }
+  if (S.tool !== 'select' && (S.phase === 'plan' || S.phase === 'battle')) { cv.style.cursor = 'crosshair'; return; }
   cv.style.cursor = w && S.phase !== 'replay' && hitTest(w) ? 'pointer' : 'default';
 }
 
@@ -50,7 +51,8 @@ export function initInput(cv: HTMLCanvasElement) {
     if (e.button === 2) { input.ptr = { mode: 'rot', lx: sx, ly: sy, moved: false }; return; }
     if (S.phase === 'replay') return;
     const w = pick(sx, sy), tool = TOOLDEF[S.tool];
-    if (S.phase !== 'plan' || tool.mode === 'select') { input.ptr = { mode: 'box', x0: sx, y0: sy, w, shift: e.shiftKey }; return; }
+    const live = S.phase === 'plan' || S.phase === 'battle';
+    if (!live || tool.mode === 'select') { input.ptr = { mode: 'box', x0: sx, y0: sy, w, shift: e.shiftKey }; return; }
     if (!w) return;
     if (tool.mode === 'order') {
       const own = hitTest(w, true), sel = (S.selMany || []).filter((s: any) => MOVERS.includes(s.kind));
@@ -81,7 +83,9 @@ export function initInput(cv: HTMLCanvasElement) {
       else setSel(hit);
       return;
     }
-    if (S.phase !== 'plan') return; const w = p.w, t = S.tool;
+    if (S.phase !== 'plan' && S.phase !== 'battle') return; const w = p.w, t = S.tool;
+    // During a battle, whatever is placed acts at once.
+    const done = (it: any) => { if (it && S.phase === 'battle') goLive(it); setSel(it); };
     if (p.mode === 'orderGroup') { orderGroup(S.selMany, t, w); return; }
     if (p.mode === 'order') {
       const c = sqCenter(p.sq); if (c && Math.hypot(w.x - c[0], w.y - c[1]) < 5) { if (S.selMany.length > 1) orderGroup(S.selMany, t, w); return; }
@@ -93,19 +97,19 @@ export function initInput(cv: HTMLCanvasElement) {
         const bi = bridgeNear(w.x, w.y); if (bi < 0) { toast('Click on a bridge'); return; }
         if (!bridgeTouches(bi, 0)) { toast('One end of the bridge must be on your ground'); return; }
         if (S.supports.some((s: any) => s.type === 'demo' && s.bridge === bi)) { toast('Charges are already set on this bridge'); return; }
-        const br = M.bridges[bi], s = addSupport(0, 'demo', { x: br.cx, y: br.cy }, null, 20); s.bridge = bi; setSel(s); return;
+        const br = M.bridges[bi], s = addSupport(0, 'demo', { x: br.cx, y: br.cy }, null, 20); s.bridge = bi; done(s); return;
       }
-      if (t === 'barrage' || t === 'para') { setSel(addSupport(0, t, { x: w.x, y: w.y }, null, t === 'barrage' ? 15 : 30)); return; }
+      if (t === 'barrage' || t === 'para') { done(addSupport(0, t, { x: w.x, y: w.y }, null, t === 'barrage' ? 15 : 30)); return; }
       if (!canDeploy(0, w.x, w.y)) { toast('You can only build on your own ground'); return; }
       const s = addSquad(0, t, w.x, w.y); if (!s) { toast(t === 'garrison' ? 'Click a building on your ground that is not held yet' : 'No open ground there'); return; }
-      setSel(s); return;
+      done(s); return;
     }
     if (p.mode === 'line') {
       const a = p.w0, b = w; if (Math.hypot(b.x - a.x, b.y - a.y) < 2) { toast('Drag to draw a line'); return; }
-      if (t === 'air' || t === 'spy') { if (left(0) < COST[t]) { toast('Not enough supply'); return; } setSel(addSupport(0, t, { x: a.x, y: a.y }, { x: b.x, y: b.y }, t === 'spy' ? 5 : 25)); return; }
+      if (t === 'air' || t === 'spy') { if (left(0) < COST[t]) { toast('Not enough supply'); return; } done(addSupport(0, t, { x: a.x, y: a.y }, { x: b.x, y: b.y }, t === 'spy' ? 5 : 25)); return; }
       const cells = lineCells(0, a, b); if (!cells.length) { toast('Defences go on open ground you hold'); return; }
       if (left(0) < cells.length * COST[t]) { toast('Not enough supply'); return; }
-      setSel(addStruct(0, t, { x: a.x, y: a.y }, { x: b.x, y: b.y }));
+      done(addStruct(0, t, { x: a.x, y: a.y }, { x: b.x, y: b.y }));
     }
   });
   cv.addEventListener('wheel', e => {

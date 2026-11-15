@@ -115,14 +115,36 @@ export function finishMap(raw: RawMap): MapData {
         const n = ny * GW + nx; if (!seen[n] && terr[n] === T_BRIDGE) { seen[n] = 1; stack.push(n); }
       }
     }
-    const ends = new Set<number>(); let top = 2, sx = 0, sy = 0;
-    for (const c of cells) {
-      const x = c % GW, y = (c / GW) | 0; sx += x * C + 1; sy += y * C + 1;
-      for (const n of [x > 0 ? c - 1 : -1, x < GW - 1 ? c + 1 : -1, y > 0 ? c - GW : -1, y < GH - 1 ? c + GW : -1])
-        if (n >= 0 && !isWet(terr[n]) && terr[n] !== T_BUILD) { ends.add(n); top = Math.max(top, hAt((n % GW) * C + 1, ((n / GW) | 0) * C + 1)); }
+    // Main axis of the bridge cells, then the land on both banks along it.
+    let sx = 0, sy = 0; for (const c of cells) { sx += (c % GW) * C + 1; sy += Math.floor(c / GW) * C + 1; } const cx = sx / cells.length, cy = sy / cells.length;
+    let xx = 0, xy = 0, yy = 0; for (const c of cells) { const dx = (c % GW) * C + 1 - cx, dy = Math.floor(c / GW) * C + 1 - cy; xx += dx * dx; xy += dx * dy; yy += dy * dy; }
+    const ang = .5 * Math.atan2(2 * xy, xx - yy), ax = Math.cos(ang), ay = Math.sin(ang);
+    let lo = 1e9, hi = -1e9, half = 0;
+    for (const c of cells) { const dx = (c % GW) * C + 1 - cx, dy = Math.floor(c / GW) * C + 1 - cy, s = dx * ax + dy * ay; lo = Math.min(lo, s); hi = Math.max(hi, s); half = Math.max(half, Math.abs(-dx * ay + dy * ax)); }
+    half = Math.max(half, C * .8);
+    // Ramps: land cells in line with the bridge where the bank was cut down for the river. The deck runs straight
+    // from natural ground on one bank to natural ground on the other, so troops walk on and off it.
+    const ramp: number[] = [], inRamp = new Set<number>(); let sA = lo, sB = hi;
+    for (const [dir, from] of [[-1, lo], [1, hi]] as [number, number][]) {
+      let s = from;
+      for (let k = 1; k <= 8; k++) {
+        const ss = from + dir * k * C, px = cx + ax * ss, py = cy + ay * ss, ci = Math.floor(py / C) * GW + Math.floor(px / C);
+        if (px < 0 || py < 0 || px >= W || py >= H || isWet(terr[ci]) || wd[ci] < -9) break; s = ss;
+        for (let w = -half; w <= half + .01; w += C * .5) { const qx = px - ay * w, qy = py + ax * w, q = Math.floor(qy / C) * GW + Math.floor(qx / C); if (q >= 0 && q < GW * GH && !isWet(terr[q]) && terr[q] !== T_BUILD && !inRamp.has(q)) { inRamp.add(q); ramp.push(q); } }
+      }
+      if (dir < 0) sA = s; else sB = s;
     }
-    for (const c of cells) deck[c] = top + .2;
-    bridges.push({ cells, ends: [...ends], deck: top + .2, cx: sx / cells.length, cy: sy / cells.length, blown: null });
+    const hA = hAt(cx + ax * (sA - C), cy + ay * (sA - C)), hB = hAt(cx + ax * (sB + C), cy + ay * (sB + C));
+    const deckAt = (c: number) => { const s = ((c % GW) * C + 1 - cx) * ax + (Math.floor(c / GW) * C + 1 - cy) * ay, f = clamp((s - sA) / Math.max(1, sB - sA), 0, 1); return Math.max(hA + (hB - hA) * f, isWet(terr[c]) ? 1.6 : -9) + .15; };
+    for (const c of cells) deck[c] = deckAt(c);
+    // Raise the banks under the ramps into an embankment that meets the deck.
+    for (const c of ramp) {
+      const d = deckAt(c) - .15, i = c % GW, j = Math.floor(c / GW);
+      for (const [vi, vj] of [[i, j], [i + 1, j], [i, j + 1], [i + 1, j + 1]]) TH[vj * VW + vi] = Math.max(TH[vj * VW + vi], d);
+    }
+    const ends = ramp.length ? ramp : cells;
+    const top = Math.max(hA, hB) + .15, span = { ax, ay, s0: lo - C * .6, s1: hi + C * .6, half: half + C * .5, h0: hA + (hB - hA) * clamp((lo - C * .6 - sA) / Math.max(1, sB - sA), 0, 1) + .15, h1: hA + (hB - hA) * clamp((hi + C * .6 - sA) / Math.max(1, sB - sA), 0, 1) + .15 };
+    bridges.push({ cells, ramp, ends, deck: top, cx, cy, blown: null, span });
   }
 
   const trees: number[][] = [];

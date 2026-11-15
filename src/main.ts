@@ -4,7 +4,7 @@ import { S, hooks, setMap } from './state';
 import { finishMap } from './map/finish';
 import { sampleTown } from './map/procgen';
 import { newBattle, step } from './sim';
-import { liveView, replayView, followCam } from './replay';
+import { liveView, replayView, followCam, replayRate } from './replay';
 import { camera, cam, view, applyCam, fit } from './render/camera';
 import { initRenderer, renderer, buildMap3D, update3D, render } from './render/scene';
 import { initOverlay, resizeOverlay, draw2D } from './render/overlay';
@@ -47,7 +47,7 @@ function frame(now: number) {
     if (S.phase === 'battle' && !S.paused) { acc += dt * S.speed; let n = 0; while (acc >= DT && n < 60 && S.phase === 'battle') { step(); acc -= DT; n++; } if (n >= 60) acc = 0; } else acc = 0;
     let V = liveView();
     if (S.phase === 'replay') {
-      if (!S.paused) { S.rt += dt * S.speed; if (S.rt >= S.rec.end) { S.rt = S.rec.end; S.paused = true; banner('THE END', 'Exit the replay for the report'); } }
+      if (!S.paused) { S.rt += dt * S.speed * replayRate(); if (S.rt >= S.rec.end) { S.rt = S.rec.end; S.paused = true; banner('THE END', 'Exit the replay for the report'); } }
       const pr = S.rec.phases.filter((p: any) => p.t <= S.rt).length; if (pr > (S.lastBannerRound || 0)) { S.lastBannerRound = pr; banner(`PHASE ${pr}`, pr === 1 ? 'Plans locked' : 'Reinforcements in'); }
       V = replayView(); if (S.follow) followCam(dt);
     }

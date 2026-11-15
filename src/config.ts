@@ -61,6 +61,29 @@ export const TOOLS: { g: string; items: [string, string, ToolMode, string][] }[]
 export const TOOLDEF: Record<string, { id: string; name: string; mode: ToolMode; tip: string }> = {};
 TOOLS.forEach(g => g.items.forEach(t => TOOLDEF[t[0]] = { id: t[0], name: t[1], mode: t[2], tip: t[3] }));
 TOOLDEF.select = { id: 'select', name: 'SELECT', mode: 'select', tip: '' };
+// Hover window text for each tool: what it is, where it works, what beats it.
+export const INFO: Record<string, [string, string, string]> = {
+  trench: ['A dug line. Infantry inside get 70% cover from bullets and some from blasts. Slows movement.', 'Open ground', 'Mortars, artillery'],
+  wire: ['Barbed wire. No cover, but infantry cross it at a third of the speed. Tanks drive over it.', 'In front of MGs and trenches', 'Going round it, tanks'],
+  sandbag: ['A low wall of sandbags. 50% cover. Cheap.', 'Roads, corners', 'Mortars, flanks'],
+  wall: ['A solid wall. Blocks movement and sight.', 'Gaps you want closed', 'Going round it'],
+  tanktrap: ['Steel hedgehogs. Tanks cannot pass. Infantry walk through.', 'Across roads', 'Infantry'],
+  rifles: ['A platoon of 16 riflemen. Takes ATTACK and DEFEND orders and takes ground.', 'Anywhere', 'MG nests, mortars'],
+  garrison: ['Ten riflemen inside a building. 85% cover, fire from the roof and see over lower roofs. Never move.', 'Tall buildings in town', 'Artillery, tanks'],
+  mg: ['Machine gun nest. Long, fast, inaccurate fire. Never moves.', 'Woods, covering a road', 'Mortars, snipers'],
+  mortar: ['Fires shells at enemies 26 to 155 away that your side can see.', 'Behind your line', 'Artillery, rushes'],
+  sniper: ['One soldier. Sees and shoots twice as far as a rifleman. Takes orders.', 'High ground, roofs', 'Mortars, MGs'],
+  at: ['Anti-tank gun. Fires only at tanks, range 85.', 'Facing roads and open ground', 'Infantry, mortars'],
+  tank: ['Heavy gun, armour. Small arms cannot hurt it. Takes orders.', 'Roads, open ground', 'AT guns, tank traps, shells'],
+  op: ['Observation post. Sees far, spots for mortars and tightens artillery.', 'The highest ground you hold', 'Snipers, artillery'],
+  spy: ['A plane that sees everything within 55 of its path while it flies. Finds the enemy HQ.', 'Over unknown ground', 'Nothing; it only looks'],
+  barrage: ['Twelve shells into a circle at the time you set. Hits everyone, your troops too.', 'Enemy trenches, the HQ before an attack', 'Spread-out troops'],
+  air: ['A bomb run along the line you draw.', 'Columns on roads, dense groups', 'Spread-out troops'],
+  para: ['Sixteen riflemen land at a point and hold the ground there.', 'Behind the enemy, near their HQ', 'MG nests'],
+  demo: ['Blows a bridge with one end on your ground at the time you set.', 'Bridges that lead to you', 'Other bridges'],
+  attack: ['Selected units move to the ground you click and take it.', '', ''],
+  defend: ['Selected units hold the ground you click. Infantry use trenches there.', '', ''],
+};
 export const KIND_NAME: Record<string, string> = { rifles: 'Platoon', garrison: 'Garrison', mg: 'MG nest', mortar: 'Mortar', sniper: 'Sniper', tank: 'Tank', at: 'AT gun', op: 'Obs post' };
 export const SUP_NAME: Record<string, string> = { barrage: 'ARTILLERY', air: 'AIR', para: 'PARA', demo: 'DEMOLISH', spy: 'SPY' };
 export const PERS = [

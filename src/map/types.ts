@@ -6,8 +6,9 @@ export interface Building {
   id?: number; base?: number; top?: number; cx?: number; cy?: number;
 }
 export interface Bridge {
-  cells: number[]; ends: number[]; deck: number; cx: number; cy: number;
+  cells: number[]; ramp: number[]; ends: number[]; deck: number; cx: number; cy: number;
   blown: number | null; group?: any;
+  span?: { ax: number; ay: number; s0: number; s1: number; half: number; h0: number; h1: number }; // straight deck over the water
 }
 // What a map source (the sample town or an OpenStreetMap import) hands over.
 export interface RawMap {

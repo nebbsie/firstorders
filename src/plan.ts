@@ -73,5 +73,5 @@ export function clearMine(team: number) {
   S.squads = S.squads.filter((s: any) => !mine(s)); S.structs = S.structs.filter((s: any) => !mine(s)); S.supports = S.supports.filter((s: any) => !mine(s));
   S.squads.forEach((s: any) => { if (s.team === team) s.order = null; });
 }
-export const canRemove = (it: any) => S.phase === 'plan' && it.team === 0 && it.round === S.round && !it.members;
+export const canRemove = (it: any) => S.phase === 'plan' && it.team === 0 && it.round === S.round && !it.members && !it.live;
 export function removeItem(it: any) { for (const k of ['squads', 'structs', 'supports']) { const i = S[k].indexOf(it); if (i >= 0) S[k].splice(i, 1); } }

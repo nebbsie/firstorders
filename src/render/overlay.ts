@@ -12,7 +12,7 @@ export function resizeOverlay() { cv.width = Math.round(view.cw * view.dpr); cv.
 function plate(x: number, y: number, text: string, col: string) {
   if (x < -500) return; ctx.font = '11px Departure, ui-monospace, monospace';
   const w = Math.round(ctx.measureText(text).width + 10); x = Math.round(x); y = Math.round(y);
-  ctx.fillStyle = 'rgba(16,20,28,.92)'; ctx.fillRect(x - (w >> 1), y - 8, w, 16); ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.strokeRect(x - (w >> 1) + .5, y - 7.5, w - 1, 15);
+  ctx.fillStyle = 'rgba(22,23,18,.92)'; ctx.fillRect(x - (w >> 1), y - 8, w, 16); ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.strokeRect(x - (w >> 1) + .5, y - 7.5, w - 1, 15);
   ctx.fillStyle = '#f4f1e8'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, x, y + 1);
 }
 function groundLine(a: any, b: any, col: string, dash: boolean, head: boolean) {
@@ -64,7 +64,7 @@ export function draw2D() {
   drawGhost();
 }
 function drawGhost() {
-  const hover = input.hover, ptr = input.ptr; if (S.phase !== 'plan' || !hover) return;
+  const hover = input.hover, ptr = input.ptr; if ((S.phase !== 'plan' && S.phase !== 'battle') || !hover) return;
   const tool = TOOLDEF[S.tool]; if (tool.mode === 'select') return; const okC = '#8fe3a6', badC = '#f08a7a';
   if (ptr && ptr.mode === 'line') {
     let label: string, ok: boolean;

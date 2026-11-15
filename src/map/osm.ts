@@ -155,7 +155,7 @@ way["leisure"~"^(park|garden|pitch|golf_course|nature_reserve|common)$"](${bb});
   const mask = (draw: (g: CanvasRenderingContext2D) => void) => {
     const c = document.createElement('canvas'); c.width = GW; c.height = GH; const g = c.getContext('2d', { willReadFrequently: true });
     g.setTransform(1 / C, 0, 0, 1 / C, 0, 0); g.fillStyle = '#fff'; g.strokeStyle = '#fff'; g.lineCap = 'round'; g.lineJoin = 'round'; draw(g);
-    const d = g.getImageData(0, 0, GW, GH).data, m = new Uint8Array(GW * GH); for (let i = 0; i < m.length; i++) m[i] = d[i * 4 + 3] > 110 ? 1 : 0; return m;
+    const d = g.getImageData(0, 0, GW, GH).data, m = new Uint8Array(GW * GH); for (let i = 0; i < m.length; i++) m[i] = d[i * 4 + 3] > 60 ? 1 : 0; return m;
   };
   const mWater = mask(g => { polys(g, water); for (const r of rivers) lines(g, [r.pts], r.w); });
   const mRoad = mask(g => { for (const r of roads) lines(g, [r.pts], Math.max(r.w, C * .9)); });

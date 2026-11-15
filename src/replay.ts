@@ -43,11 +43,18 @@ export function seek(t: number) { S.rt = clamp(t, 0, S.rec.end); S.lastBannerRou
 export function exitReplay() { S.phase = 'done'; if (S.finalOwn) OWN.set(S.finalOwn); paintTerritory(null); paintFog(VIS0, SEEN0, false); }
 export function refreshReplayFog() { fogKey = ''; ownIdx = -1; }
 function lb2(arr: any[], t: number) { return lbT(arr, t); }
+// Replay speed drops near an HQ falling so the moment can be seen.
+export function replayRate() { const m = S.rec.moments.find((m: any) => m.big && S.rt > m.t - 3 && S.rt < m.t + 2); return m ? .35 : 1; }
 export function followCam(dt: number) {
   const R = S.rec, rt = S.rt; let sx = 0, sy = 0, w = 0;
+  // A key moment about to happen takes the camera there first.
+  const mo = R.moments.find((m: any) => rt > m.t - 4 && rt < m.t + 3);
+  if (mo) { const k = 1 - Math.exp(-dt * 2); cam.tx += (mo.x - cam.tx) * k; cam.ty += (mo.y - cam.ty) * k; cam.dist += ((mo.big ? 90 : 130) - cam.dist) * k; cam.pitch += (.8 - cam.pitch) * k * .5; return; }
   for (let k = lb2(R.booms, rt - 3); k < R.booms.length && R.booms[k][0] <= rt; k++) { const q = R.booms[k], f = 1 - (rt - q[0]) / 3; sx += q[1] * f * 4; sy += q[2] * f * 4; w += f * 4; }
   for (let k = lb2(R.tracers, rt - 1.5); k < R.tracers.length && R.tracers[k][0] <= rt; k += 3) { const q = R.tracers[k]; sx += (q[1] + q[3]) / 2; sy += (q[2] + q[4]) / 2; w += 1; }
   if (w < 1) for (const u of RV.units) if (u.alive) { sx += u.x; sy += u.y; w++; }
   if (!w) return;
+  // A far jump is a cut; a near one is a smooth pan.
+  if (Math.hypot(sx / w - cam.tx, sy / w - cam.ty) > 140) { cam.tx = sx / w; cam.ty = sy / w; }
   const k = 1 - Math.exp(-dt * 1.1); cam.tx += (sx / w - cam.tx) * k; cam.ty += (sy / w - cam.ty) * k; cam.dist += (175 - cam.dist) * k; cam.pitch += (.85 - cam.pitch) * k * .5; cam.yaw += dt * .04;
 }

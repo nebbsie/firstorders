@@ -1,4 +1,4 @@
-import { W, H, C, GW, GH, IW, IH, IC, DT, BUDGET, PHASES, PHASE_LEN, HQ_HOLD, K, COV, KIND_NAME, SPY_RADIUS, T_ROAD, T_BRIDGE, T_WOOD, T_BUILD, T_WATER, clamp, grid } from './config';
+import { W, H, C, GW, GH, IW, IH, IC, DT, BUDGET, COST, PHASES, PHASE_LEN, HQ_HOLD, K, COV, KIND_NAME, SPY_RADIUS, T_ROAD, T_BRIDGE, T_WOOD, T_BUILD, T_WATER, clamp, grid } from './config';
 import { S, M, OWN, VIS0, SEEN0, hooks } from './state';
 import { cellOf, unitH, passable, nudge, opRange } from './world';
 import { aliveMembers, spentNow, sqName, nextCall, rollPersonalities, initOwn } from './plan';
@@ -26,7 +26,7 @@ export function beginRound() {
     Object.assign(S, { t: 0, units: [], shells: [], bombs: [], fx: [], tracers: [], craters: [], planes: [], flow: new Map(), log: [], history: [] });
     rnd = Math.random; S.cover = new Uint8Array(GW * GH); S.stats = S.teams.map(() => ({ kills: 0, lost: 0, start: 0, roundKills: 0 }));
     S.known = S.teams.map(() => new Map()); S.contactT = S.teams.map(() => new Map());
-    S.rec = { frames: [], tracers: [], booms: [], shells: [], planes: [], phases: [], own: [{ t: 0, o: OWN.slice() }], meta: null };
+    S.rec = { frames: [], tracers: [], booms: [], shells: [], planes: [], phases: [], moments: [], own: [{ t: 0, o: OWN.slice() }], meta: null };
   }
   for (const t of S.teams) S.bank[t.id] -= spentNow(t.id);
   S.phaseStart = S.t; S.flow.clear(); S.rec.phases.push({ round: S.round, t: S.t });
@@ -41,6 +41,18 @@ export function beginRound() {
   S.phase = 'battle'; S.paused = false; log(-1, `Phase ${S.round} begins`);
   updateVision(); recFrame();
   hooks.banner(`PHASE ${S.round}`, S.round === 1 ? 'Plans locked' : 'Reinforcements in'); S.sel = null; S.selMany = []; hooks.sync();
+}
+// Things bought or ordered during a phase act at once. The cost comes straight off the bank.
+export function goLive(it: any) {
+  if (!it) return; it.live = true;
+  if (it.pos) { S.bank[it.team] -= COST[it.kind]; spawnSquad(it); }
+  else if (it.cells) { S.bank[it.team] -= it.cells.length * COST[it.type]; for (const ci of it.cells) S.cover[ci] = COV[it.type]; it.placedAt = S.t; S.flow.clear(); }
+  else { S.bank[it.team] -= COST[it.type]; it.t = S.t - S.phaseStart + 3; it.fired = false; }
+}
+export function applyOrder(sq: any) {
+  if (!sq.members || !sq.order) return; const o = sq.order;
+  sq.state = o.type; sq.tx = o.x; sq.ty = o.y; sq.arrived = -1; sq.contact = S.t; assignSlots(sq); sq.cur = o; sq.order = null;
+  if (o.type === 'attack') log(sq.team, `${sqName(sq)}: moving on ${grid(o.x, o.y)}`);
 }
 function snapshotHistory() { S.history.push({ round: S.round, terr: S.terrCount.slice(), alive: S.teams.map((t: any) => S.units.filter((u: any) => u.alive && u.team === t.id).length) }); }
 function endRound() {
@@ -204,7 +216,7 @@ function blowBridge(i: number, team: number) {
   for (const ci of br.cells) { M.terr[ci] = T_WATER; M.deck[ci] = -99; } S.flow.clear();
   for (let k = 0; k < br.cells.length; k += 3) { const c = br.cells[k]; explode((c % GW) * C + 1, Math.floor(c / GW) * C + 1, 6, .9, team); }
   for (const u of S.units) if (u.alive && M.terr[cellOf(u.x, u.y)] === T_WATER) kill(u, team);
-  log(team, `${S.teams[team].name} engineers: bridge at ${grid(br.cx, br.cy)} blown`);
+  log(team, `${S.teams[team].name} engineers: bridge at ${grid(br.cx, br.cy)} blown`); S.rec.moments.push({ t: S.t, x: br.cx, y: br.cy, big: false });
 }
 function dropPara(pl: any) {
   const pos: number[][] = []; for (let i = 0; i < 16; i++) { const a = rnd() * 6.28, d = rnd() * 9; const q = nudge(pl.tx + Math.cos(a) * d, pl.ty + Math.sin(a) * d); if (q) pos.push(q); }
@@ -324,13 +336,13 @@ function captureGround(capture: boolean) {
 function checkHQs() {
   for (const t of S.teams) {
     if (t.lost) continue; const o = OWN[Math.floor(t.zone.y / IC) * IW + Math.floor(t.zone.x / IC)];
-    if (o >= 0 && o !== t.id) { if (t.hqBy !== o) { t.hqBy = o; t.hqHold = 0; log(-1, `${S.teams[o].name} troops are in the ${t.name} HQ`); } t.hqHold += .5; } else { t.hqBy = -1; t.hqHold = 0; }
+    if (o >= 0 && o !== t.id) { if (t.hqBy !== o) { t.hqBy = o; t.hqHold = 0; log(-1, `${S.teams[o].name} troops are in the ${t.name} HQ`); S.rec.moments.push({ t: S.t, x: t.zone.x, y: t.zone.y, big: false }); } t.hqHold += .5; } else { t.hqBy = -1; t.hqHold = 0; }
     if (t.hqHold < HQ_HOLD) continue;
     const by = S.teams[t.hqBy]; t.lost = true;
     for (const u of S.units) if (u.alive && u.team === t.id) { u.alive = false; S.stats[t.id].lost++; }
     for (let i = 0; i < OWN.length; i++) if (OWN[i] === t.id) OWN[i] = by.id;
     if (S.rec) S.rec.own.push({ t: S.t, o: OWN.slice() }); countGround(); hooks.ground();
-    log(-1, `${by.name} took the ${t.name} HQ. ${t.name} surrenders.`); hooks.banner(`${t.name} HQ TAKEN`, `${by.name} holds it`);
+    log(-1, `${by.name} took the ${t.name} HQ. ${t.name} surrenders.`); S.rec.moments.push({ t: S.t, x: t.zone.x, y: t.zone.y, big: true }); hooks.banner(`${t.name} HQ TAKEN`, `${by.name} holds it`);
     const left = S.teams.filter((x: any) => !x.lost);
     if (left.length <= 1 || t.id === 0) { snapshotHistory(); finish(false, t.id === 0 ? by.id : left[0].id); return; }
   }

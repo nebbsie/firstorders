@@ -3,6 +3,7 @@ import { W, H, C, GW, GH, IW, IH, IC, TRGB, clamp, inPlay } from '../config';
 import { S, M, OWN } from '../state';
 import { unitH } from '../world';
 import { camera, cam, FOV, view } from './camera';
+import { MODELS } from './models';
 
 // Colours are given in sRGB and used as they are, like the 2D interface.
 THREE.ColorManagement.enabled = false;
@@ -38,7 +39,7 @@ export function paintTerritory(seen: Uint8Array | null) {
   const img = ictx.createImageData(IW, IH), px = img.data;
   for (let i = 0; i < IW * IH; i++) {
     const o = OWN[i]; if (o < 0 || (seen && o !== 0 && !seen[i])) continue;
-    const c = TRGB[o]; px[i * 4] = c[0] * 255; px[i * 4 + 1] = c[1] * 255; px[i * 4 + 2] = c[2] * 255; px[i * 4 + 3] = o === 0 ? 92 : 80;
+    const c = TRGB[o]; px[i * 4] = c[0] * 255; px[i * 4 + 1] = c[1] * 255; px[i * 4 + 2] = c[2] * 255; px[i * 4 + 3] = viewOpts.area ? 175 : o === 0 ? 92 : 80;
   }
   ictx.putImageData(img, 0, 0); terrTex.needsUpdate = true;
 }
@@ -50,10 +51,14 @@ export function paintFog(vis: Uint8Array, seen: Uint8Array, on: boolean) {
 }
 
 let mapGroup: THREE.Group = null;
+// View options: AREA paints held ground strongly; BUILDINGS off hides buildings and trees.
+export const viewOpts = { area: false, buildings: true };
+const hideable: THREE.Object3D[] = [];
+export function applyViews() { for (const o of hideable) o.visible = viewOpts.buildings; }
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _p = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0), _c = new THREE.Color();
 export function buildMap3D() {
   if (mapGroup) { scene.remove(mapGroup); mapGroup.traverse((o: any) => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map && o.material.map !== terrTex && o.material.map !== fogTex) o.material.map.dispose(); o.material.dispose(); } }); }
-  mapGroup = new THREE.Group(); const VW = GW + 1, TH = M.TH;
+  mapGroup = new THREE.Group(); hideable.length = 0; const VW = GW + 1, TH = M.TH;
   const pos = new Float32Array(GW * GH * 18), uv = new Float32Array(GW * GH * 12); let k = 0, u = 0;
   const vtx = (i: number, j: number) => { pos[k++] = i * C - W / 2; pos[k++] = TH[j * VW + i]; pos[k++] = j * C - H / 2; uv[u++] = i * C / W; uv[u++] = 1 - j * C / H; };
   for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) { vtx(i, j); vtx(i, j + 1); vtx(i + 1, j); vtx(i + 1, j); vtx(i, j + 1); vtx(i + 1, j + 1); }
@@ -61,7 +66,13 @@ export function buildMap3D() {
   const gt = new THREE.CanvasTexture(M.ground); gt.anisotropy = renderer.capabilities.getMaxAnisotropy(); gt.colorSpace = THREE.NoColorSpace;
   const terrain = new THREE.Mesh(tg, new THREE.MeshLambertMaterial({ map: gt })); terrain.receiveShadow = true; mapGroup.add(terrain);
   const over = new THREE.Mesh(tg, new THREE.MeshBasicMaterial({ map: terrTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })); over.renderOrder = 1; mapGroup.add(over);
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(W, H).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ color: '#3f6874', transparent: true, opacity: .8 })); water.renderOrder = 2; mapGroup.add(water);
+  // Square, solid map edge: a wall from the ground line down to a flat base on all four sides.
+  const skirt: number[] = [], BASE = -8, edge = (pts: number[][]) => { for (let k = 0; k < pts.length - 1; k++) { const [x0, y0] = pts[k], [x1, y1] = pts[k + 1], h0 = M.hAt(x0, y0), h1 = M.hAt(x1, y1); const q = (x: number, y: number, h: number) => skirt.push(x - W / 2, h, y - H / 2); q(x0, y0, h0); q(x0, y0, BASE); q(x1, y1, h1); q(x1, y1, h1); q(x0, y0, BASE); q(x1, y1, BASE); } };
+  const line = (fx: (k: number) => number[]) => { const p: number[][] = []; for (let k = 0; k <= GW; k++) p.push(fx(k)); return p; };
+  edge(line(k => [k * C, 0])); edge(line(k => [W, k * C])); edge(line(k => [W - k * C, H])); edge(line(k => [0, H - k * C]));
+  const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(skirt, 3)); sg.computeVertexNormals();
+  mapGroup.add(new THREE.Mesh(sg, new THREE.MeshLambertMaterial({ color: '#3a3529', side: THREE.DoubleSide })));
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(W - .3, H - .3).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ color: '#3f6874', transparent: true, opacity: .8 })); water.renderOrder = 2; mapGroup.add(water);
 
   // Buildings: one merged mesh of flat-shaded walls and roofs. Roofs are triangulated, so L-shapes work.
   const Pa: number[] = [], Na: number[] = [], Ca: number[] = [];
@@ -86,30 +97,35 @@ export function buildMap3D() {
     }
   }
   const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(Pa, 3)); bg.setAttribute('normal', new THREE.Float32BufferAttribute(Na, 3)); bg.setAttribute('color', new THREE.Float32BufferAttribute(Ca, 3));
-  const bm = new THREE.Mesh(bg, new THREE.MeshLambertMaterial({ vertexColors: true })); bm.castShadow = true; bm.receiveShadow = true; mapGroup.add(bm);
+  const bm = new THREE.Mesh(bg, new THREE.MeshLambertMaterial({ vertexColors: true })); bm.castShadow = true; bm.receiveShadow = true; mapGroup.add(bm); hideable.push(bm);
 
   for (const br of M.bridges) {
-    const grp = new THREE.Group(), deckM = new THREE.MeshLambertMaterial({ color: '#7a7266' }), pierM = new THREE.MeshLambertMaterial({ color: '#5f594f' });
-    const im = new THREE.InstancedMesh(new THREE.BoxGeometry(C, .8, C), deckM, br.cells.length);
-    br.cells.forEach((c, i) => { _p.set((c % GW) * C + 1 - W / 2, br.deck - .4, Math.floor(c / GW) * C + 1 - H / 2); _m.compose(_p, _q.identity(), _s.set(1, 1, 1)); im.setMatrixAt(i, _m); });
-    im.castShadow = true; im.receiveShadow = true; grp.add(im);
-    const piers = br.cells.filter((_, i) => i % 9 === 4), pm = new THREE.InstancedMesh(new THREE.BoxGeometry(1.4, 1, 1.4), pierM, Math.max(1, piers.length));
-    piers.forEach((c, i) => { const h = br.deck + 2; _p.set((c % GW) * C + 1 - W / 2, h / 2 - 2.2, Math.floor(c / GW) * C + 1 - H / 2); _m.compose(_p, _q.identity(), _s.set(1, h, 1)); pm.setMatrixAt(i, _m); });
-    pm.count = piers.length; grp.add(pm);
+    // One straight deck from bank to bank, with piers down into the water.
+    const grp = new THREE.Group(), sp = br.span, deckM = new THREE.MeshLambertMaterial({ color: '#8a8070' }), pierM = new THREE.MeshLambertMaterial({ color: '#5f594f' });
+    const ax0 = br.cx + sp.ax * sp.s0, ay0 = br.cy + sp.ay * sp.s0, ax1 = br.cx + sp.ax * sp.s1, ay1 = br.cy + sp.ay * sp.s1;
+    const a = new THREE.Vector3(ax0 - W / 2, sp.h0 - .4, ay0 - H / 2), b = new THREE.Vector3(ax1 - W / 2, sp.h1 - .4, ay1 - H / 2), len = a.distanceTo(b);
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(sp.half * 2, .8, len), deckM); deck.position.copy(a).lerp(b, .5); deck.lookAt(b); deck.castShadow = true; deck.receiveShadow = true; grp.add(deck);
+    for (const side of [-1, 1]) { const rail = new THREE.Mesh(new THREE.BoxGeometry(.3, .6, len), deckM); rail.position.set(side * (sp.half - .15), .7, 0); deck.add(rail); }
+    const n = Math.max(1, Math.floor((sp.s1 - sp.s0) / 9));
+    for (let k = 1; k < n; k++) {
+      const f = k / n, x = ax0 + (ax1 - ax0) * f, y = ay0 + (ay1 - ay0) * f, top = sp.h0 + (sp.h1 - sp.h0) * f - .8, bottom = Math.min(-2.5, M.hAt(x, y));
+      const pier = new THREE.Mesh(new THREE.BoxGeometry(1.4, top - bottom, 1.4), pierM); pier.position.set(x - W / 2, (top + bottom) / 2, y - H / 2); grp.add(pier);
+    }
     br.group = grp; mapGroup.add(grp);
   }
   for (const inside of [true, false]) {
     const list = M.trees.filter(t => inPlay(t[0], t[1]) === inside); if (!list.length) continue;
     const tm = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 5), new THREE.MeshLambertMaterial({ color: inside ? '#3d5832' : '#4b4f4b' }), list.length);
     list.forEach((t, i) => { _q.setFromAxisAngle(_up, t[0]); _p.set(t[0] - W / 2, M.hAt(t[0], t[1]) + t[2] / 2, t[1] - H / 2); _s.set(1.3 + t[2] * .18, t[2], 1.3 + t[2] * .18); _m.compose(_p, _q, _s); tm.setMatrixAt(i, _m); });
-    tm.castShadow = inside; tm.receiveShadow = true; mapGroup.add(tm);
+    tm.castShadow = inside; tm.receiveShadow = true; mapGroup.add(tm); hideable.push(tm);
   }
   const fogMesh = new THREE.Mesh(tg, new THREE.MeshBasicMaterial({ map: fogTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 })); fogMesh.renderOrder = 3; mapGroup.add(fogMesh);
-  scene.add(mapGroup); structKey = '';
+  scene.add(mapGroup); structKey = ''; applyViews();
 }
 
 // Dynamic objects, created once and refilled every frame.
-let mTrench, mTrenchLip, mSand, mWire, mWall, mTrap, mEmp, mPlane, mCrater, mBoom, ptUnits, ptBodies, ptGhosts, ptHeads, lineG;
+const mModel: Record<string, any> = {}, nModel: Record<string, number> = {};
+let mTrench, mTrenchLip, mSand, mWire, mWall, mTrap, mPlane, mCrater, mBoom, ptUnits, ptBodies, ptGhosts, ptHeads, lineG;
 const LMAX = 8000;
 function inst(geom: THREE.BufferGeometry, mat: THREE.Material, cap: number, shadow?: boolean) {
   const m = new THREE.InstancedMesh(geom, mat, cap); m.frustumCulled = false; const c = new THREE.Color(1, 1, 1);
@@ -124,7 +140,8 @@ function createDynamic() {
   const box = new THREE.BoxGeometry(1, 1, 1);
   mTrench = inst(box, lam('#3a2c1e'), 4000); mTrenchLip = inst(box, lam('#6b583e'), 4000); mSand = inst(box, lam('#b39d74'), 4000, true);
   mWire = inst(new THREE.BoxGeometry(2.6, .5, .12), lam('#a39f95'), 8000); mWall = inst(box, lam('#8f8a7e'), 4000, true);
-  mTrap = inst(new THREE.BoxGeometry(2.2, .3, .3), lam('#4c4b47'), 9000, true); mEmp = inst(box, lam('#ffffff'), 1500, true);
+  mTrap = inst(new THREE.BoxGeometry(2.2, .3, .3), lam('#4c4b47'), 9000, true);
+  for (const k of Object.keys(MODELS)) mModel[k] = inst(MODELS[k], new THREE.MeshLambertMaterial({ vertexColors: true }), k === 'hq' || k === 'flag' ? 8 : 400, true);
   mPlane = inst(box, new THREE.MeshLambertMaterial({ color: '#c87a2a' }), 40, true);
   mCrater = inst(new THREE.CircleGeometry(1, 7).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#211b14', transparent: true, opacity: .75, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }), 700);
   mBoom = inst(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicMaterial({ color: '#ffffff', blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }), 300);
@@ -169,18 +186,16 @@ export function update3D(V: View) {
   const up = ptUnits.geometry.attributes.position.array, uc = ptUnits.geometry.attributes.color.array;
   const bp = ptBodies.geometry.attributes.position.array, bc = ptBodies.geometry.attributes.color.array;
   const gp = ptGhosts.geometry.attributes.position.array, gc = ptGhosts.geometry.attributes.color.array;
-  let n = 0, nb = 0, ng = 0, ne = 0;
+  let n = 0, nb = 0, ng = 0;
   const putU = (x: number, y: number, h: number, c: number[], dim: number) => { if (n >= 5000) return; up[n * 3] = x - W / 2; up[n * 3 + 1] = h; up[n * 3 + 2] = y - H / 2; uc[n * 3] = c[0] * dim; uc[n * 3 + 1] = c[1] * dim; uc[n * 3 + 2] = c[2] * dim; n++; };
+  // Team tint over the model's own colours: a light wash of the team colour.
+  for (const k in mModel) nModel[k] = 0;
   const emp = (kind: string, x: number, y: number, c: number[], hd: number) => {
-    const h = unitH(x, y), dc = c.map(v => v * .55), yaw = hd || 0, fx = Math.cos(yaw), fy = -Math.sin(yaw);
-    if (kind === 'mg') setI(mEmp, ne++, x, y, h + .45, 2.6, .9, 2.6, 0, dc);
-    else if (kind === 'mortar') setI(mEmp, ne++, x, y, h + .6, 1.4, 1.2, 1.4, .6, dc);
-    else if (kind === 'tank') { setI(mEmp, ne++, x, y, h + .7, 3.4, 1.3, 2.1, yaw, dc); setI(mEmp, ne++, x, y, h + 1.65, 1.5, .7, 1.4, yaw, c.map(v => v * .7)); setI(mEmp, ne++, x + fx * 1.9, y + fy * 1.9, h + 1.65, 2.2, .25, .25, yaw, dc); }
-    else if (kind === 'at') { setI(mEmp, ne++, x, y, h + .4, 1.6, .7, 1.6, yaw, dc); setI(mEmp, ne++, x + fx * 1.4, y + fy * 1.4, h + .8, 2, .2, .2, yaw, dc); }
-    else if (kind === 'op') { setI(mEmp, ne++, x, y, h + 2, .35, 4, .35, 0, dc); setI(mEmp, ne++, x, y, h + 4.2, 1.4, .6, 1.4, 0, c); }
+    const m = mModel[kind]; if (!m || nModel[kind] >= 400) return;
+    setI(m, nModel[kind]++, x, y, unitH(x, y), 1.6, 1.6, 1.6, hd || 0, [.62 + c[0] * .5, .62 + c[1] * .5, .62 + c[2] * .5]);
   };
   for (const u of V.units) {
-    if (ne > 1400) break; const c = TRGB[u.team];
+    const c = TRGB[u.team];
     if (u.alive) {
       if (u.team !== 0 && V.fogOn && !V.isVis(u)) continue;
       putU(u.x, u.y, unitH(u.x, u.y) + .9 + (u.drop > 0 ? u.drop * 14 : 0), c, 1);
@@ -202,9 +217,10 @@ export function update3D(V: View) {
   for (const t of S.teams) {
     if (t.id !== 0 && V.fogOn && !(S.hqKnown && S.hqKnown[0] && S.hqKnown[0].has(t.id))) continue;
     const x = t.zone.x, y = t.zone.y, h = M.hAt(x, y), fc = TRGB[t.lost && t.hqBy >= 0 ? t.hqBy : t.id];
-    setI(mEmp, ne++, x, y, h + .9, 7, 1.8, 7, .3, [.36, .34, .3]); setI(mEmp, ne++, x + 2.4, y, h + 5, .25, 9, .25, 0, [.85, .85, .82]); setI(mEmp, ne++, x + 3.9, y, h + 8.6, 2.8, 1.7, .15, 0, fc);
+    setI(mModel.hq, nModel.hq++, x, y, h, 1, 1, 1, .3, [1, 1, 1]);
+    setI(mModel.flag, nModel.flag++, x + 2.4 * Math.cos(.3) + 1.8 * Math.sin(.3), y - 2.4 * Math.sin(.3) + 1.8 * Math.cos(.3), h + 8.4, 1, 1, 1, .3, fc);
   }
-  done(mEmp, ne);
+  for (const k in mModel) done(mModel[k], nModel[k]);
   const ppu = view.ch / 2 / (cam.dist * Math.tan(FOV / 2 * Math.PI / 180));
   ptUnits.material.size = clamp(ppu * 1.1, 2.5, 7); ptBodies.material.size = clamp(ppu * .8, 1.5, 5); ptGhosts.material.size = clamp(ppu * 1.1, 2.5, 7); ptHeads.material.size = clamp(ppu * 1.2, 2.5, 6);
 

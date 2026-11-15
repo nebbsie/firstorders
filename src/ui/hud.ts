@@ -1,11 +1,11 @@
-import { PLAY_R, PHASE_LEN, COST, TOOLS, KIND_NAME, T_BUILD, T_WATER, T_BRIDGE, T_ROAD, T_WOOD, T_PARK, HS, grid, fmtT, clamp } from '../config';
+import { PLAY_R, PHASE_LEN, COST, TOOLS, INFO, KIND_NAME, T_BUILD, T_WATER, T_BRIDGE, T_ROAD, T_WOOD, T_PARK, HS, grid, fmtT, clamp } from '../config';
 import { S, M, VIS0, SEEN0 } from '../state';
 import { cellOf, bldNear } from '../world';
 import { aliveMembers, sqCenter, itemCost, left, canRemove, removeItem } from '../plan';
 import { beginRound, newBattle } from '../sim';
 import { startReplay, seek, exitReplay, refreshReplayFog } from '../replay';
 import { fit, cam } from '../render/camera';
-import { paintFog, paintTerritory } from '../render/scene';
+import { paintFog, paintTerritory, viewOpts, applyViews } from '../render/scene';
 
 const $ = (s: string) => document.querySelector(s) as HTMLElement;
 let toastT = 0, bannerT = 0;
@@ -36,15 +36,24 @@ function openTools(g: string) {
   document.querySelectorAll('.cmd').forEach((b: any) => b.classList.toggle('on', b.dataset.g === openGroup));
   if (!openGroup) { panel.hidden = true; setTool('select'); return; }
   const grp = TOOLS.find(t => t.g === g);
-  panel.innerHTML = `<h3>${grp.g}</h3><div class="tiles">${grp.items.map(t => `<button class="btn tile" data-tool="${t[0]}" title="${t[3]}"><span>${t[1]}</span><em>${COST[t[0]] ? (t[2] === 'line' && t[0] !== 'air' && t[0] !== 'spy' ? COST[t[0]] + '/c' : COST[t[0]]) : ''}</em></button>`).join('')}</div>`;
+  panel.innerHTML = `<h3>${grp.g}</h3><div class="tiles">${grp.items.map(t => `<button class="btn tile" data-tool="${t[0]}" ><span>${t[1]}</span><em>${COST[t[0]] ? (t[2] === 'line' && t[0] !== 'air' && t[0] !== 'spy' ? COST[t[0]] + '/c' : COST[t[0]]) : ''}</em></button>`).join('')}</div>`;
   const btn = document.querySelector(`.cmd[data-g="${g}"]`) as HTMLElement; panel.hidden = false; panel.style.left = Math.max(10, btn.getBoundingClientRect().left) + 'px';
-  panel.querySelectorAll('.tile').forEach((b: any) => b.onclick = () => { if (S.phase !== 'plan') { toast('Orders are locked until this phase ends'); return; } setTool(S.tool === b.dataset.tool ? 'select' : b.dataset.tool); });
+  panel.querySelectorAll('.tile').forEach((b: any) => {
+    b.onclick = () => setTool(S.tool === b.dataset.tool ? 'select' : b.dataset.tool);
+    b.onmouseenter = () => showInfo(b.dataset.tool); b.onmouseleave = () => { $('#info').hidden = true; };
+  });
   setTool(S.tool);
 }
 export function closeTools() { if (openGroup) openTools(openGroup); }
+// Right-hand window while hovering a tool tile: what it is, where it works, what beats it.
+function showInfo(id: string) {
+  const def = TOOLS.flatMap(g => g.items).find(t => t[0] === id), inf = INFO[id]; if (!def || !inf) return;
+  $('#info').innerHTML = `<div class="ph"><span>${def[1]}</span><span>${COST[id] ? COST[id] + (def[2] === 'line' && id !== 'air' && id !== 'spy' ? ' / CELL' : '') : ''}</span></div><div class="pb"><p class="hint">${inf[0]}</p>${inf[1] ? `<dl class="kv" style="margin-top:8px"><dt>Best</dt><dd>${inf[1]}</dd><dt>Beaten by</dt><dd>${inf[2]}</dd></dl>` : ''}<p class="note">${def[2] === 'line' ? 'Drag a line.' : def[2] === 'order' ? 'Select units first.' : ['spy', 'barrage', 'para', 'demo', 'air'].includes(id) ? 'Anywhere in the circle.' : 'On your own ground.'}</p></div>`;
+  $('#info').hidden = false;
+}
 function buildCommands() {
   $('#cmds').innerHTML = TOOLS.map(t => `<button class="btn cmd" data-g="${t.g}">${t.g}</button>`).join('');
-  document.querySelectorAll('.cmd').forEach((b: any) => b.onclick = () => { if (S.phase !== 'plan') { toast('Orders are locked until this phase ends'); return; } openTools(b.dataset.g); });
+  document.querySelectorAll('.cmd').forEach((b: any) => b.onclick = () => openTools(b.dataset.g));
 }
 
 // Selection: one item, or several of your units from a box.
@@ -52,7 +61,7 @@ export function setSel(it: any, many?: any[]) { S.sel = it; S.selMany = many || 
 
 // A small note beside the cursor while a tool is in hand: grid square, ground type, height.
 export function cursorNote(w: any, sx: number, sy: number) {
-  const el = $('#cursorNote'); if (!w || !M || S.tool === 'select' || S.phase !== 'plan') { el.hidden = true; return; }
+  const el = $('#cursorNote'); if (!w || !M || S.tool === 'select' || (S.phase !== 'plan' && S.phase !== 'battle')) { el.hidden = true; return; }
   const ci = cellOf(w.x, w.y); if (ci < 0) { el.hidden = true; return; }
   const t = M.terr[ci], m = Math.max(0, Math.round((M.hAt(w.x, w.y) - 3) / HS)); let k: string;
   if (t === T_BUILD) k = 'BUILDING'; else if (t === T_WATER) k = 'WATER'; else if (t === T_BRIDGE) k = 'BRIDGE'; else if (t === T_ROAD) k = 'ROAD';
@@ -110,7 +119,8 @@ function renderTimeline() {
   const el = $('#tl'), end = S.rec.end; el.classList.add('scrub');
   let h = `<div class="axis"></div><div class="fill" id="fill" style="width:calc((100% - 16px) * ${S.rt / end})"></div>`;
   for (const p of S.rec.phases) h += `<span class="ev" style="left:${tpos(p.t / end)}">PHASE ${p.round}</span>`;
-  for (const l of S.log) { if (l.team < 0 || !logVisible(l)) continue; h += `<span class="mk" style="left:${tpos(l.t / end)};background:${S.teams[l.team].color}"></span>`; }
+  for (const m of S.rec.moments) h += `<span class="mk big" style="left:${tpos(m.t / end)}"></span>`;
+  for (const l of S.log) { if (l.team < 0 || !/ lost at |blown|HQ found/.test(l.msg)) continue; h += `<span class="mk" style="left:${tpos(l.t / end)};background:${S.teams[l.team].color}"></span>`; }
   h += `<span class="tick" style="left:${tpos(1)};transform:translateX(-100%)">${fmtT(end)}</span><span class="now" id="now" style="left:${tpos(S.rt / end)}"></span>`;
   el.innerHTML = h;
 }
@@ -133,9 +143,11 @@ function syncClock() {
 }
 export function syncUI() {
   const ph = S.phase, plan = ph === 'plan', show = (id: string, v: boolean) => $(id).hidden = !v;
-  show('#bBegin', plan); $('#bBegin').textContent = `BEGIN PHASE ${S.round}`; show('#cmds', plan); show('#supplyPlate', plan);
+  const live = plan || ph === 'battle';
+  show('#bBegin', plan); $('#bBegin').textContent = `BEGIN PHASE ${S.round}`; show('#cmds', live); show('#supplyPlate', live);
   show('#bReplay', ph === 'done'); show('#bNew', ph === 'done'); show('#bExit', ph === 'replay'); show('#bFollow', ph === 'replay'); show('#bFromStart', ph === 'replay');
-  if (!plan) { closeTools(); setTool('select'); $('#card').hidden = true; }
+  if (!live) { closeTools(); setTool('select'); }
+  if (!plan) $('#card').hidden = true;
   if (ph !== 'done') $('#result').hidden = true;
   syncClock(); renderTimeline(); renderInspector(); syncSpeed(); syncFollow(); renderRadio();
 }
@@ -172,6 +184,8 @@ export function bindStrip(toMenu: () => void) {
   $('#helpClose').onclick = () => { $('#help').hidden = true; };
   $('#cardOk').onclick = () => { $('#card').hidden = true; };
   $('#inspClose').onclick = () => setSel(null);
+  $('#vArea').onclick = () => { viewOpts.area = !viewOpts.area; $('#vArea').classList.toggle('on', viewOpts.area); refreshFogPaint(); };
+  $('#vBld').onclick = () => { viewOpts.buildings = !viewOpts.buildings; $('#vBld').classList.toggle('on', viewOpts.buildings); applyViews(); };
   document.querySelectorAll('#speeds .btn').forEach((b: any) => b.onclick = () => { const v = +b.dataset.speed; if (v === 0) S.paused = !S.paused; else { S.speed = v; S.paused = false; } syncSpeed(); });
   const tl = $('#tl'); let scrubbing = false;
   const at = (e: PointerEvent) => { const r = tl.getBoundingClientRect(); seek((e.clientX - r.left - 8) / (r.width - 16) * S.rec.end); };
