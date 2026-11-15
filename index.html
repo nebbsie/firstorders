@@ -56,7 +56,7 @@
       <h3>A BATTLE</h3>
       <p>Take the enemy HQ and hold your own. An HQ falls when enemy troops hold its ground for 5 seconds; its side surrenders. Each phase lasts 60 seconds: before it you build, buy and give orders, then it plays out on its own. At the end, watch the replay.</p>
       <h3>GROUND</h3>
-      <p>The battle is the circle; the grey ring around it is scenery. You can only build on ground you hold, tinted your colour. Troops that clearly hold ground take it. Supply each phase comes from the ground you hold.</p>
+      <p>The battle is the circle (1, 2 or 3 km across); the grey ring around it is scenery. You can only build on ground you hold, tinted your colour. Troops that clearly hold ground take it. Supply each phase comes from the ground you hold.</p>
       <h3>FOG OF WAR</h3>
       <p>You see only what your troops can see: line of sight, blocked by hills, buildings and woods. Troops in woods are seen only at half range. Snipers and obs posts see far. A spy plane sees everything near its path. Faded dots are where you last saw the enemy. The AI plays by the same rules.</p>
       <h3>TERRAIN</h3>
@@ -84,7 +84,9 @@
       <h3 class="hostonly">FIGHT IN A REAL PLACE</h3>
       <div class="searchrow hostonly"><input id="mQuery" class="input" placeholder="Town, street or postcode" autocomplete="off"><button class="btn" id="mSearch">SEARCH</button></div>
       <div class="results hostonly" id="mResults"></div>
-      <div class="hint" id="mStatus">The battle is a 1 km circle. Each place downloads once, then it is kept in this browser.</div>
+      <div class="hint" id="mStatus">Each place downloads once, then it is kept in this browser.</div>
+      <h3 class="hostonly">BATTLE SIZE</h3>
+      <div class="row hostonly" id="mSize" style="margin-top:0"><button class="btn" data-km="1" title="Close fighting, fast battles">1 KM</button><button class="btn" data-km="2" title="Room to manoeuvre">2 KM</button><button class="btn" data-km="3" title="A whole town; larger download">3 KM</button></div>
       <h3 class="hostonly">TEAMS</h3>
       <div class="row hostonly" id="mTeams"><button class="btn" data-n="2">2</button><button class="btn" data-n="3">3</button><button class="btn" data-n="4">4</button><button class="btn" data-n="6">6</button></div>
       <div class="row menuact hostonly"><button class="btn go mapbtn" id="mImport" disabled>IMPORT AND PLAY</button><button class="btn side mapbtn" id="mSample">PLAY SAMPLE TOWN</button></div>

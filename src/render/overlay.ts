@@ -1,5 +1,5 @@
 import { NET } from '../state';
-import { C, GW, K, COST, TOOLDEF, TEAM_COLORS, SUP_NAME, GRID_X0, GRID_Y0, grid } from '../config';
+import { C, GW, K, M_PER_UNIT, COST, TOOLDEF, TEAM_COLORS, SUP_NAME, GRID_X0, GRID_Y0, grid } from '../config';
 import { S } from '../state';
 import { canDeploy, opRange } from '../world';
 import { sqCenter, left, lineCells } from '../plan';
@@ -67,9 +67,9 @@ export function draw2D() {
     const c = sqCenter(one), k = K[one.kind === 'rifles' || one.kind === 'garrison' ? 'rifle' : one.kind];
     if (c && k) {
       const sight = one.kind === 'op' ? opRange({ x: c[0], y: c[1] }) : k.sight + (one.kind === 'garrison' ? 15 : 0);
-      if (k.range) { ring(c[0], c[1], k.range, 'rgba(255,122,114,.85)', false, 1.5); const p = P(c[0] + k.range, c[1], 1); plate(p[0], p[1], `RANGE ${Math.round(k.range * 2.5)} M`, '#ff7a72'); }
+      if (k.range) { ring(c[0], c[1], k.range, 'rgba(255,122,114,.85)', false, 1.5); const p = P(c[0] + k.range, c[1], 1); plate(p[0], p[1], `RANGE ${Math.round(k.range * M_PER_UNIT)} M`, '#ff7a72'); }
       if (k.min) ring(c[0], c[1], k.min, 'rgba(255,122,114,.5)', true, 1);
-      if (sight) { ring(c[0], c[1], sight, 'rgba(200,220,240,.7)', true, 1.5); const p = P(c[0] - sight, c[1], 1); plate(p[0], p[1], `SEES ${Math.round(sight * 2.5)} M`, '#c8dcf0'); }
+      if (sight) { ring(c[0], c[1], sight, 'rgba(200,220,240,.7)', true, 1.5); const p = P(c[0] - sight, c[1], 1); plate(p[0], p[1], `SEES ${Math.round(sight * M_PER_UNIT)} M`, '#c8dcf0'); }
     }
   }
   const b = input.box; if (b) { ctx.strokeStyle = '#e8c547'; ctx.lineWidth = 1; ctx.fillStyle = 'rgba(232,197,71,.08)'; const x = Math.min(b.x0, b.x1), y = Math.min(b.y0, b.y1), w = Math.abs(b.x1 - b.x0), h = Math.abs(b.y1 - b.y0); ctx.fillRect(x, y, w, h); ctx.strokeRect(x + .5, y + .5, w, h); }

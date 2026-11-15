@@ -1,5 +1,5 @@
 import { NET } from '../state';
-import { PLAY_R, PHASE_LEN, COST, TOOLS, INFO, KIND_NAME, T_BUILD, T_WATER, T_BRIDGE, T_ROAD, T_WOOD, T_PARK, HS, grid, fmtT, clamp } from '../config';
+import { PLAY_R, M_PER_UNIT, PHASE_LEN, COST, TOOLS, INFO, KIND_NAME, T_BUILD, T_WATER, T_BRIDGE, T_ROAD, T_WOOD, T_PARK, HS, grid, fmtT, clamp } from '../config';
 import { S, M, VIS0, SEEN0 } from '../state';
 import { cellOf, bldNear } from '../world';
 import { aliveMembers, sqCenter, itemCost, left, canRemove, removeItem } from '../plan';
@@ -65,7 +65,7 @@ export function setSel(it: any, many?: any[]) { S.sel = it; S.selMany = many || 
 export function cursorNote(w: any, sx: number, sy: number) {
   const el = $('#cursorNote'); if (!w || !M || S.tool === 'select' || (S.phase !== 'plan' && S.phase !== 'battle')) { el.hidden = true; return; }
   const ci = cellOf(w.x, w.y); if (ci < 0) { el.hidden = true; return; }
-  const t = M.terr[ci], m = Math.max(0, Math.round((M.hAt(w.x, w.y) - 3) / HS)); let k: string;
+  const t = M.terr[ci], m = Math.max(0, Math.round((M.hAt(w.x, w.y) - 3) * M_PER_UNIT)); let k: string;
   if (t === T_BUILD) k = 'BUILDING'; else if (t === T_WATER) k = 'WATER'; else if (t === T_BRIDGE) k = 'BRIDGE'; else if (t === T_ROAD) k = 'ROAD';
   else if (t === T_WOOD) k = 'WOODS'; else if (bldNear(w.x, w.y) >= 12) k = 'TOWN'; else if (t === T_PARK) k = 'PARK'; else k = 'OPEN';
   el.textContent = `${grid(w.x, w.y)} · ${k} · ${m} M`; el.hidden = false; el.style.left = sx + 16 + 'px'; el.style.top = sy + 18 + 'px';

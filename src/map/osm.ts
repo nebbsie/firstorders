@@ -1,4 +1,4 @@
-import { W, H, C, GW, GH, M_PER_UNIT, T_GROUND, T_ROAD, T_PARK, T_WATER, T_BRIDGE, T_WOOD, hashf } from '../config';
+import { W, H, C, GW, GH, M_PER_UNIT, BATTLE_KM, CX, PLAY_R, T_GROUND, T_ROAD, T_PARK, T_WATER, T_BRIDGE, T_WOOD, hashf } from '../config';
 import type { RawMap, Building } from './types';
 import { cacheGet, cachePut } from './cache';
 
@@ -33,7 +33,7 @@ async function overpass(q: string, progress: (s: string) => void) {
 
 // Terrarium elevation tiles: height in metres = R * 256 + G + B / 256 - 32768.
 async function elevationGrid(lat0: number, lon0: number, toLatLon: (x: number, y: number) => [number, number], progress: (s: string) => void) {
-  const z = 15, n = 2 ** z * 256;
+  const z = BATTLE_KM > 1 ? 14 : 15, n = 2 ** z * 256;
   const px = (lon: number) => (lon + 180) / 360 * n;
   const py = (lat: number) => { const r = lat * Math.PI / 180; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n; };
   const [la0, lo0] = toLatLon(0, 0), [la1, lo1] = toLatLon(W, H);
@@ -98,13 +98,15 @@ export async function importPlace(place: Place, progress: (s: string) => void): 
   const lat0 = place.lat, lon0 = place.lon, kx = 111320 * Math.cos(lat0 * Math.PI / 180), ky = 110540;
   const toUnits = (lat: number, lon: number) => [(lon - lon0) * kx / M_PER_UNIT + W / 2, (lat0 - lat) * ky / M_PER_UNIT + H / 2];
   const toLatLon = (x: number, y: number): [number, number] => [lat0 - (y - H / 2) * M_PER_UNIT / ky, lon0 + (x - W / 2) * M_PER_UNIT / kx];
-  const [n, w] = toLatLon(-20, -20), [s, e] = toLatLon(W + 20, H + 20);
+  // Fetch the battle circle and a ring around it. Bigger battles fetch less of the grey ring to keep the download sane.
+  const reach = BATTLE_KM === 1 ? W / 2 + 20 : PLAY_R * (BATTLE_KM === 2 ? 1.25 : 1.12);
+  const [n, w] = toLatLon(CX - reach, CX - reach), [s, e] = toLatLon(CX + reach, CX + reach);
   const bb = `${s.toFixed(6)},${w.toFixed(6)},${n.toFixed(6)},${e.toFixed(6)}`;
-  const key = `osm:${lat0.toFixed(4)},${lon0.toFixed(4)}`;
+  const key = `osm:${lat0.toFixed(4)},${lon0.toFixed(4)}:${BATTLE_KM}`;
   let cached = await cacheGet<{ osm: any; dem: Float32Array | null }>(key);
   let osm = cached?.osm, dem = cached?.dem ?? null;
   if (!osm) {
-    const q = `[out:json][timeout:90];(
+    const q = `[out:json][timeout:180][maxsize:536870912];(
 way["building"](${bb});relation["building"](${bb});
 way["highway"](${bb});
 way["natural"~"^(water|wood|scrub|wetland)$"](${bb});relation["natural"~"^(water|wood)$"](${bb});
@@ -135,6 +137,8 @@ way["leisure"~"^(park|garden|pitch|golf_course|nature_reserve|common)$"](${bb});
     if (t.building && t.building !== 'no') {
       const ring = rings[0].slice(); if (ring.length > 3 && Math.hypot(ring[0][0] - ring[ring.length - 1][0], ring[0][1] - ring[ring.length - 1][1]) < 1e-3) ring.pop();
       if (ring.length < 3 || ring.some(p => p[0] < -5 || p[1] < -5 || p[0] > W + 5 || p[1] > H + 5)) continue;
+      let ar = 0; for (let i = 0; i < ring.length; i++) { const a = ring[i], c = ring[(i + 1) % ring.length]; ar += a[0] * c[1] - c[0] * a[1]; }
+      if (Math.abs(ar) / 2 < 1.2) continue; // smaller than about one cell: sheds and kiosks at large battle sizes
       const r = hashf(el.id % 100000, 7, 3);
       B.push({ p: ring, h: buildingHeight(t, r) / M_PER_UNIT, v: r, mat: buildingColour(t, hashf(el.id % 100000, 2, 9)) });
     } else if (t.highway) {
