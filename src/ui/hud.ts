@@ -68,29 +68,33 @@ export function phaseCard() {
 }
 
 // Tool tiles open above their command in the bottom strip, as in Mall Architect.
-let openGroup = '';
 export function setTool(id: string) {
   if (id !== S.tool) S.via = null;
   S.tool = id; document.querySelectorAll('.tile').forEach((b: any) => b.classList.toggle('on', b.dataset.tool === id));
   $('#cv').style.cursor = id === 'select' ? 'default' : 'crosshair'; if (id === 'select') $('#cursorNote').hidden = true;
 }
-function openTools(g: string) {
-  openGroup = openGroup === g ? '' : g; const panel = $('#toolpanel');
-  document.querySelectorAll('.cmd').forEach((b: any) => b.classList.toggle('on', b.dataset.g === openGroup));
-  if (!openGroup) { panel.hidden = true; setTool('select'); return; }
-  // BUILD shows every group you can buy from, side by side; ORDERS shows the order tools.
-  const groups = g === 'BUILD' ? TOOLS.filter(t => t.g !== 'ORDERS') : TOOLS.filter(t => t.g === g);
-  const locked = (id: string) => (['spy', 'barrage', 'para', 'demo', 'air'].includes(id) && S.round < SUPPORT_ROUND) || !isAllowed(id);
-  const tile = (t: any) => `<button class="btn tile${locked(t[0]) ? ' locked' : ''}" data-tool="${t[0]}"><span>${t[1]}</span><em>${COST[t[0]] ? (t[2] === 'line' && t[0] !== 'air' && t[0] !== 'spy' ? COST[t[0]] + '/c' : COST[t[0]]) : ''}</em></button>`;
-  panel.innerHTML = `<div class="groups">${groups.map(grp => `<div><h3>${grp.g}</h3><div class="tiles">${grp.items.map(tile).join('')}</div></div>`).join('')}</div>`;
-  const btn = document.querySelector(`.cmd[data-g="${g}"]`) as HTMLElement; panel.hidden = false; panel.style.left = Math.max(10, btn.getBoundingClientRect().left) + 'px';
-  panel.querySelectorAll('.tile').forEach((b: any) => {
-    b.onclick = () => { if (locked(b.dataset.tool)) { toast(isAllowed(b.dataset.tool) ? `Support is ready from phase ${SUPPORT_ROUND}` : 'Locked. Win more campaign battles to unlock it.'); return; } setTool(S.tool === b.dataset.tool ? 'select' : b.dataset.tool); };
-    b.onmouseenter = () => showInfo(b.dataset.tool, b); b.onmouseleave = () => { $('#info').hidden = true; };
-  });
+// The build menu: always open while planning, hidden during a phase. Only unlocked items are listed.
+let buildKey = '';
+export function showBuild(on: boolean) {
+  const panel = $('#toolpanel');
+  if (!on) { panel.hidden = true; buildKey = ''; return; }
+  const locked = (id: string) => ['spy', 'barrage', 'para', 'demo', 'air'].includes(id) && S.round < SUPPORT_ROUND;
+  const key = S.round + ':' + (S.allowed ? [...S.allowed].join(',') : 'all');
+  if (key !== buildKey || panel.hidden) {
+    buildKey = key;
+    const groups = TOOLS.filter(t => t.g !== 'ORDERS').map(grp => ({ g: grp.g, items: grp.items.filter((t: any) => isAllowed(t[0])) })).filter(grp => grp.items.length);
+    const tile = (t: any) => `<button class="btn tile${locked(t[0]) ? ' locked' : ''}" data-tool="${t[0]}"><span>${t[1]}</span><em>${COST[t[0]] ? (t[2] === 'line' && t[0] !== 'air' && t[0] !== 'spy' ? COST[t[0]] + '/c' : COST[t[0]]) : ''}</em></button>`;
+    panel.innerHTML = `<div class="groups">${groups.map(grp => `<div><h3>${grp.g}</h3><div class="tiles">${grp.items.map(tile).join('')}</div></div>`).join('')}</div>`;
+    panel.hidden = false;
+    panel.querySelectorAll('.tile').forEach((b: any) => {
+      b.onclick = () => { if (locked(b.dataset.tool)) { toast(`Support is ready from phase ${SUPPORT_ROUND}`); return; } setTool(S.tool === b.dataset.tool ? 'select' : b.dataset.tool); };
+      b.onmouseenter = () => showInfo(b.dataset.tool, b); b.onmouseleave = () => { $('#info').hidden = true; };
+    });
+  }
   setTool(S.tool);
 }
-export function closeTools() { if (openGroup) openTools(openGroup); }
+// The build menu stays open while planning; picking an order tool only changes the tool.
+export function closeTools() { }
 // Window beside the tool panel while hovering a tile: what it is and where it works.
 function showInfo(id: string, tile: HTMLElement) {
   const def = TOOLS.flatMap(g => g.items).find(t => t[0] === id), inf = INFO[id]; if (!def || !inf) return;
@@ -99,8 +103,7 @@ function showInfo(id: string, tile: HTMLElement) {
   const el = $('#info'); el.hidden = false; el.style.left = $('#toolpanel').getBoundingClientRect().right + 6 + 'px';
 }
 function buildCommands() {
-  $('#cmds').innerHTML = ['BUILD'].map(g => `<button class="btn cmd" data-g="${g}">${g}</button>`).join('');
-  document.querySelectorAll('.cmd').forEach((b: any) => b.onclick = () => openTools(b.dataset.g));
+  $('#cmds').hidden = true;
 }
 
 // Selection: one item, or several of your units from a box.
@@ -208,9 +211,9 @@ export function syncUI() {
   // Plans lock when the phase begins: buying and orders only happen between phases.
   const live = plan;
   if (!plan) S.waiting = false;
-  show('#bBegin', plan); $('#bBegin').textContent = S.waiting ? 'WAITING FOR FRIEND' : NET.mode === 'solo' ? `BEGIN PHASE ${S.round}` : `READY · PHASE ${S.round}`; show('#cmds', live); show('#supplyPlate', live);
+  show('#bBegin', plan); $('#bBegin').textContent = S.waiting ? 'WAITING FOR FRIEND' : NET.mode === 'solo' ? `BEGIN PHASE ${S.round}` : `READY · PHASE ${S.round}`; show('#cmds', false); showBuild(plan); show('#supplyPlate', live);
   show('#bReplay', ph === 'done'); show('#bNew', ph === 'done'); show('#bExit', ph === 'replay'); show('#bFollow', ph === 'replay'); show('#bFromStart', ph === 'replay');
-  if (!live) { closeTools(); setTool('select'); }
+  if (!live) setTool('select');
   if (!plan) $('#card').hidden = true;
   if (ph !== 'done') $('#result').hidden = true;
   syncClock(); renderTimeline(); renderInspector(); syncSpeed(); syncFollow(); renderRadio();
