@@ -8,7 +8,7 @@ export function clampPlay(x: number, y: number, margin = 6) { const dx = x - CX,
 export let M_PER_UNIT = 2.5, BATTLE_KM = 1;
 export function setBattleSize(km: number) { BATTLE_KM = km; M_PER_UNIT = 2.5 * km; }
 // A battle runs phase after phase until one HQ is left. PHASES is a safety limit.
-export const DT = 0.05, BUDGET = 1000, PHASES = 10, PHASE_LEN = 60, HS = 0.3, HQ_HOLD = 5;
+export const DT = 0.05, BUDGET = 700, PHASES = 10, PHASE_LEN = 60, HS = 0.3, HQ_HOLD = 5;
 // Ground-control grid: 4 x 4 unit cells.
 export const IW = 140, IH = 140, IC = 4;
 

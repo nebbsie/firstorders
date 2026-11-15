@@ -17,12 +17,12 @@ function snd(k: string, x: number, y: number, size = 0) {
 export function log(team: number, msg: string) {
   S.teams.forEach((t: any) => { msg = msg.split(t.name).join(`{T${t.id}}`); }); S.log.unshift({ t: S.t, team, msg }); if (S.log.length > 400) S.log.pop(); S.logDirty = true; }
 // Supply each phase: a small base, plus more for ground held. Kept low so every purchase is a choice.
-export const income = (t: number) => S.teams[t].lost ? 0 : 100 + Math.round((S.terrCount[t] || 0) * .45);
+export const income = (t: number) => S.teams[t].lost ? 0 : Math.round((60 + (S.terrCount[t] || 0) * .3) * (S.teams[t].human ? 1 : (S.aiMult || 1)));
 
 export function newBattle() {
   if (M) { M.terr.set(M.terr0); M.deck.set(M.deck0); M.bridges.forEach(b => b.blown = null); M.bldId.set(M.bldId0); M.bldTop.set(M.bldTop0); for (const b of M.B) { b.hp = b.hp0; b.down = null; } }
   Object.assign(S, { phase: 'plan', round: 1, t: 0, smokes: [], reports: null, units: [], shells: [], bombs: [], fx: [], tracers: [], craters: [], planes: [], cover: null, rec: null, result: null, log: [], stats: [], history: [], callN: [], vis: [], known: [], contactT: [], squads: [], structs: [], supports: [], sel: null, selMany: [] });
-  S.bank = S.teams.map(() => BUDGET); SEEN0.fill(0); S.visG = null;
+  S.bank = S.teams.map((t: any) => Math.round(BUDGET * (t.human ? 1 : (S.aiMult || 1)))); SEEN0.fill(0); S.visG = null;
   for (const t of S.teams) { t.lost = false; t.hqHold = 0; t.hqBy = -1; } S.hqKnown = S.teams.map((t: any) => new Set([t.id]));
   rollPersonalities(); initOwn(); countGround(); updateVision();
   for (const t of S.teams) if (!t.human) aiPlan(t.id);

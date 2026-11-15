@@ -13,7 +13,8 @@ export const S: any = {
 };
 // Network: 'solo' against the AI, 'host' runs the battle for a friend, 'guest' shows the host's battle.
 // me is the team this screen plays.
-export const NET: { mode: 'solo' | 'host' | 'guest'; me: number; send: (m: any) => void } = { mode: 'solo', me: 0, send: () => { } };
+// me: the team this browser plays. player: 0 host or solo, 1 guest.
+export const NET: { mode: 'solo' | 'host' | 'guest'; me: number; player: number; send: (m: any) => void } = { mode: 'solo', me: 0, player: 0, send: () => { } };
 export let M: MapData = null as any;
 export function setMap(m: MapData) { M = m; }
 export const OWN = new Int8Array(IW * IH);

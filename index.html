@@ -90,8 +90,12 @@
     <div class="panel menubox">
       <div class="title">FIRST ORDERS</div>
       <p class="hint">Battles on real places. Plan, watch, reinforce, replay.</p>
+      <h3 class="soloonly">CAMPAIGN</h3>
+      <div class="hint soloonly">Win each battle to unlock more units for the next.</div>
+      <div class="missions soloonly" id="mCampaign"></div>
       <h3>PLAY A FRIEND</h3>
       <div class="row" style="margin-top:0"><button class="btn side guestonly" id="mHost" title="Get a code to send to your friend, then pick the map">HOST A GAME</button><input id="mCode" class="input hostonly" placeholder="CODE" maxlength="5" autocomplete="off" style="max-width:90px;flex:none;text-transform:uppercase"><button class="btn hostonly" id="mJoin">JOIN</button><button class="btn" id="mSolo" title="Play against the AI instead">VS AI</button></div>
+      <div class="row" id="mSideRow" hidden style="margin-top:6px"><span class="k" style="align-self:center">FRIEND</span><button class="btn on" data-side="against" title="Your friend leads the other side">AGAINST ME</button><button class="btn" data-side="with" title="You share one side and its supply, against the AI">ON MY TEAM</button></div>
       <div class="hint" id="mNet">Or play against the AI. Your friend needs the same website.</div>
       <h3 class="hostonly">FIGHT IN A REAL PLACE</h3>
       <div class="searchrow hostonly"><input id="mQuery" class="input" placeholder="Town, street or postcode" autocomplete="off"><button class="btn" id="mSearch">SEARCH</button></div>

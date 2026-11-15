@@ -32,7 +32,7 @@ NET.send = (m: any) => send({ t: 'cmd', m });
 
 export interface NetEvents { status: (s: string) => void; joined?: () => void; map?: (spec: any) => void; left: () => void }
 let ev: NetEvents;
-export function closeNet() { try { conn?.close(); peer?.destroy(); } catch { } conn = null; peer = null; NET.mode = 'solo'; NET.me = 0; }
+export function closeNet() { try { conn?.close(); peer?.destroy(); } catch { } conn = null; peer = null; NET.mode = 'solo'; NET.me = 0; NET.player = 0; S.guestOn = false; }
 
 export function host(events: NetEvents) {
   closeNet(); ev = events; NET.mode = 'host'; NET.me = 0;
@@ -43,12 +43,12 @@ export function host(events: NetEvents) {
     if (conn) { c.close(); return; }
     conn = c; c.on('open', () => { ev.status('Friend connected.'); ev.joined && ev.joined(); });
     c.on('data', (d: any) => onHostData(unpack(d)));
-    c.on('close', () => { conn = null; if (S.teams[1]) S.teams[1].human = false; ev.left(); });
+    c.on('close', () => { conn = null; S.guestOn = false; if (!S.coop && S.teams[1]) S.teams[1].human = false; ev.left(); });
   });
   return id;
 }
 export function join(id: string, events: NetEvents) {
-  closeNet(); ev = events; NET.mode = 'guest'; NET.me = 1;
+  closeNet(); ev = events; NET.mode = 'guest'; NET.me = 1; NET.player = 1;
   peer = new Peer();
   peer.on('error', e => ev.status(`Could not connect: ${e.type}`));
   peer.on('open', () => {
@@ -64,18 +64,18 @@ export const connected = () => !!(conn && conn.open);
 // ---- host side ----
 let mapSpec: any = null, onGuestReady: (() => void) | null = null;
 export function sendMap(spec: any, nTeams: number): Promise<void> {
-  mapSpec = spec; send({ t: 'map', spec, nTeams });
+  mapSpec = spec; send({ t: 'map', spec, nTeams, coop: !!S.coop });
   return new Promise(res => { onGuestReady = res; });
 }
 function onHostData(m: any) {
   if (m.t === 'loaded' && onGuestReady) { onGuestReady(); onGuestReady = null; }
-  if (m.t === 'cmd' && S.teams[1]) exec(1, m.m);
+  if (m.t === 'cmd' && S.guestOn) exec(S.coop ? 0 : 1, m.m, 1);
 }
 let lastSnap = 0, structSent = '', ownSent = -1, recSent = false;
 export function hostTick(now: number) {
   if (NET.mode !== 'host' || !connected() || S.phase === 'menu' || !S.teams.length) return;
   if (now - lastSnap < 100) return; lastSnap = now;
-  const g = 1, U = S.units, n = U.length, f = new Float32Array(n * 4), b = new Uint8Array(n * 4);
+  const g = S.coop ? 0 : 1, U = S.units, n = U.length, f = new Float32Array(n * 4), b = new Uint8Array(n * 4);
   for (let i = 0; i < n; i++) { const u = U[i]; f[i * 4] = u.x; f[i * 4 + 1] = u.y; f[i * 4 + 2] = u.hd || 0; f[i * 4 + 3] = u.drop || 0; b[i * 4] = u.team; b[i * 4 + 1] = KINDS.indexOf(u.kind); b[i * 4 + 2] = u.alive ? 1 : 0; b[i * 4 + 3] = u.gar ? 1 : 0; }
   const sk = S.structs.map((s: any) => s.id + ':' + (s.placedAt ?? '')).join(',');
   const ownKey = S.rec ? S.rec.own.length : 0;
@@ -101,7 +101,7 @@ export function hostTick(now: number) {
 
 // ---- guest side ----
 function onGuestData(m: any) {
-  if (m.t === 'map') { S.nTeams = m.nTeams; S.spawnSeed = m.spec.spawn; ev.map && ev.map(m.spec); }
+  if (m.t === 'map') { S.nTeams = m.nTeams; S.coop = !!m.coop; NET.me = S.coop ? 0 : 1; S.spawnSeed = m.spec.spawn; ev.map && ev.map(m.spec); }
   if (m.t === 'snap') applySnap(m);
 }
 export function guestLoaded() { send({ t: 'loaded' }); }

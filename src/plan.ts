@@ -1,21 +1,27 @@
 import { NET } from './state';
 import { C, GW, GH, COST, PLATOON_SIZE, MOVERS, KIND_NAME, TEAM_COLORS, TEAM_NAMES, CALLSIGNS, PERS, T_BRIDGE, T_BUILD, T_WATER, T_GROUND, T_PARK, T_ROAD, CX, CY, PLAY_R, mulberry32 } from './config';
 import { S, M, OWN } from './state';
+import { isAllowed } from './campaign';
 import { cellOf, passTerr, nudge, canDeploy, cellPos, canPlaceUnit, ENG_BUILD, passable } from './world';
 
+// Start areas sit at least this far apart, so they never overlap.
+const MIN_GAP = 130;
 export function makeTeams() {
   // Start areas: a random turn of the whole ring, then each side moved a little round and in or out.
   // Host and guest share the seed, so both get the same places.
   S.teams = []; const N = S.nTeams, rs = mulberry32(S.spawnSeed ?? 1), a0 = rs() * Math.PI * 2;
   for (let i = 0; i < N; i++) {
     const a = a0 + i * Math.PI * 2 / N + (rs() - .5) * (Math.PI / N) * .8, d = PLAY_R * (.34 + rs() * .16), r = N <= 3 ? 40 : N <= 4 ? 36 : 30;
-    let x = CX + Math.cos(a) * d, y = CY + Math.sin(a) * d;
+    let dd = d, x = CX + Math.cos(a) * dd, y = CY + Math.sin(a) * dd;
+    for (let k = 0; k < 20 && S.teams.some((o: any) => Math.hypot(o.zone.x - x, o.zone.y - y) < MIN_GAP); k++) { dd += 6; x = CX + Math.cos(a) * dd; y = CY + Math.sin(a) * dd; }
     // Move a start area that is mostly water or buildings in towards the centre.
     for (let k = 0; k < 20; k++) {
       let bad = 0, all = 0;
       for (let dy = -r; dy <= r; dy += 4) for (let dx = -r; dx <= r; dx += 4) { if (dx * dx + dy * dy > r * r) continue; const ci = cellOf(x + dx, y + dy); all++; if (ci < 0 || !M.play[ci] || !passTerr(M.terr[ci])) bad++; }
       if (bad < all * .35) break;
-      x += (CX - x) * .12; y += (CY - y) * .12;
+      // Moving in must not bring it too near another side's start area.
+      const nx = x + (CX - x) * .12, ny = y + (CY - y) * .12; if (S.teams.some((o: any) => Math.hypot(o.zone.x - nx, o.zone.y - ny) < MIN_GAP)) break;
+      x = nx; y = ny;
     }
     // The HQ flag stands on open ground near the start point: fields or grass first, a road if nothing else.
     const open = (pref: number[]) => { for (let rr = 0; rr <= 40; rr++) for (let dy = -rr; dy <= rr; dy++) for (let dx = -rr; dx <= rr; dx++) {
@@ -23,11 +29,11 @@ export function makeTeams() {
       let clear = true; for (let ey = -2; ey <= 2 && clear; ey++) for (let ex = -2; ex <= 2; ex++) { const n = cellOf(px + ex * C, py + ey * C); if (n < 0 || M.terr[n] === T_BUILD || M.terr[n] === T_WATER || M.terr[n] === T_BRIDGE) { clear = false; break; } }
       if (clear) return [Math.floor(px / C) * C + 1, Math.floor(py / C) * C + 1]; } return null; };
     const spot = open([T_GROUND, T_PARK, T_ROAD]); if (spot) { x = spot[0]; y = spot[1]; }
-    const c = i === NET.me ? 0 : i === 0 ? NET.me : i; S.teams.push({ id: i, name: TEAM_NAMES[c], color: TEAM_COLORS[c], human: i === 0 || (NET.mode !== 'solo' && i === 1), zone: { x, y, r } });
+    const c = i === NET.me ? 0 : i === 0 ? NET.me : i; S.teams.push({ id: i, name: TEAM_NAMES[c], color: TEAM_COLORS[c], human: i === 0 || (NET.mode !== 'solo' && i === (S.coop ? 0 : 1)), zone: { x, y, r } });
   }
 }
 export function rollPersonalities() { for (const t of S.teams) { t.rng = mulberry32((Math.random() * 1e9) | 0); t.per = t.human ? PERS[1] : PERS[Math.floor(Math.random() * PERS.length)]; } }
-export function initOwn() { OWN.fill(-1); for (let i = 0; i < OWN.length; i++) { const [x, y] = cellPos(i); for (const t of S.teams) if (Math.hypot(x - t.zone.x, y - t.zone.y) <= t.zone.r) OWN[i] = t.id; } }
+export function initOwn() { OWN.fill(-1); for (let i = 0; i < OWN.length; i++) { const [x, y] = cellPos(i); let bd = 1e9; for (const t of S.teams) { const d = Math.hypot(x - t.zone.x, y - t.zone.y); if (d <= t.zone.r && d < bd) { bd = d; OWN[i] = t.id; } } } }
 
 export function nextCall(team: number) { const n = S.callN[team] = (S.callN[team] || 0) + 1; return CALLSIGNS[(n - 1) % CALLSIGNS.length]; }
 export function aliveMembers(s: any) { return s.members ? s.members.map((i: number) => S.units[i]).filter((u: any) => u.alive) : []; }
@@ -64,7 +70,7 @@ export function spacingOk(team: number, kind: string, x: number, y: number) {
 }
 // face: the way the unit watches (snipers), in radians.
 export function addSquad(team: number, kind: string, x: number, y: number, face?: number): any {
-  if (left(team) < COST[kind]) return null;
+  if (left(team) < COST[kind] || !isAllowed(kind)) return null;
   if (kind === 'garrison') return addGarrison(team, x, y);
   const ok = (px: number, py: number) => canPlaceUnit(team, kind, px, py) && (kind !== 'tank' || passable(cellOf(px, py), true)); if (!ok(x, y) || !spacingOk(team, kind, x, y)) return null; const p = nudge(x, y, ok); if (!p) return null;
   const pos: number[][] = [];
@@ -87,12 +93,13 @@ export function lineCells(team: number, a: any, b: any) {
   return out;
 }
 export function addStruct(team: number, type: string, a: any, b: any) {
+  if (!isAllowed(type)) return null;
   const cells = lineCells(team, a, b); if (!cells.length || left(team) < cells.length * COST[type]) return null;
   const s = { id: S.nextId++, team, type, a, b, cells, round: S.round }; S.structs.push(s); return s;
 }
 // Support (spy planes, artillery, air, paradrops, charges) is ready from phase 2.
 export const SUPPORT_ROUND = 2;
-export function addSupport(team: number, type: string, a: any, b: any, t: number) { if ((S.round < SUPPORT_ROUND && type !== 'smoke') || left(team) < COST[type]) return null; const s: any = { id: S.nextId++, team, type, a, b, t, round: S.round }; S.supports.push(s); return s; }
+export function addSupport(team: number, type: string, a: any, b: any, t: number) { if ((S.round < SUPPORT_ROUND && type !== 'smoke') || left(team) < COST[type] || !isAllowed(type)) return null; const s: any = { id: S.nextId++, team, type, a, b, t, round: S.round }; S.supports.push(s); return s; }
 export function clearMine(team: number) {
   const mine = (it: any) => it.team === team && it.round === S.round && !it.members;
   S.squads = S.squads.filter((s: any) => !mine(s)); S.structs = S.structs.filter((s: any) => !mine(s)); S.supports = S.supports.filter((s: any) => !mine(s));

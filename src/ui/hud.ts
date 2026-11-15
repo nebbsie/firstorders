@@ -10,6 +10,7 @@ import { fit, cam, P } from '../render/camera';
 import { paintFog, paintTerritory, viewOpts, applyViews } from '../render/scene';
 import { BTYPES } from '../map/btypes';
 import { toggleMute, isMuted } from '../audio';
+import { isAllowed, MISSIONS, saveWin } from '../campaign';
 
 const $ = (s: string) => document.querySelector(s) as HTMLElement;
 let toastT = 0, bannerT = 0;
@@ -62,6 +63,7 @@ export function phaseCard() {
   const r = S.round, body = r === 1
     ? `<p><b>Take the enemy HQ. Hold your own.</b> An HQ falls when enemy troops hold its ground for 5 seconds.</p><p>Your ground is tinted blue. You can only build there.</p><p>Open <b>DEFENCES</b>, <b>UNITS</b> and <b>SUPPORT</b> below to buy. Select your units, then use <b>ORDERS</b> to send them.</p><p>You do not know where the enemy HQ is. A <b>SPY PLANE</b> or forward troops will find it.</p><p>Press <b>BEGIN PHASE 1</b> when ready.</p>`
     : phaseReport(r);
+  const mi = S.campaign; if (r === 1 && mi != null) { const m = MISSIONS[mi]; $('#cardTitle').textContent = `MISSION ${mi + 1} · ${m.name}`; $('#cardBody').innerHTML = `<p><b>${m.brief}</b></p>` + body; $('#card').hidden = false; return; }
   $('#cardTitle').textContent = r === 1 ? 'PHASE 1 · DEPLOY' : `PHASE ${r - 1} REPORT`; $('#cardBody').innerHTML = body; $('#card').hidden = false;
 }
 
@@ -78,12 +80,12 @@ function openTools(g: string) {
   if (!openGroup) { panel.hidden = true; setTool('select'); return; }
   // BUILD shows every group you can buy from, side by side; ORDERS shows the order tools.
   const groups = g === 'BUILD' ? TOOLS.filter(t => t.g !== 'ORDERS') : TOOLS.filter(t => t.g === g);
-  const locked = (id: string) => ['spy', 'barrage', 'para', 'demo', 'air'].includes(id) && S.round < SUPPORT_ROUND;
+  const locked = (id: string) => (['spy', 'barrage', 'para', 'demo', 'air'].includes(id) && S.round < SUPPORT_ROUND) || !isAllowed(id);
   const tile = (t: any) => `<button class="btn tile${locked(t[0]) ? ' locked' : ''}" data-tool="${t[0]}"><span>${t[1]}</span><em>${COST[t[0]] ? (t[2] === 'line' && t[0] !== 'air' && t[0] !== 'spy' ? COST[t[0]] + '/c' : COST[t[0]]) : ''}</em></button>`;
   panel.innerHTML = `<div class="groups">${groups.map(grp => `<div><h3>${grp.g}</h3><div class="tiles">${grp.items.map(tile).join('')}</div></div>`).join('')}</div>`;
   const btn = document.querySelector(`.cmd[data-g="${g}"]`) as HTMLElement; panel.hidden = false; panel.style.left = Math.max(10, btn.getBoundingClientRect().left) + 'px';
   panel.querySelectorAll('.tile').forEach((b: any) => {
-    b.onclick = () => { if (locked(b.dataset.tool)) { toast(`Support is ready from phase ${SUPPORT_ROUND}`); return; } setTool(S.tool === b.dataset.tool ? 'select' : b.dataset.tool); };
+    b.onclick = () => { if (locked(b.dataset.tool)) { toast(isAllowed(b.dataset.tool) ? `Support is ready from phase ${SUPPORT_ROUND}` : 'Locked. Win more campaign battles to unlock it.'); return; } setTool(S.tool === b.dataset.tool ? 'select' : b.dataset.tool); };
     b.onmouseenter = () => showInfo(b.dataset.tool, b); b.onmouseleave = () => { $('#info').hidden = true; };
   });
   setTool(S.tool);
@@ -223,13 +225,22 @@ const PLAY_CELLS = Math.PI * (PLAY_R / 4) ** 2;
 const pct = (c: number) => Math.round(c / PLAY_CELLS * 100);
 export function showResult() {
   const r = S.result, el = $('#result'), st = S.stats, w = r.winner >= 0 ? S.teams[r.winner] : null;
+  // Campaign: a win saves progress and names what the next mission unlocks.
+  const won = r.winner === NET.me, ci = S.campaign; let camp = '';
+  if (ci != null) {
+    if (won) saveWin(ci); window.dispatchEvent(new Event('fo-campaign'));
+    const nx = MISSIONS[ci + 1];
+    camp = won ? `<p class="hint" style="margin-top:8px">Mission ${ci + 1} won.${nx ? ` Unlocked for ${nx.name}: <b>${nx.adds.join(', ').toUpperCase()}</b>.` : ' Campaign complete.'}</p>` : `<p class="hint" style="margin-top:8px">Mission ${ci + 1} lost. Try a different plan.</p>`;
+  }
   const rows = S.history.map((h: any) => `<tr><td>PHASE ${h.round}</td>${S.teams.map((t: any) => `<td style="color:${t.color}">${pct(h.terr[t.id])}%</td>`).join('')}</tr>`).join('');
   el.innerHTML = `<div class="ph"><span>After-action report · ${fmtT(S.t)}</span><button class="btn x" id="rHide" title="Hide">X</button></div><div class="pb"><div class="big" style="color:${w ? w.color : 'var(--muted)'}">${w ? w.name + ' WINS' : 'NO SURVIVORS'}</div><p class="hint" style="margin:0 0 8px">${r.byTime ? 'Phase limit reached. Most ground held wins.' : r.winner === NET.me ? 'You took the enemy HQ.' : S.teams[NET.me].lost ? 'Your HQ fell.' : 'The last HQ standing wins.'}</p>
   <table><tr><th>Team</th><th>Alive</th><th>Lost</th><th>Kills</th><th>Ground</th></tr>${S.teams.map((t: any) => `<tr><td style="color:${t.color}">${t.name}${t.id !== NET.me ? ' · ' + (t.human ? 'PLAYER' : t.per.label) : ' · YOU'}</td><td>${r.alive[t.id]}</td><td>${st[t.id].lost}</td><td>${st[t.id].kills}</td><td>${pct(r.terr[t.id])}%</td></tr>`).join('')}</table>
   ${rows ? `<table style="margin-top:10px"><tr><th>Ground by phase</th>${S.teams.map((t: any) => `<th>${t.name}</th>`).join('')}</tr>${rows}</table>` : ''}
-  <div class="row" style="margin-top:12px"><button class="btn go" id="rReplay">WATCH REPLAY</button><button class="btn" id="rNew">NEW BATTLE</button></div></div>`;
+  ${camp}<div class="row" style="margin-top:12px"><button class="btn go" id="rReplay">WATCH REPLAY</button>${S.campaign != null ? (won && S.campaign + 1 < MISSIONS.length ? '<button class="btn go" id="rNext">NEXT MISSION</button>' : '<button class="btn" id="rRetry">TRY AGAIN</button>') : '<button class="btn" id="rNew">NEW BATTLE</button>'}</div></div>`;
   el.hidden = false;
-  $('#rReplay').onclick = goReplay; $('#rNew').onclick = () => { newBattle(); fit(); phaseCard(); }; $('#rHide').onclick = () => el.hidden = true;
+  $('#rReplay').onclick = goReplay; const bn = el.querySelector('#rNew') as HTMLElement; if (bn) bn.onclick = () => { newBattle(); fit(); phaseCard(); };
+  const bx = el.querySelector('#rNext') as HTMLElement; if (bx) bx.onclick = () => { el.hidden = true; window.dispatchEvent(new CustomEvent('fo-mission', { detail: ci + 1 })); };
+  const br = el.querySelector('#rRetry') as HTMLElement; if (br) br.onclick = () => { el.hidden = true; window.dispatchEvent(new CustomEvent('fo-mission', { detail: ci })); }; $('#rHide').onclick = () => el.hidden = true;
 }
 function goReplay() { $('#result').hidden = true; startReplay(); syncUI(); }
 
@@ -271,10 +282,10 @@ const speedName = (v: number) => v === 0 ? 'PAUSE' : v === -1 ? 'PLAY' : v + 'X'
 function syncSpeedReq() {
   if (NET.mode === 'guest' && (S.phase === 'battle' || S.phase === 'plan') && S.lastSnap && performance.now() - S.lastSnap > 2500) toast('Waiting for the host. Their game may be paused or slow.');
   const el = $('#speedReq'), req = S.speedReq || {}, live = S.phase === 'battle' && NET.mode !== 'solo';
-  const other = Object.keys(req).map(Number).find(t => t !== NET.me), mine = req[NET.me];
+  const other = Object.keys(req).map(Number).find(t => t !== NET.player), mine = req[NET.player];
   if (!live || (other == null && mine == null)) { el.hidden = true; return; }
   el.hidden = false;
-  if (other != null && req[other] !== mine) { $('#srText').textContent = `${S.teams[other].name} WANTS ${speedName(req[other])}`; $('#srAgree').hidden = false; $('#srAgree').onclick = () => actSpeed(req[other]); }
+  if (other != null && req[other] !== mine) { $('#srText').textContent = `FRIEND WANTS ${speedName(req[other])}`; $('#srAgree').hidden = false; $('#srAgree').onclick = () => actSpeed(req[other]); }
   else { $('#srText').textContent = `WAITING FOR FRIEND TO AGREE: ${speedName(mine)}`; $('#srAgree').hidden = true; }
 }
 

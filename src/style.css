@@ -72,6 +72,11 @@ button:focus-visible { outline: 1px solid var(--gold); outline-offset: 1px; }
 .rep { margin: 8px 0 0; padding-left: 16px; color: var(--soft); }
 .rep li { margin: 2px 0; }
 .qbar .sep { width: 1px; background: var(--line); margin: 2px 3px; }
+.missions { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.missions .btn { display: flex; justify-content: space-between; text-align: left; }
+.missions .btn em { font-style: normal; color: var(--soft); }
+.missions .btn.done em { color: var(--go); }
+.missions .btn:disabled { opacity: .4; }
 .qbar { display: flex; gap: 2px; padding: 2px; background: var(--window); border: 1px solid var(--line); transform: translate(-50%, -100%); white-space: nowrap; }
 .qbar .btn { padding: 3px 7px; }
 .qbar .btn.on { border-color: var(--warn); color: var(--warn); }
