@@ -1,12 +1,26 @@
 import { NET, sw } from '../state';
 import * as THREE from 'three';
-import { W, H, C, GW, GH, IW, IH, IC, TRGB, T_WATER, T_BRIDGE, clamp, inPlay } from '../config';
+import { W, H, C, GW, GH, IW, IH, IC, TRGB, T_WATER, T_BRIDGE, M_PER_UNIT, clamp, inPlay } from '../config';
 import { S, M, OWN } from '../state';
 import { smokeR } from '../sim';
 import { unitH } from '../world';
-import { camera, cam, FOV, view } from './camera';
+import { camera, cam, FOV, view, fpv } from './camera';
 import { MODELS } from './models';
 import { BTYPES } from '../map/btypes';
+const WALLS = [[170, 108, 86], [216, 205, 180], [184, 176, 158], [228, 223, 210], [146, 98, 80], [198, 172, 140]];
+const ROOFS = [[94, 99, 106], [152, 88, 64], [114, 84, 66], [74, 78, 84], [130, 74, 58]];
+const FLAT = new Set(['castle', 'tower', 'industrial', 'office', 'station', 'hospital', 'police', 'fire']);
+// The smallest rectangle round a footprint, lined up with one of its edges. l is the long way, s the short way.
+function obb(p: number[][]) {
+  let best: any = null;
+  for (let i = 0; i < p.length; i++) {
+    const n = (i + 1) % p.length; let ux = p[n][0] - p[i][0], uy = p[n][1] - p[i][1]; const len = Math.hypot(ux, uy); if (len < .3) continue; ux /= len; uy /= len;
+    let u0 = 1e9, u1 = -1e9, v0 = 1e9, v1 = -1e9; for (const q of p) { const u = q[0] * ux + q[1] * uy, v = -q[0] * uy + q[1] * ux; u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
+    const area = (u1 - u0) * (v1 - v0); if (best && area >= best.area) continue;
+    best = u1 - u0 >= v1 - v0 ? { area, lx: ux, ly: uy, sx: -uy, sy: ux, l0: u0, l1: u1, s0: v0, s1: v1 } : { area, lx: -uy, ly: ux, sx: ux, sy: uy, l0: v0, l1: v1, s0: u0, s1: u1 };
+  }
+  return best;
+}
 const MODEL_KINDS = new Set(['mg', 'mortar', 'tank', 'at', 'op', 'fob']);
 
 // Colours are given in sRGB and used as they are, like the 2D interface.
@@ -28,9 +42,11 @@ const fogTex = new THREE.CanvasTexture(flayer); fogTex.magFilter = THREE.LinearF
 // Ground never looked at loses its colour. The red channel holds 255 where it is undiscovered.
 const ulayer = document.createElement('canvas'); ulayer.width = IW; ulayer.height = IH; const uctx = ulayer.getContext('2d');
 const unseenTex = new THREE.CanvasTexture(ulayer); unseenTex.magFilter = THREE.LinearFilter; unseenTex.minFilter = THREE.LinearFilter; unseenTex.flipY = false;
-function greyUnseen<T extends THREE.Material>(m: T): T {
+const winScale = { value: 1 };
+function greyUnseen<T extends THREE.Material>(m: T, windows = false): T {
+  if (windows) (m as any).defines = { ...((m as any).defines || {}), FO_WIN: '' };
   m.onBeforeCompile = (sh: any) => {
-    sh.uniforms.unseenMap = { value: unseenTex };
+    sh.uniforms.unseenMap = { value: unseenTex }; sh.uniforms.winScale = winScale;
     sh.vertexShader = `varying vec3 vFoW;
 ` + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
       vec4 fowP = vec4(transformed, 1.0);
@@ -39,11 +55,22 @@ function greyUnseen<T extends THREE.Material>(m: T): T {
       #endif
       vFoW = (modelMatrix * fowP).xyz;`);
     sh.fragmentShader = `uniform sampler2D unseenMap;
+uniform float winScale;
 varying vec3 vFoW;
 ` + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+      #ifdef FO_WIN
+        // Rows of dark windows on walls (faces that stand upright), one bay about every 3 m.
+        vec3 fowN = normalize(cross(dFdx(vFoW), dFdy(vFoW)));
+        if (abs(fowN.y) < .3) {
+          vec2 fowH = normalize(vec2(-fowN.z, fowN.x) + 1e-5);
+          vec2 fowG = vec2(fract(dot(vFoW.xz, fowH) * winScale), fract(vFoW.y * winScale * .9));
+          float fowW = step(.28, fowG.x) * step(fowG.x, .72) * step(.3, fowG.y) * step(fowG.y, .78);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.16, .18, .22), fowW * .45);
+        }
+      #endif
       float fowU = texture2D(unseenMap, vec2(vFoW.x / ${W.toFixed(1)} + .5, vFoW.z / ${H.toFixed(1)} + .5)).r;
       float fowL = dot(diffuseColor.rgb, vec3(.3, .59, .11));
-      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(fowL) * .95, fowU * .9);`);
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(fowL), fowU * .78);`);
   };
   return m;
 }
@@ -75,7 +102,7 @@ export function paintTerritory(seen: Uint8Array | null, vis?: Uint8Array) {
 // Fog: clear where you see now, light shade where you have seen, dark where you never looked.
 export function paintFog(vis: Uint8Array, seen: Uint8Array, on: boolean) {
   const img = fctx.createImageData(IW, IH), px = img.data;
-  if (on) for (let i = 0; i < IW * IH; i++) { if (!inPlay((i % IW) * IC + 2, Math.floor(i / IW) * IC + 2)) continue; px[i * 4] = 11; px[i * 4 + 1] = 14; px[i * 4 + 2] = 18; px[i * 4 + 3] = vis[i] ? 0 : seen[i] ? 95 : 150; }
+  if (on) for (let i = 0; i < IW * IH; i++) { if (!inPlay((i % IW) * IC + 2, Math.floor(i / IW) * IC + 2)) continue; px[i * 4] = 11; px[i * 4 + 1] = 14; px[i * 4 + 2] = 18; px[i * 4 + 3] = vis[i] ? 0 : seen[i] ? 80 : 112; }
   fctx.putImageData(img, 0, 0); fogTex.needsUpdate = true;
   const ui = uctx.createImageData(IW, IH), up = ui.data;
   if (on) for (let i = 0; i < IW * IH; i++) { up[i * 4] = seen[i] ? 0 : 255; up[i * 4 + 3] = 255; }
@@ -144,13 +171,25 @@ export function buildMap3D() {
     const vStart = Pa.length / 3;
     // Buildings outside the battle circle are grey scenery.
     const out0 = !inPlay(b.cx, b.cy), j = (b.v * 37 % 1 - .5) * 14, lum = (b.mat[0] * .3 + b.mat[1] * .59 + b.mat[2] * .11 + j) / 255;
-    const BT = BTYPES[b.btype || 'house'], roof = out0 ? [lum * .62, lum * .63, lum * .65] : b.mat.map(v => (v + j) / 255);
-    const wall = out0 || !BT.wall ? roof.map(v => v * .8) : BT.wall.map(v => v * .82 / 255), p = b.p;
+    const BT = BTYPES[b.btype || 'house'], plain = !b.btype || b.btype === 'house' || b.btype === 'flats', fr = (k: number) => (b.v * k) % 1;
+    // Homes: brick, render or stone walls under slate or tile roofs. Other types keep their own roof colour over pale walls.
+    const roofC = plain ? ROOFS[Math.floor(fr(13.7) * ROOFS.length)] : BT.roof, wallC = plain ? WALLS[Math.floor(fr(7.3) * WALLS.length)] : BT.wall || (b.btype === 'industrial' || b.btype === 'office' ? [168, 168, 162] : [204, 196, 180]);
+    const roof = out0 ? [lum * .62, lum * .63, lum * .65] : roofC.map(v => (v + j) / 255);
+    const wall = out0 ? [lum * .5, lum * .5, lum * .52] : wallC.map(v => (v + j * .6) / 255), p = b.p;
     let area = 0; for (let i = 0; i < p.length; i++) { const a = p[i], c = p[(i + 1) % p.length]; area += a[0] * c[1] - c[0] * a[1]; }
     const T = p.map(q => [q[0] - W / 2, b.top, q[1] - H / 2]), Bt = p.map(q => [q[0] - W / 2, b.base, q[1] - H / 2]);
     const faces = THREE.ShapeUtils.triangulateShape(p.map(q => new THREE.Vector2(q[0], q[1])), []);
     // Churches and town halls get a pointed tower roof; castles get battlements along the walls.
     for (const f of faces) tri(T[f[0]], T[f[1]], T[f[2]], roof, _up);
+    // A pitched (hip) roof for buildings that are close to a rectangle and not tall blocks.
+    const ob = b.parent == null && !FLAT.has(b.btype || 'house') && b.h * M_PER_UNIT < 19 ? obb(p) : null;
+    if (ob && Math.abs(area) / 2 > ob.area * .84 && ob.s1 - ob.s0 > 1.6 && ob.s1 - ob.s0 < 18) {
+      const hs = (ob.s1 - ob.s0) / 2, sm = (ob.s0 + ob.s1) / 2, inset = Math.min(hs * .8, (ob.l1 - ob.l0) * .45), rh = clamp(hs * .6, .5, 3), e = .12;
+      const at = (l: number, s: number, y: number) => [l * ob.lx + s * ob.sx - W / 2, y, l * ob.ly + s * ob.sy - H / 2];
+      const a0 = at(ob.l0 - e, ob.s0 - e, b.top), a1 = at(ob.l1 + e, ob.s0 - e, b.top), b0 = at(ob.l0 - e, ob.s1 + e, b.top), b1 = at(ob.l1 + e, ob.s1 + e, b.top), r0 = at(ob.l0 + inset, sm, b.top + rh), r1 = at(ob.l1 - inset, sm, b.top + rh);
+      const dark = roof.map(v => v * .88);
+      tri(a0, a1, r1, roof, _up); tri(a0, r1, r0, roof, _up); tri(b0, b1, r1, dark, _up); tri(b0, r1, r0, dark, _up); tri(a0, b0, r0, dark, _up); tri(a1, b1, r1, roof, _up);
+    }
     // Churches and town halls: a square tower with a pointed spire rising from the middle of the roof.
     if (BT.spire && !out0 && b.parent == null && !tallPart.has(b.id)) {
       const half = clamp(Math.sqrt(Math.abs(area) / 2) / 5, 1.2, 3.5), x0 = b.cx - W / 2, z0 = b.cy - H / 2, y0 = b.top, y1 = b.top + half * 2.2, y2 = y1 + half * 3;
@@ -176,7 +215,8 @@ export function buildMap3D() {
     b.vr = [vStart, Pa.length / 3 - vStart];
   }
   const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(Pa, 3)); bldGeo = bg; bldY = new Float32Array(Pa.filter((_, i) => i % 3 === 1)); downKey = ''; bg.setAttribute('normal', new THREE.Float32BufferAttribute(Na, 3)); bg.setAttribute('color', new THREE.Float32BufferAttribute(Ca, 3));
-  const bm = new THREE.Mesh(bg, greyUnseen(new THREE.MeshLambertMaterial({ vertexColors: true }))); bm.castShadow = true; bm.receiveShadow = true; mapGroup.add(bm); xrayable.push(bm);
+  winScale.value = M_PER_UNIT / 3;
+  const bm = new THREE.Mesh(bg, greyUnseen(new THREE.MeshLambertMaterial({ vertexColors: true }), true)); bm.castShadow = true; bm.receiveShadow = true; mapGroup.add(bm); xrayable.push(bm);
 
   for (const br of M.bridges) {
     // One straight deck from bank to bank, with piers down into the water.
@@ -194,8 +234,8 @@ export function buildMap3D() {
   }
   for (const inside of [true, false]) {
     const list = M.trees.filter(t => inPlay(t[0], t[1]) === inside); if (!list.length) continue;
-    const tm = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 5), greyUnseen(new THREE.MeshLambertMaterial({ color: inside ? '#3d5832' : '#4b4f4b' })), list.length);
-    list.forEach((t, i) => { _q.setFromAxisAngle(_up, t[0]); _p.set(t[0] - W / 2, M.hAt(t[0], t[1]) + t[2] / 2, t[1] - H / 2); _s.set(1.3 + t[2] * .18, t[2], 1.3 + t[2] * .18); _m.compose(_p, _q, _s); tm.setMatrixAt(i, _m); });
+    const tm = new THREE.InstancedMesh(inside ? MODELS.tree : MODELS.treeGrey, greyUnseen(new THREE.MeshLambertMaterial({ vertexColors: true })), list.length);
+    list.forEach((t, i) => { const w = (1.3 + t[2] * .18) * 2, sh = .82 + ((t[0] * 7.31 + t[1] * 3.17) % 1) * .3; _q.setFromAxisAngle(_up, t[0]); _p.set(t[0] - W / 2, M.hAt(t[0], t[1]) - .1, t[1] - H / 2); _s.set(w, t[2] * 1.15, w); _m.compose(_p, _q, _s); tm.setMatrixAt(i, _m); _c.setRGB(sh, sh, sh); tm.setColorAt(i, _c); });
     tm.castShadow = inside; tm.receiveShadow = true; mapGroup.add(tm); xrayable.push(tm);
   }
   const fogMesh = new THREE.Mesh(tg, new THREE.MeshBasicMaterial({ map: fogTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 })); fogMesh.renderOrder = 3; mapGroup.add(fogMesh);
@@ -204,7 +244,7 @@ export function buildMap3D() {
 
 // Dynamic objects, created once and refilled every frame.
 const mModel: Record<string, any> = {}, nModel: Record<string, number> = {};
-let mSmoke, mTrench, mTrenchLip, mSand, mWire, mWall, mTrap, mPlane, mCrater, mBoom, ptUnits, ptBodies, ptGhosts, ptHeads, lineG;
+let mSoldier, mBody, mSmoke, mTrench, mTrenchLip, mSand, mWire, mWall, mTrap, mPlane, mCrater, mBoom, ptUnits, ptBodies, ptGhosts, ptHeads, lineG;
 const LMAX = 8000;
 function inst(geom: THREE.BufferGeometry, mat: THREE.Material, cap: number, shadow?: boolean) {
   const m = new THREE.InstancedMesh(geom, mat, cap); m.frustumCulled = false; const c = new THREE.Color(1, 1, 1);
@@ -226,6 +266,7 @@ function createDynamic() {
   // Smoke: grey puffs, a few per cloud, swelling and fading.
   mSmoke = inst(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshLambertMaterial({ color: '#c9ccc8', transparent: true, opacity: .62, depthWrite: false }), 400);
   mBoom = inst(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicMaterial({ color: '#ffffff', blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }), 300);
+  mSoldier = inst(MODELS.soldier, new THREE.MeshLambertMaterial({ vertexColors: true }), 5000, true); mBody = inst(MODELS.body, new THREE.MeshLambertMaterial({ vertexColors: true }), 5000);
   ptUnits = pointsObj(5000, 3, 1); ptBodies = pointsObj(5000, 2, 1); ptGhosts = pointsObj(3000, 3, .45); ptHeads = pointsObj(800, 3, 1);
   lineG = new THREE.BufferGeometry(); lineG.setAttribute('position', new THREE.BufferAttribute(new Float32Array(LMAX * 6), 3)); lineG.setAttribute('color', new THREE.BufferAttribute(new Float32Array(LMAX * 6), 3)); lineG.setDrawRange(0, 0);
   const lines = new THREE.LineSegments(lineG, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: .85 })); lines.frustumCulled = false; scene.add(lines);
@@ -269,6 +310,12 @@ export function update3D(V: View) {
   const gp = ptGhosts.geometry.attributes.position.array, gc = ptGhosts.geometry.attributes.color.array;
   let n = 0, nb = 0, ng = 0;
   const putU = (x: number, y: number, h: number, c: number[], dim: number) => { if (n >= 5000) return; up[n * 3] = x - W / 2; up[n * 3 + 1] = h; up[n * 3 + 2] = y - H / 2; uc[n * 3] = c[0] * dim; uc[n * 3 + 1] = c[1] * dim; uc[n * 3 + 2] = c[2] * dim; n++; };
+  // Zoomed in, soldiers are small figures; zoomed out (or in x-ray) they are dots, so they never get lost.
+  const ppu = view.ch / 2 / (cam.dist * Math.tan(FOV / 2 * Math.PI / 180)), figures = (ppu > 3.2 || fpv.on) && !viewOpts.xray; let nm = 0, nd = 0;
+  const man = (u: any, h: number, c: number[], dim: number) => {
+    if (!figures || nm >= 5000) { putU(u.x, u.y, h + .9, c, dim); return; }
+    setI(mSoldier, nm++, u.x, u.y, h, 1.25, (u.sup || 0) > .75 ? .8 : 1.25, 1.25, u.hd || 0, [Math.min(1, c[0] * dim * 1.2 + .08), Math.min(1, c[1] * dim * 1.2 + .08), Math.min(1, c[2] * dim * 1.2 + .08)]);
+  };
   // Team tint over the model's own colours: a light wash of the team colour.
   for (const k in mModel) nModel[k] = 0;
   const emp = (kind: string, x: number, y: number, c: number[], hd: number) => {
@@ -279,22 +326,25 @@ export function update3D(V: View) {
     const c = TRGB[sw(u.team)];
     if (u.alive) {
       if (u.team !== NET.me && V.fogOn && !V.isVis(u)) continue;
-      putU(u.x, u.y, unitH(u.x, u.y) + .9 + (u.drop > 0 ? u.drop * 14 : 0), c, 1);
-      if (MODEL_KINDS.has(u.kind)) emp(u.kind, u.x, u.y, c, u.hd);
+      if (MODEL_KINDS.has(u.kind)) { emp(u.kind, u.x, u.y, c, u.hd); if (!figures) putU(u.x, u.y, unitH(u.x, u.y) + .9, c, 1); }
+      else man(u, unitH(u.x, u.y) + (u.drop > 0 ? u.drop * 14 : 0), c, 1);
     } else if (nb < 5000) {
       if (u.team !== NET.me && V.fogOn && !cellSeen(V.seen, u.x, u.y)) continue;
-      bp[nb * 3] = u.x - W / 2; bp[nb * 3 + 1] = unitH(u.x, u.y) + .2; bp[nb * 3 + 2] = u.y - H / 2; bc[nb * 3] = .42; bc[nb * 3 + 1] = .42; bc[nb * 3 + 2] = .4; nb++; // the dead: plain grey dots
+      if (figures && !MODEL_KINDS.has(u.kind)) { if (nd < 5000) setI(mBody, nd++, u.x, u.y, unitH(u.x, u.y), 1.25, 1.25, 1.25, (u.hd || 0) + u.i); }
+      else { bp[nb * 3] = u.x - W / 2; bp[nb * 3 + 1] = unitH(u.x, u.y) + .2; bp[nb * 3 + 2] = u.y - H / 2; bc[nb * 3] = .42; bc[nb * 3 + 1] = .42; bc[nb * 3 + 2] = .4; nb++; } // the dead: grey
       // Wrecked guns and tanks stay where they fell, burnt dark.
       if (MODEL_KINDS.has(u.kind)) { const m = mModel[u.kind]; if (m && nModel[u.kind] < 400) setI(m, nModel[u.kind]++, u.x, u.y, unitH(u.x, u.y) - .15, 1.6, 1.3, 1.6, (u.hd || 0) + .3, [.22, .2, .18]); }
     }
   }
   if (plan) for (const s of S.squads) {
     if (s.members || s.team !== NET.me) continue; const c = TRGB[0];
-    for (const p of s.pos) putU(p[0], p[1], unitH(p[0], p[1]) + .9, c, .75);
+    const hd0 = Math.atan2(-(H / 2 - s.pos[0][1]), W / 2 - s.pos[0][0]);
+    for (const p of s.pos) { if (MODEL_KINDS.has(s.kind)) putU(p[0], p[1], unitH(p[0], p[1]) + .9, c, .75); else man({ x: p[0], y: p[1], hd: hd0 }, unitH(p[0], p[1]), c, .75); }
     if (MODEL_KINDS.has(s.kind)) emp(s.kind, s.pos[0][0], s.pos[0][1], c, Math.atan2(-(H / 2 - s.pos[0][1]), W / 2 - s.pos[0][0]));
   }
   // Last known enemy positions, shown faded.
   for (const g of V.ghosts) { if (ng >= 3000) break; const c = TRGB[sw(g.team)]; gp[ng * 3] = g.x - W / 2; gp[ng * 3 + 1] = unitH(g.x, g.y) + .9; gp[ng * 3 + 2] = g.y - H / 2; gc[ng * 3] = c[0]; gc[ng * 3 + 1] = c[1]; gc[ng * 3 + 2] = c[2]; ng++; }
+  done(mSoldier, nm); done(mBody, nd);
   for (const [p, c] of [[ptUnits, n], [ptBodies, nb], [ptGhosts, ng]] as [any, number][]) { p.geometry.setDrawRange(0, c); p.geometry.attributes.position.needsUpdate = true; p.geometry.attributes.color.needsUpdate = true; }
   // Each HQ: a bunker with a flag in the team colour. Enemy HQs show once your side has found them.
   for (const t of S.teams) {
@@ -306,7 +356,6 @@ export function update3D(V: View) {
     setI(mModel.flag, nModel.flag++, x, y, h + 11.4, 1, 1, 1, .4 + sway, fc);
   }
   for (const k in mModel) done(mModel[k], nModel[k]);
-  const ppu = view.ch / 2 / (cam.dist * Math.tan(FOV / 2 * Math.PI / 180));
   ptUnits.material.size = clamp(ppu * 1.1, 2.5, 7); ptBodies.material.size = clamp(ppu * 1, 2, 6); ptGhosts.material.size = clamp(ppu * 1.1, 2.5, 7); ptHeads.material.size = clamp(ppu * 1.2, 2.5, 6);
 
   const lp = lineG.attributes.position.array, lc = lineG.attributes.color.array; let L = 0;

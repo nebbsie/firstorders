@@ -47,6 +47,7 @@ export function aiPlan(team: number) {
   const B0 = left(team), supReserve = B0 * pr.arty * .3;
   const urban = bldNear(D.x, D.y) >= 12, foeTanks = foes.filter(e => e.kind === 'tank').length;
   const alive = (s: any) => !s.members || aliveMembers(s).length > 0;
+  const count = (kind: string) => S.squads.filter((s: any) => s.team === team && s.kind === kind && alive(s)).length;
   const haveNear = (kind: string, R: number) => S.squads.some((s: any) => s.team === team && s.kind === kind && alive(s) && (() => { const c = sqCenter(s); return c && Math.hypot(c[0] - D.x, c[1] - D.y) < R; })());
 
   // Little intel: send a spy plane over the enemy first.
@@ -57,13 +58,14 @@ export function aiPlan(team: number) {
   if (urban) { // in town, hold the tallest buildings instead of digging in
     const ids = new Set<number>(), c0 = Math.floor(D.x / C), r0 = Math.floor(D.y / C);
     for (let yy = -10; yy <= 10; yy++) for (let xx = -10; xx <= 10; xx++) { const cx = c0 + xx, cy = r0 + yy; if (cx < 0 || cy < 0 || cx >= GW || cy >= GH) continue; const id = M.bldId[cy * GW + cx]; if (id >= 0) ids.add(id); }
-    const cand = [...ids].map(id => M.B[id]).sort((a, b) => b.top - a.top); let g = 0;
-    for (const b of cand) { if (g >= (pr.aggr < .5 ? 2 : 1) || left(team) - supReserve < 110) break; if (addSquad(team, 'garrison', b.cx, b.cy)) g++; }
+    // At most two garrisons in all: troops in houses do not win battles.
+    const cand = [...ids].map(id => M.B[id]).sort((a, b) => b.top - a.top); let g = count('garrison');
+    for (const b of cand) { if (g >= (pr.aggr < .5 ? 2 : 1) || S.round > 3 || left(team) - supReserve < 110) break; if (addSquad(team, 'garrison', b.cx, b.cy)) g++; }
   } else if (!S.structs.some((s: any) => s.team === team && s.type === 'trench' && segDist(D, s.a, s.b) < 14)) {
     const L = clamp(B0 * (.5 - pr.aggr * .3) / 5 / 1.3, 8, 26); addStruct(team, 'trench', { x: D.x - px * L, y: D.y - py * L }, { x: D.x + px * L, y: D.y + py * L });
   }
   if (!urban && pr.aggr < .7 && left(team) - supReserve > 200) { const c = { x: D.x + dx * 7, y: D.y + dy * 7 }; addStruct(team, 'wire', { x: c.x - px * 14, y: c.y - py * 14 }, { x: c.x + px * 14, y: c.y + py * 14 }); }
-  if (!haveNear('mg', 25) && left(team) - supReserve >= 80) {
+  if (!haveNear('mg', 25) && count('mg') < 2 && left(team) - supReserve >= 80) {
     let mx = D.x - dx * 3, my = D.y - dy * 3;
     for (let k = 0; k < 30; k++) { const x = D.x + (r() - .5) * 30, y = D.y + (r() - .5) * 30, ci = cellOf(x, y); if (ci >= 0 && M.terr[ci] === T_WOOD && canDeploy(team, x, y)) { mx = x; my = y; break; } }
     place('mg', mx, my);
@@ -107,6 +109,8 @@ export function aiPlan(team: number) {
   // The goal is the enemy HQ. Once one is found, attack it more and more often as the battle goes on.
   const hqs = S.teams.filter((o: any) => o.id !== team && !o.lost && S.hqKnown[team].has(o.id)).sort((a: any, b: any) => Math.hypot(a.zone.x - D.x, a.zone.y - D.y) - Math.hypot(b.zone.x - D.x, b.zone.y - D.y));
   if (hqs.length && r() < .35 + pr.aggr * .4 + (S.round - 1) * .12) A = { x: hqs[0].zone.x, y: hqs[0].zone.y };
+  // No HQ found yet: from phase 3, push towards where the enemy came from, to find it.
+  else if (!hqs.length && th.zone && S.round >= 3 && r() < .3 + S.round * .12) A = { x: th.zone.x, y: th.zone.y };
   // Attackers move carefully in town and rush across open ground when bold; all pull back if badly hurt.
   const go = (s: any, tx: number, ty: number) => { const q = nudge(tx, ty); if (!q) return; s.order = { type: 'attack', x: q[0], y: q[1] }; s.fallback = true;
     s.stance = s.kind === 'tank' ? undefined : bldNear(tx, ty) >= 8 ? 'careful' : pr.aggr > .7 && r() < .5 ? 'rush' : undefined;
@@ -114,13 +118,15 @@ export function aiPlan(team: number) {
     if (S.round >= 1 && left(team) >= 90 && r() < .35 && bldNear((D.x + tx) / 2, (D.y + ty) / 2) < 6) addSupport(team, 'smoke', { x: (D.x + tx) / 2 + (tx - D.x) * .2, y: (D.y + ty) / 2 + (ty - D.y) * .2 }, null, 6); };
   // Always keep a guard on our own HQ.
   const hq = T.zone, guarded = S.squads.some((s: any) => s.team === team && alive(s) && (PLATOONS.includes(s.kind) || s.kind === 'garrison') && (() => { const c = s.order && s.order.type === 'defend' ? [s.order.x, s.order.y] : sqCenter(s); return c && Math.hypot(c[0] - hq.x, c[1] - hq.y) < 14 && !(s.order && s.order.type === 'attack'); })());
-  if (!guarded && left(team) >= 100) { const g = place('rifles', hq.x, hq.y); if (g) g.order = { type: 'defend', x: hq.x, y: hq.y }; }
+  if (!guarded && left(team) >= 100) { const g = place('rifles', hq.x, hq.y); if (g) { g.order = { type: 'defend', x: hq.x, y: hq.y }; g.guard = true; } }
   let side = 0;
   if (A) for (const s of S.squads) {
     if (s.team !== team || !s.members || !MOVERS.includes(s.kind) || s.state === 'demolish') continue;
     const m = aliveMembers(s); if (!m.length) continue; const c = sqCenter(s);
     if (m.length < s.members.length * .35) { if (Math.hypot(c[0] - D.x, c[1] - D.y) > 15) s.order = { type: 'defend', x: D.x, y: D.y }; continue; }
-    if ((PLATOONS.includes(s.kind) || s.kind === 'tank') && s.kind !== 'medics' && r() < pr.aggr) { side++; go(s, A.x + px * (side % 2 ? 1 : -1) * side * 5, A.y + py * (side % 2 ? 1 : -1) * side * 5); }
+    // As the battle goes on, fewer units stay back. The HQ guard never leaves.
+    if (s.guard || s.kind === 'engineers') continue;
+    if ((PLATOONS.includes(s.kind) || s.kind === 'tank') && s.kind !== 'medics' && r() < pr.aggr + S.round * .1) { side++; go(s, A.x + px * (side % 2 ? 1 : -1) * side * 5, A.y + py * (side % 2 ? 1 : -1) * side * 5); }
   }
   // Open ground to the objective suits tanks.
   if (A && pr.aggr >= .45 && left(team) - supReserve >= 220) {
@@ -148,5 +154,6 @@ export function aiPlan(team: number) {
   }
   if (left(team) >= 200 && pr.aggr > .65 && A && S.round > 1 && r() < .5) addSupport(team, 'para', clampPlay(A.x + dx * 18, A.y + dy * 18, 8), null, Math.round(tA / 5) * 5 || 10);
   if (n >= 2 && left(team) >= 90 && r() < .4) { const m = place('medics', D.x - dx * 12, D.y - dy * 12); if (m) m.order = { type: 'defend', x: D.x - dx * 6, y: D.y - dy * 6 }; }
-  while (left(team) >= 100 && n < 7) { const s = place('rifles', D.x - dx * 14 + px * (r() - .5) * 30, D.y - dy * 14 + py * (r() - .5) * 30); if (!s) break; n++; s.order = { type: 'defend', x: D.x + px * (r() - .5) * 20, y: D.y + py * (r() - .5) * 20 }; }
+  // Spend what is left on more platoons: supply in the bank wins nothing. Most of them go forward.
+  while (left(team) >= 100 && n < 10) { const s = place('rifles', D.x - dx * 14 + px * (r() - .5) * 30, D.y - dy * 14 + py * (r() - .5) * 30); if (!s) break; n++; if (A && r() < .5 + pr.aggr * .4) { side++; go(s, A.x + px * (side % 2 ? 1 : -1) * side * 5, A.y + py * (side % 2 ? 1 : -1) * side * 5); } else s.order = { type: 'defend', x: D.x + px * (r() - .5) * 20, y: D.y + py * (r() - .5) * 20 }; }
 }

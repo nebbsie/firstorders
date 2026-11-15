@@ -4,6 +4,15 @@ A WW2-era battle game in your own town, in the browser. Import any place from Op
 plan on your own ground, give orders, and watch each phase play out. Fog of war, AI that plans
 every phase, terrain that decides what works, and a full replay at the end.
 
+## Play
+
+- **Campaign**: seven battles; each win unlocks more units.
+- **Any place**: search a town, pick 1, 2 or 3 km, and fight there. Or play a sample town.
+- **With a friend**: HOST A GAME, send the 5-letter code, and play against each other or on the same team.
+
+Each phase is 60 seconds. Before it you buy, build and give orders; then it plays out. Take the enemy HQ
+by holding its ground for a full minute. Chrome, Edge or Firefox on a computer with a mouse.
+
 ## Run it
 
 ```

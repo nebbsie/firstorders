@@ -87,6 +87,24 @@ function buildingColour(t: any, r: number) {
   return r < .45 ? BRICK : r < .85 ? STONE : SLATE;
 }
 
+// Clean a building outline: drop doubled points, points on a straight run, and tiny notches,
+// so walls are a few clean faces and not slivers. Tolerances are in map units.
+function cleanRing(r: number[][]) {
+  const TOL = .22;
+  for (let pass = 0; pass < 4 && r.length > 3; pass++) {
+    const out: number[][] = [];
+    for (let i = 0; i < r.length; i++) {
+      const a = out.length ? out[out.length - 1] : r[(i - 1 + r.length) % r.length], p = r[i], b = r[(i + 1) % r.length];
+      if (Math.hypot(p[0] - a[0], p[1] - a[1]) < TOL) continue;
+      const ex = b[0] - a[0], ey = b[1] - a[1], el = Math.hypot(ex, ey);
+      if (el > 1e-6 && Math.abs((p[0] - a[0]) * ey - (p[1] - a[1]) * ex) / el < TOL * .6) continue;
+      out.push(p);
+    }
+    if (out.length < 3 || out.length === r.length) { if (out.length >= 3) r = out; break; }
+    r = out;
+  }
+  return r;
+}
 // Join the member ways of a multipolygon into closed rings.
 function joinRings(ways: number[][][]) {
   const rings: number[][][] = [], left = ways.map(w => w.slice());
@@ -147,7 +165,8 @@ way["leisure"~"^(park|garden|pitch|golf_course|nature_reserve|common)$"](${bb});
     }
     if (!rings.length) continue;
     if (t.building && t.building !== 'no') {
-      const ring = rings[0].slice(); if (ring.length > 3 && Math.hypot(ring[0][0] - ring[ring.length - 1][0], ring[0][1] - ring[ring.length - 1][1]) < 1e-3) ring.pop();
+      let ring = rings[0].slice(); if (ring.length > 3 && Math.hypot(ring[0][0] - ring[ring.length - 1][0], ring[0][1] - ring[ring.length - 1][1]) < 1e-3) ring.pop();
+      ring = cleanRing(ring);
       if (ring.length < 3 || ring.some(p => p[0] < -5 || p[1] < -5 || p[0] > W + 5 || p[1] > H + 5)) continue;
       let ar = 0; for (let i = 0; i < ring.length; i++) { const a = ring[i], c = ring[(i + 1) % ring.length]; ar += a[0] * c[1] - c[0] * a[1]; }
       if (Math.abs(ar) / 2 < 1.2) continue; // smaller than about one cell: sheds and kiosks at large battle sizes

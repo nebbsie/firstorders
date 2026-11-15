@@ -17,7 +17,7 @@ function snd(k: string, x: number, y: number, size = 0) {
 export function log(team: number, msg: string) {
   S.teams.forEach((t: any) => { msg = msg.split(t.name).join(`{T${t.id}}`); }); S.log.unshift({ t: S.t, team, msg }); if (S.log.length > 400) S.log.pop(); S.logDirty = true; }
 // Supply each phase: a small base, plus more for ground held. Kept low so every purchase is a choice.
-export const income = (t: number) => S.teams[t].lost ? 0 : Math.round((60 + (S.terrCount[t] || 0) * .3) * (S.teams[t].human ? 1 : (S.aiMult || 1)));
+export const income = (t: number) => S.teams[t].lost ? 0 : Math.round((60 + (S.terrCount[t] || 0) * .2) * (S.teams[t].human ? 1 : (S.aiMult || 1)));
 
 export function newBattle() {
   if (M) { M.terr.set(M.terr0); M.deck.set(M.deck0); M.bridges.forEach(b => b.blown = null); M.bldId.set(M.bldId0); M.bldTop.set(M.bldTop0); for (const b of M.B) { b.hp = b.hp0; b.down = null; } }
@@ -109,7 +109,10 @@ function makeReports() {
 function endRound() {
   recFrame(); captureGround(false); snapshotHistory();
   makeReports();
-  if (S.round >= PHASES) { finish(true); return; }
+  // Overtime: while an HQ is under attack at the last phase, play on (three more phases at most).
+  const contested = S.teams.some((t: any) => !t.lost && t.hqHold > 0);
+  if (S.round >= PHASES + 3 || (S.round >= PHASES && !contested)) { finish(true); return; }
+  if (S.round >= PHASES) log(-1, 'Overtime: an HQ is under attack');
   for (const t of S.teams) S.bank[t.id] += income(t.id);
   S.round++; S.phase = 'plan'; log(-1, `Phase ${S.round - 1} over`);
   updateVision();
@@ -260,7 +263,9 @@ function shoot(u: any, e: any, k: any) {
   const d = Math.hypot(e.x - u.x, e.y - u.y), hb = clamp((unitH(u.x, u.y) - unitH(e.x, e.y)) * .02, 0, .15), rushing = u.sqo && u.sqo.stance === 'rush' && u.moving;
   // Suppressed men shoot badly; men rushing and firing on the move too.
   const p = (k.acc + hb) * (1 - coverAt(e)) * (1 - .5 * d / k.range) * (1 - .6 * Math.min(1, u.sup || 0)) * (rushing ? .6 : 1);
-  u.fired = S.t; suppress(e, u.kind === 'mg' ? .16 : u.kind === 'sniper' ? .22 : u.kind === 'at' ? .1 : u.kind === 'assault' ? .08 : .06);
+  u.fired = S.t; suppress(e, u.kind === 'mg' ? .16 : u.kind === 'sniper' ? .25 : u.kind === 'at' ? .1 : u.kind === 'assault' ? .1 : .09);
+  // Near misses keep the men beside the target down too: MG fire sweeps a whole section.
+  if (u.kind === 'mg' && rnd() < .5) for (const i of (e.sqo && e.sqo.members) || []) { const v = S.units[i]; if (v !== e && v.alive && Math.abs(v.x - e.x) < 7 && Math.abs(v.y - e.y) < 7) suppress(v, .07); }
   if (rnd() < p) { e.hp -= u.kind === 'at' ? 4 : 1; if (e.hp <= 0 && !saved(e)) { kill(e, u.team); u.kills++; } }
   contact(S.squads.find((s: any) => s.id === u.sq));
 }
@@ -382,7 +387,8 @@ function updateSquads() {
 const MOVERS_SET = new Set(['rifles', 'assault', 'engineers', 'medics', 'sniper', 'tank']);
 function squadStatus(sq: any) {
   const m = aliveMembers(sq); sq.alive = m.length; if (!m.length) { sq.status = 'LOST'; return; }
-  const sup = m.reduce((a: number, u: any) => a + (u.sup || 0), 0) / m.length, firing = m.some((u: any) => u.fired && S.t - u.fired < 2);
+  // Pinned: a third or more of the men are down under fire.
+  const sup = m.filter((u: any) => (u.sup || 0) > pinAt(sq)).length >= m.length / 3 ? 9 : 0, firing = m.some((u: any) => u.fired && S.t - u.fired < 2);
   const was = sq.status;
   sq.status = sq.readyRound > S.round ? 'BUILDING' : sq.fellBack && sq.state === 'defend' && m.some((u: any) => u.moving) ? 'FALLING BACK'
     : sup > pinAt(sq) ? 'PINNED' : firing ? 'ENGAGING' : sq.state === 'demolish' ? 'DEMOLISHING'
@@ -572,7 +578,8 @@ function captureGround(capture: boolean) {
   const N = S.teams.length, a = new Float32Array(IW * IH * N);
   for (const u of S.units) {
     if (!u.alive || u.drop > 0) continue; const cx = u.x / IC, cy = u.y / IC, w = INFANTRY.has(u.kind) ? 1 : u.kind === 'op' ? .5 : 2.5;
-    for (let y = Math.max(0, Math.floor(cy - 4)); y <= Math.min(IH - 1, Math.ceil(cy + 4)); y++) for (let x = Math.max(0, Math.floor(cx - 4)); x <= Math.min(IW - 1, Math.ceil(cx + 4)); x++) { const d = Math.hypot(x + .5 - cx, y + .5 - cy); if (d < 4.5) a[(y * IW + x) * N + u.team] += (1 - d / 4.5) * w; }
+    // Troops control the ground about 70 m round them.
+    for (let y = Math.max(0, Math.floor(cy - 7)); y <= Math.min(IH - 1, Math.ceil(cy + 7)); y++) for (let x = Math.max(0, Math.floor(cx - 7)); x <= Math.min(IW - 1, Math.ceil(cx + 7)); x++) { const d = Math.hypot(x + .5 - cx, y + .5 - cy); if (d < 7) a[(y * IW + x) * N + u.team] += (1 - d / 7) * w; }
   }
   let changed = false;
   if (capture) for (let i = 0; i < IW * IH; i++) { let b = -1, bv = 0, sv = 0; for (let t = 0; t < N; t++) { const v = a[i * N + t]; if (v > bv) { sv = bv; bv = v; b = t; } else if (v > sv) sv = v; } if (b >= 0 && bv >= 1.5 && bv > sv * 2 && OWN[i] !== b) { OWN[i] = b; changed = true; } }

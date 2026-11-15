@@ -96,4 +96,4 @@ function frame(now: number) {
 }
 (document.fonts ? Promise.all([document.fonts.load('11px Departure'), document.fonts.load('16px KenneyMono')]).catch(() => { }) : Promise.resolve()).then(() => requestAnimationFrame(frame));
 // Developer hook for checking state in the browser console (dev server only).
-if (import.meta.env.DEV) (window as any).__fo = { S, NET, VIS0, SEEN0, OWN, renderer, exec, get M() { return M; } };
+if (import.meta.env.DEV) (window as any).__fo = { S, NET, VIS0, SEEN0, OWN, renderer, exec, cam, fpv, step, refreshFogPaint, get M() { return M; } };

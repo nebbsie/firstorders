@@ -1,6 +1,6 @@
 // Game rules and tuning. One map unit is 2.5 m. The map is 560 x 560 units (1.4 km square).
 // Battles happen inside a circle of radius 200 units (1 km across); the ring outside is scenery only.
-export const W = 560, H = 560, C = 2, GW = W / C, GH = H / C, GS = 2;
+export const W = 560, H = 560, C = 2, GW = W / C, GH = H / C, GS = 4;
 export const CX = W / 2, CY = H / 2, PLAY_R = 200;
 export const inPlay = (x: number, y: number, margin = 0) => (x - CX) ** 2 + (y - CY) ** 2 <= (PLAY_R - margin) ** 2;
 export function clampPlay(x: number, y: number, margin = 6) { const dx = x - CX, dy = y - CY, d = Math.hypot(dx, dy), r = PLAY_R - margin; return d <= r ? { x, y } : { x: CX + dx / d * r, y: CY + dy / d * r }; }
