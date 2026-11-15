@@ -116,7 +116,7 @@ table.cat td:first-child { color: var(--ink); white-space: nowrap; }
 .toolpanel { bottom: 48px; padding: 6px; }
 .toolpanel h3 { margin: 0 0 5px; font: inherit; color: var(--gold); letter-spacing: .06em; }
 .toolpanel .tiles { display: grid; grid-template-columns: 170px; gap: 3px; }
-.info { right: 10px; top: 50%; transform: translateY(-50%); width: 260px; z-index: 4; }
+.info { width: 260px; z-index: 4; }
 .info .note { margin-top: 8px; }
 .strip #cmds { display: flex; gap: 6px; }
 .strip .cmd.on { background: var(--on); border-color: var(--gold); }
