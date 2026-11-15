@@ -18,8 +18,16 @@ export function exec(team: number, m: any): any {
     case 'orders': for (const o of m.list) { const s = S.squads.find((q: any) => q.id === o.id && q.team === team); if (!s) continue; s.order = o.type ? { type: o.type, x: o.x, y: o.y, dir: o.dir, bridge: o.bridge, bld: o.bld } : null; if (S.phase === 'battle' && s.order) applyOrder(s); } return null;
     case 'remove': { const it = byId(m.id); if (it && it.team === team && it.round === S.round && !it.members && !it.live && S.phase === 'plan') removeItem(it); return null; }
     case 'time': { const it = byId(m.id); if (it && it.team === team && !it.fired) it.t = m.t; return null; }
-    case 'ready': { S.ready = S.ready || {}; S.ready[team] = true; if (S.phase === 'plan' && S.teams.every((t: any) => !t.human || t.lost || S.ready[t.id])) { S.ready = {}; beginRound(); } return null; }
-    case 'speed': if (m.v === 0) S.paused = !S.paused; else { S.speed = m.v; S.paused = false; } return null;
+    case 'ready': { S.ready = S.ready || {}; S.ready[team] = true; if (S.phase === 'plan' && S.teams.every((t: any) => !t.human || t.lost || S.ready[t.id])) { S.ready = {}; S.speedReq = {}; beginRound(); } return null; }
+    case 'speed': {
+      // v: 0 pause, -1 play, else the speed. With two people, it changes only when both ask for the same.
+      const apply = (v: number) => { if (v === 0) S.paused = true; else if (v === -1) S.paused = false; else { S.speed = v; S.paused = false; } };
+      const humans = S.teams.filter((t: any) => t.human && !t.lost);
+      if (humans.length < 2) { apply(m.v); return null; }
+      S.speedReq = S.speedReq || {}; S.speedReq[team] = m.v;
+      if (humans.every((t: any) => S.speedReq[t.id] === m.v)) { apply(m.v); S.speedReq = {}; }
+      return null;
+    }
   }
   return null;
 }
@@ -31,5 +39,5 @@ export const actOrders = (list: { id: number; type: string | null; x?: number; y
 export const actRemove = (id: number) => act({ cmd: 'remove', id });
 export const actTime = (id: number, t: number) => act({ cmd: 'time', id, t });
 export const actReady = () => act({ cmd: 'ready' });
-export const actSpeed = (v: number) => act({ cmd: 'speed', v });
+export const actSpeed = (v: number) => act({ cmd: 'speed', v: v === 0 ? (S.paused ? -1 : 0) : v });
 export { M };

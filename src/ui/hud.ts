@@ -237,7 +237,18 @@ export function bindStrip(toMenu: () => void) {
 }
 // Refreshes the parts of the HUD that change every few frames.
 export function hudPulse() {
-  syncClock(); renderRadio();
+  syncClock(); renderRadio(); syncSpeedReq();
   if (S.phase === 'battle') renderInspector();
   else if (S.phase === 'replay') { const nw = $('#now'), fl = $('#fill'); if (nw) nw.style.left = tpos(S.rt / S.rec.end); if (fl) fl.style.width = `calc((100% - 16px) * ${S.rt / S.rec.end})`; }
+}
+
+// Two players: a speed or pause change waits until both ask for it. The bar shows what the other asked for.
+const speedName = (v: number) => v === 0 ? 'PAUSE' : v === -1 ? 'PLAY' : v + 'X';
+function syncSpeedReq() {
+  const el = $('#speedReq'), req = S.speedReq || {}, live = S.phase === 'battle' && NET.mode !== 'solo';
+  const other = Object.keys(req).map(Number).find(t => t !== NET.me), mine = req[NET.me];
+  if (!live || (other == null && mine == null)) { el.hidden = true; return; }
+  el.hidden = false;
+  if (other != null && req[other] !== mine) { $('#srText').textContent = `${S.teams[other].name} WANTS ${speedName(req[other])}`; $('#srAgree').hidden = false; $('#srAgree').onclick = () => actSpeed(req[other]); }
+  else { $('#srText').textContent = `WAITING FOR FRIEND TO AGREE: ${speedName(mine)}`; $('#srAgree').hidden = true; }
 }
