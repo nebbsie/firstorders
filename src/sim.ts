@@ -38,7 +38,7 @@ export function newBattle() {
 export function beginRound() {
   if (S.round === 1) {
     Object.assign(S, { t: 0, smokes: [], units: [], shells: [], bombs: [], fx: [], tracers: [], craters: [], planes: [], flow: new Map(), log: [], history: [] });
-    rnd = Math.random; S.cover = new Uint8Array(GW * GH); S.stats = S.teams.map(() => ({ kills: 0, lost: 0, start: 0, roundKills: 0 }));
+    rnd = Math.random; S.cover = new Uint8Array(GW * GH); S.fightT = S.teams.map(() => -99); S.stats = S.teams.map(() => ({ kills: 0, lost: 0, start: 0, roundKills: 0 }));
     S.known = S.teams.map(() => new Map()); S.contactT = S.teams.map(() => new Map());
     S.rec = { frames: [], tracers: [], booms: [], shells: [], planes: [], phases: [], moments: [], downs: [], smokes: [], own: [{ t: 0, o: OWN.slice() }], meta: null };
   }
@@ -261,7 +261,7 @@ function contact(sq: any) { if (sq) sq.contact = S.t; }
 function tankFire(u: any, e: any, k: any) {
   const d = Math.hypot(e.x - u.x, e.y - u.y), hit = rnd() < k.acc * (1 - .5 * d / k.range), x = hit ? e.x : e.x + gauss() * 4, y = hit ? e.y : e.y + gauss() * 4;
   S.tracers.push({ x0: u.x, y0: u.y, x1: x, y1: y, life: .15, team: u.team, u: u.i }); S.rec.tracers.push([S.t, u.x, u.y, x, y, u.team, u.i]); snd('gun', u.x, u.y);
-  u.fired = S.t;
+  u.fired = S.t; fought(u.team); fought(e.team);
   if (hit && e.kind === 'tank') { e.hp -= 3; if (e.hp <= 0) { kill(e, u.team); u.kills++; } } else explode(x, y, 3.5, .75, u.team);
   contact(S.squads.find((s: any) => s.id === u.sq));
 }
@@ -277,8 +277,10 @@ function suppress(v: any, a: number) {
     for (const i of sq.members) { const m = S.units[i]; if (!m.alive) continue; m.sup = Math.min(1.6, (m.sup || 0) + .5 * k); m.cd = Math.max(m.cd, (1.2 + rnd() * 1.4) * k); }
     if (sq.call) log(sq.team, `${sqName(sq)}: surprised, under fire at ${grid(v.x, v.y)}`);
   }
-  if (sq) sq.shotAt = S.t;
+  if (sq) sq.shotAt = S.t; fought(v.team);
 }
+// The last time each side fired or came under fire. Auto speed slows down for it.
+function fought(team: number) { if (S.fightT) S.fightT[team] = S.t; }
 const pinAt = (sq: any) => sq && sq.stance === 'rush' ? 1.2 : sq && sq.stance === 'careful' ? .5 : .75;
 function shoot(u: any, e: any, k: any) {
   u.hd = Math.atan2(-(e.y - u.y), e.x - u.x); if (u.kind === 'tank') { tankFire(u, e, k); return; }
@@ -288,7 +290,7 @@ function shoot(u: any, e: any, k: any) {
   const d = Math.hypot(e.x - u.x, e.y - u.y), hb = clamp((unitH(u.x, u.y) - unitH(e.x, e.y)) * .02, 0, .15), rushing = u.sqo && u.sqo.stance === 'rush' && u.moving;
   // Suppressed men shoot badly; men rushing and firing on the move too.
   const p = (k.acc + hb) * (1 - coverAt(e)) * (1 - .5 * d / k.range) * (1 - .6 * Math.min(1, u.sup || 0)) * (rushing ? .6 : 1) * (u.sqo && (u.sqo.morale ?? 1) < .35 ? .7 : 1);
-  u.fired = S.t; suppress(e, u.kind === 'mg' ? .16 : u.kind === 'sniper' ? .25 : u.kind === 'at' ? .1 : u.kind === 'assault' ? .12 : .14);
+  u.fired = S.t; fought(u.team); suppress(e, u.kind === 'mg' ? .16 : u.kind === 'sniper' ? .25 : u.kind === 'at' ? .1 : u.kind === 'assault' ? .12 : .14);
   // Near misses keep the men beside the target down too: MG fire sweeps a whole section.
   if (u.kind === 'mg' && rnd() < .5) for (const i of (e.sqo && e.sqo.members) || []) { const v = S.units[i]; if (v !== e && v.alive && Math.abs(v.x - e.x) < 7 && Math.abs(v.y - e.y) < 7) suppress(v, .07); }
   if (rnd() < p) { e.hp -= u.kind === 'at' ? 4 : 1; if (e.hp <= 0 && !saved(e)) { kill(e, u.team); u.kills++; } }

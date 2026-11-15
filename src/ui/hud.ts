@@ -19,7 +19,7 @@ export function banner(big: string, small: string) { $('#bannerBig').textContent
 export function tickHud(dt: number) {
   if (toastT > 0) { toastT -= dt; if (toastT <= 0) $('#toast').hidden = true; }
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) $('#banner').hidden = true; }
-  quickBar();
+  quickBar(); autoSpeed();
   const fx = $('#fpvExit'); fx.hidden = S.fpv == null; fx.onclick = () => { S.fpv = null; renderInspector(); };
 }
 // Quick orders: a small bar that floats above the selected platoons.
@@ -195,7 +195,19 @@ function renderRadio() {
   const items = S.log.filter((l: any) => logVisible(l) && l.t <= now && now - l.t < 12).slice(0, 5).reverse();
   el.innerHTML = items.map((l: any) => `<p style="border-left-color:${l.team >= 0 ? S.teams[l.team].color : 'var(--gold)'};opacity:${now - l.t > 9 ? .4 : 1}"><b>${fmtT(l.t)}</b>${logText(l.msg)}</p>`).join('');
 }
-export function syncSpeed() { document.querySelectorAll('#speeds .btn').forEach((b: any) => { const v = +b.dataset.speed; b.classList.toggle('on', v === 0 ? S.paused : (!S.paused && v === S.speed)); }); }
+// Auto speed (solo only, as two players must agree on speed): fast while your side is not fighting,
+// normal speed from the first shot. Kept in this browser.
+const AUTO_FAST = 4, CALM = 5;
+let autoOn = (() => { try { return localStorage.getItem('fo-auto') !== '0'; } catch { return true; } })();
+function setAuto(v: boolean) { autoOn = v; try { localStorage.setItem('fo-auto', v ? '1' : '0'); } catch { } syncSpeed(); }
+function autoSpeed() {
+  if (!autoOn || NET.mode !== 'solo' || S.phase !== 'battle' || S.paused || !S.fightT) return;
+  const calm = S.t - (S.fightT[NET.me] ?? -99) > CALM, want = calm ? AUTO_FAST : 1;
+  if (S.speed !== want) { S.speed = want; syncSpeed(); }
+}
+export function syncSpeed() {
+  const a = $('#sAuto'); a.classList.toggle('on', autoOn); a.hidden = NET.mode !== 'solo';
+  document.querySelectorAll('#speeds .btn[data-speed]').forEach((b: any) => { const v = +b.dataset.speed; b.classList.toggle('on', v === 0 ? S.paused : (!S.paused && v === S.speed)); }); }
 export function syncFollow() { $('#bFollow').classList.toggle('on', S.follow); }
 // Progress through the current phase, top middle, during a battle.
 function syncPhaseBar() {
@@ -278,7 +290,9 @@ export function bindStrip(toMenu: () => void) {
   $('#vArea').onclick = () => { viewOpts.area = !viewOpts.area; $('#vArea').classList.toggle('on', viewOpts.area); refreshFogPaint(); };
   $('#vSound').classList.toggle('on', !isMuted()); $('#vSound').onclick = () => $('#vSound').classList.toggle('on', !toggleMute());
   $('#vXray').onclick = () => { viewOpts.xray = !viewOpts.xray; $('#vXray').classList.toggle('on', viewOpts.xray); applyViews(); };
-  document.querySelectorAll('#speeds .btn').forEach((b: any) => b.onclick = () => { const v = +b.dataset.speed; if (S.phase === 'replay') { if (v === 0) S.paused = !S.paused; else { S.speed = v; S.paused = false; } } else actSpeed(v); syncSpeed(); });
+  $('#sAuto').onclick = () => setAuto(!autoOn);
+  // Picking a speed by hand during a battle turns auto speed off: the player has taken over.
+  document.querySelectorAll('#speeds .btn[data-speed]').forEach((b: any) => b.onclick = () => { const v = +b.dataset.speed; if (S.phase === 'battle' && v !== 0 && autoOn) setAuto(false); if (S.phase === 'replay') { if (v === 0) S.paused = !S.paused; else { S.speed = v; S.paused = false; } } else actSpeed(v); syncSpeed(); });
   const tl = $('#tl'); let scrubbing = false;
   const at = (e: PointerEvent) => { const r = tl.getBoundingClientRect(); seek((e.clientX - r.left - 8) / (r.width - 16) * S.rec.end); };
   tl.addEventListener('pointerdown', e => { if (S.phase !== 'replay') return; scrubbing = true; tl.setPointerCapture(e.pointerId); at(e); });
