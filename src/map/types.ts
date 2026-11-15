@@ -5,6 +5,7 @@ export interface Building {
   mat: number[];        // roof colour, 0..255
   id?: number; base?: number; top?: number; cx?: number; cy?: number;
   btype?: string; name?: string;  // what the building is (church, police, castle...) and its real name, if known
+  cells?: number[]; hp0?: number; hp?: number; down?: number | null; vr?: number[];
 }
 export interface Bridge {
   cells: number[]; ramp: number[]; ends: number[]; deck: number; cx: number; cy: number;
@@ -30,4 +31,5 @@ export interface MapData {
   bridges: Bridge[]; B: Building[]; trees: number[][];
   bldTop: Float32Array; bldId: Int32Array; count: number;
   play: Uint8Array;           // 1 for cells inside the battle circle
+  bldId0: Int32Array; bldTop0: Float32Array;
 }

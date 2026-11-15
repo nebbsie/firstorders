@@ -2,6 +2,7 @@ import Peer, { type DataConnection } from 'peerjs';
 import { COV, T_WATER } from './config';
 import { S, M, OWN, VIS0, SEEN0, NET, hooks } from './state';
 import { exec } from './actions';
+import { collapse } from './sim';
 
 // Peer-to-peer play for two people. The host runs the battle and sends its state ten times a second.
 // The guest draws that state and sends its actions back as commands. Signalling uses the public PeerJS server.
@@ -86,7 +87,7 @@ export function hostTick(now: number) {
     vis: S.vis[g], visG: S.visG ? S.visG[g] : null, seenG: S.seenG ? S.seenG[g] : null,
     known: S.known[g] ? [...S.known[g].values()] : [], hqKnown: S.hqKnown ? [...S.hqKnown[g]] : [],
     log: S.log.slice(0, 80), terrCount: S.terrCount, stats: S.stats, history: S.history, result: S.result,
-    blown: M.bridges.map(br => br.blown), banner: S.netBanner,
+    blown: M.bridges.map(br => br.blown), downs: M.B.filter(b => b.down != null).map(b => b.id), banner: S.netBanner,
   };
   if (sk !== structSent) { snap.structs = S.structs.map((s: any) => ({ id: s.id, team: s.team, type: s.type, a: s.a, b: s.b, cells: s.cells, round: s.round, placedAt: s.placedAt, live: s.live })); structSent = sk; }
   if (ownKey !== ownSent || S.phase === 'plan') { snap.own = OWN; ownSent = ownKey; }
@@ -119,6 +120,7 @@ function applySnap(m: any) {
   S.vis[NET.me] = m.vis; if (m.visG) { VIS0.set(m.visG); SEEN0.set(m.seenG); }
   S.known[NET.me] = new Map(m.known.map((k: any) => [k.i, k])); if (!S.hqKnown) S.hqKnown = S.teams.map((t: any) => new Set([t.id])); S.hqKnown[NET.me] = new Set(m.hqKnown);
   m.blown.forEach((v: any, i: number) => { const br = M.bridges[i]; if (v != null && br.blown == null) for (const c of br.cells) { M.terr[c] = T_WATER; M.deck[c] = -99; } br.blown = v; });
+  for (const id of m.downs || []) if (M.B[id].down == null) collapse(id, -1, false);
   if (m.own) OWN.set(m.own);
   if (m.rec) S.rec = m.rec;
   S.sel = selId != null ? (S.squads.find((s: any) => s.id === selId) || S.structs.find((s: any) => s.id === selId) || S.supports.find((s: any) => s.id === selId) || null) : null;

@@ -194,7 +194,7 @@ export function bindStrip(toMenu: () => void) {
   $('#cardOk').onclick = () => { $('#card').hidden = true; };
   $('#inspClose').onclick = () => setSel(null);
   $('#vArea').onclick = () => { viewOpts.area = !viewOpts.area; $('#vArea').classList.toggle('on', viewOpts.area); refreshFogPaint(); };
-  $('#vBld').onclick = () => { viewOpts.buildings = !viewOpts.buildings; $('#vBld').classList.toggle('on', viewOpts.buildings); applyViews(); };
+  $('#vXray').onclick = () => { viewOpts.xray = !viewOpts.xray; $('#vXray').classList.toggle('on', viewOpts.xray); applyViews(); };
   document.querySelectorAll('#speeds .btn').forEach((b: any) => b.onclick = () => { const v = +b.dataset.speed; if (S.phase === 'replay') { if (v === 0) S.paused = !S.paused; else { S.speed = v; S.paused = false; } } else actSpeed(v); syncSpeed(); });
   const tl = $('#tl'); let scrubbing = false;
   const at = (e: PointerEvent) => { const r = tl.getBoundingClientRect(); seek((e.clientX - r.left - 8) / (r.width - 16) * S.rec.end); };

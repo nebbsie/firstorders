@@ -98,7 +98,15 @@ export function initInput(cv: HTMLCanvasElement) {
     if (p.mode === 'point') {
       if (left(NET.me) < COST[t]) { toast('Not enough supply'); return; }
       if (t === 'demo') {
-        const bi = bridgeNear(w.x, w.y); if (bi < 0) { toast('Click on a bridge'); return; }
+        const bi = bridgeNear(w.x, w.y);
+        if (bi < 0) {
+          // Not a bridge: a building on your own ground can be demolished too.
+          const ci = cellOf(w.x, w.y), id = ci >= 0 ? M.bldId[ci] : -1;
+          if (id < 0) { toast('Click a bridge or a building'); return; }
+          const bd = M.B[id]; if (!canDeploy(NET.me, bd.cx, bd.cy)) { toast('The building must be on your ground'); return; }
+          if (S.supports.some((s: any) => s.type === 'demo' && s.bld === id)) { toast('Charges are already set on this building'); return; }
+          done(actSupport('demo', { x: bd.cx, y: bd.cy }, null, 20, undefined, id)); return;
+        }
         if (!bridgeTouches(bi, NET.me)) { toast('One end of the bridge must be on your ground'); return; }
         if (S.supports.some((s: any) => s.type === 'demo' && s.bridge === bi)) { toast('Charges are already set on this bridge'); return; }
         const br = M.bridges[bi]; done(actSupport('demo', { x: br.cx, y: br.cy }, null, 20, bi)); return;

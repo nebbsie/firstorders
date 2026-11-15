@@ -53,14 +53,29 @@ export function paintFog(vis: Uint8Array, seen: Uint8Array, on: boolean) {
 }
 
 let mapGroup: THREE.Group = null;
-// View options: AREA paints held ground strongly; BUILDINGS off hides buildings and trees.
-export const viewOpts = { area: false, buildings: true };
-const hideable: THREE.Object3D[] = [];
-export function applyViews() { for (const o of hideable) o.visible = viewOpts.buildings; }
+// View options: AREA paints held ground strongly; XRAY makes buildings and trees see-through and draws troops on top.
+export const viewOpts = { area: false, xray: false };
+const xrayable: THREE.Mesh[] = [];
+export function applyViews() {
+  for (const o of xrayable) { const m = o.material as THREE.Material; m.transparent = viewOpts.xray; m.opacity = viewOpts.xray ? .22 : 1; m.depthWrite = !viewOpts.xray; m.needsUpdate = true; }
+  for (const p of [ptUnits, ptGhosts]) if (p) { p.material.depthTest = !viewOpts.xray; p.renderOrder = viewOpts.xray ? 10 : 0; }
+}
+// Collapsed buildings: their walls drop to a low slab, and rubble lies on their ground.
+let bldGeo: THREE.BufferGeometry = null, bldY: Float32Array = null, downKey = '', mRubble: any = null;
+function updateDowns() {
+  const downs = M.B.filter(b => b.down != null && (S.phase !== 'replay' || b.down <= S.rt)), key = downs.map(b => b.id).join(',');
+  if (key === downKey || !bldGeo) return; downKey = key;
+  const pos = bldGeo.attributes.position as THREE.BufferAttribute, isDown = new Set(downs.map(b => b.id));
+  for (const b of M.B) { if (!b.vr) continue; const [s, n] = b.vr; for (let i = s; i < s + n; i++) pos.setY(i, isDown.has(b.id) ? Math.min(bldY[i], b.base + .5) : bldY[i]); }
+  pos.needsUpdate = true; bldGeo.computeBoundingSphere();
+  let k = 0;
+  for (const b of downs) for (const c of b.cells) { if (k >= 20000) break; const x = (c % GW) * C + 1, y = Math.floor(c / GW) * C + 1, r = (c * 7919 % 97) / 97; setI(mRubble, k++, x + (r - .5), y + (r * 3 % 1 - .5), M.hAt(x, y) + .3, 1.6 + r, .5 + r * .9, 1.4 + r * .6, r * 6, [.42 + r * .1, .4 + r * .1, .37 + r * .1]); }
+  done(mRubble, k);
+}
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _p = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0), _c = new THREE.Color();
 export function buildMap3D() {
   if (mapGroup) { scene.remove(mapGroup); mapGroup.traverse((o: any) => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map && o.material.map !== terrTex && o.material.map !== fogTex) o.material.map.dispose(); o.material.dispose(); } }); }
-  mapGroup = new THREE.Group(); hideable.length = 0; const VW = GW + 1, TH = M.TH;
+  mapGroup = new THREE.Group(); xrayable.length = 0; const VW = GW + 1, TH = M.TH;
   const pos = new Float32Array(GW * GH * 18), uv = new Float32Array(GW * GH * 12); let k = 0, u = 0;
   const vtx = (i: number, j: number) => { pos[k++] = i * C - W / 2; pos[k++] = TH[j * VW + i]; pos[k++] = j * C - H / 2; uv[u++] = i * C / W; uv[u++] = 1 - j * C / H; };
   for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) { vtx(i, j); vtx(i, j + 1); vtx(i + 1, j); vtx(i + 1, j); vtx(i, j + 1); vtx(i + 1, j + 1); }
@@ -85,6 +100,7 @@ export function buildMap3D() {
     for (const q of [a, b, c]) { Pa.push(q[0], q[1], q[2]); Na.push(nn.x, nn.y, nn.z); Ca.push(col[0], col[1], col[2]); }
   };
   for (const b of M.B) {
+    const vStart = Pa.length / 3;
     // Buildings outside the battle circle are grey scenery.
     const out0 = !inPlay(b.cx, b.cy), j = (b.v * 37 % 1 - .5) * 14, lum = (b.mat[0] * .3 + b.mat[1] * .59 + b.mat[2] * .11 + j) / 255;
     const BT = BTYPES[b.btype || 'house'], roof = out0 ? [lum * .62, lum * .63, lum * .65] : b.mat.map(v => (v + j) / 255);
@@ -106,9 +122,10 @@ export function buildMap3D() {
       if (area > 0) out.set(ey, 0, -ex); else out.set(-ey, 0, ex);
       tri(Bt[i], Bt[n], T[n], wall, out); tri(Bt[i], T[n], T[i], wall, out);
     }
+    b.vr = [vStart, Pa.length / 3 - vStart];
   }
-  const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(Pa, 3)); bg.setAttribute('normal', new THREE.Float32BufferAttribute(Na, 3)); bg.setAttribute('color', new THREE.Float32BufferAttribute(Ca, 3));
-  const bm = new THREE.Mesh(bg, new THREE.MeshLambertMaterial({ vertexColors: true })); bm.castShadow = true; bm.receiveShadow = true; mapGroup.add(bm); hideable.push(bm);
+  const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(Pa, 3)); bldGeo = bg; bldY = new Float32Array(Pa.filter((_, i) => i % 3 === 1)); downKey = ''; bg.setAttribute('normal', new THREE.Float32BufferAttribute(Na, 3)); bg.setAttribute('color', new THREE.Float32BufferAttribute(Ca, 3));
+  const bm = new THREE.Mesh(bg, new THREE.MeshLambertMaterial({ vertexColors: true })); bm.castShadow = true; bm.receiveShadow = true; mapGroup.add(bm); xrayable.push(bm);
 
   for (const br of M.bridges) {
     // One straight deck from bank to bank, with piers down into the water.
@@ -128,7 +145,7 @@ export function buildMap3D() {
     const list = M.trees.filter(t => inPlay(t[0], t[1]) === inside); if (!list.length) continue;
     const tm = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 5), new THREE.MeshLambertMaterial({ color: inside ? '#3d5832' : '#4b4f4b' }), list.length);
     list.forEach((t, i) => { _q.setFromAxisAngle(_up, t[0]); _p.set(t[0] - W / 2, M.hAt(t[0], t[1]) + t[2] / 2, t[1] - H / 2); _s.set(1.3 + t[2] * .18, t[2], 1.3 + t[2] * .18); _m.compose(_p, _q, _s); tm.setMatrixAt(i, _m); });
-    tm.castShadow = inside; tm.receiveShadow = true; mapGroup.add(tm); hideable.push(tm);
+    tm.castShadow = inside; tm.receiveShadow = true; mapGroup.add(tm); xrayable.push(tm);
   }
   const fogMesh = new THREE.Mesh(tg, new THREE.MeshBasicMaterial({ map: fogTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 })); fogMesh.renderOrder = 3; mapGroup.add(fogMesh);
   scene.add(mapGroup); structKey = ''; applyViews();
@@ -151,7 +168,7 @@ function createDynamic() {
   const box = new THREE.BoxGeometry(1, 1, 1);
   mTrench = inst(box, lam('#3a2c1e'), 4000); mTrenchLip = inst(box, lam('#6b583e'), 4000); mSand = inst(box, lam('#b39d74'), 4000, true);
   mWire = inst(new THREE.BoxGeometry(2.6, .5, .12), lam('#a39f95'), 8000); mWall = inst(box, lam('#8f8a7e'), 4000, true);
-  mTrap = inst(new THREE.BoxGeometry(2.2, .3, .3), lam('#4c4b47'), 9000, true);
+  mTrap = inst(new THREE.BoxGeometry(2.2, .3, .3), lam('#4c4b47'), 9000, true); mRubble = inst(box, lam('#ffffff'), 20000, true);
   for (const k of Object.keys(MODELS)) mModel[k] = inst(MODELS[k], new THREE.MeshLambertMaterial({ vertexColors: true }), k === 'hq' || k === 'flag' ? 8 : 400, true);
   mPlane = inst(box, new THREE.MeshLambertMaterial({ color: '#c87a2a' }), 40, true);
   mCrater = inst(new THREE.CircleGeometry(1, 7).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#211b14', transparent: true, opacity: .75, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }), 700);
@@ -266,6 +283,6 @@ export function update3D(V: View) {
   let nf = 0; for (const f of V.fx) { if (nf >= 300) break; const k = 1 - f.life / f.max, s = f.r * (.35 + k * .8), fade = 1 - k; setI(mBoom, nf++, f.x, f.y, unitH(f.x, f.y) + s * .5, s, s * .8, s, 0, [fade, fade * (.75 - k * .4), fade * (.45 - k * .4)]); } done(mBoom, nf);
   let nc = 0; for (const c of V.craters) { if (nc >= 700) break; setI(mCrater, nc++, c.x, c.y, M.hAt(c.x, c.y) + .06, c.r, 1, c.r, 0); } done(mCrater, nc);
   for (const br of M.bridges) if (br.group) br.group.visible = !(br.blown != null && (S.phase !== 'replay' || br.blown <= S.rt));
-  updateStructs(V);
+  updateStructs(V); updateDowns();
 }
 export function render() { renderer.render(scene, camera); }

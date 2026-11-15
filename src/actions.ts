@@ -12,7 +12,7 @@ export function exec(team: number, m: any): any {
   switch (m.cmd) {
     case 'squad': return live(addSquad(team, m.kind, m.x, m.y));
     case 'struct': return live(addStruct(team, m.type, m.a, m.b));
-    case 'support': { const s = addSupport(team, m.type, m.a, m.b, m.t); if (m.bridge != null) s.bridge = m.bridge; return live(s); }
+    case 'support': { const s = addSupport(team, m.type, m.a, m.b, m.t); if (m.bridge != null) s.bridge = m.bridge; if (m.bld != null) s.bld = m.bld; return live(s); }
     case 'orders': for (const o of m.list) { const s = S.squads.find((q: any) => q.id === o.id && q.team === team); if (!s) continue; s.order = o.type ? { type: o.type, x: o.x, y: o.y } : null; if (S.phase === 'battle' && s.order) applyOrder(s); } return null;
     case 'remove': { const it = byId(m.id); if (it && it.team === team && it.round === S.round && !it.members && !it.live && S.phase === 'plan') removeItem(it); return null; }
     case 'time': { const it = byId(m.id); if (it && it.team === team && !it.fired) it.t = m.t; return null; }
@@ -24,7 +24,7 @@ export function exec(team: number, m: any): any {
 export function act(m: any) { if (NET.mode === 'guest') { NET.send(m); return null; } return exec(NET.me, m); }
 export const actSquad = (kind: string, x: number, y: number) => act({ cmd: 'squad', kind, x, y });
 export const actStruct = (type: string, a: any, b: any) => act({ cmd: 'struct', type, a, b });
-export const actSupport = (type: string, a: any, b: any, t: number, bridge?: number) => act({ cmd: 'support', type, a, b, t, bridge });
+export const actSupport = (type: string, a: any, b: any, t: number, bridge?: number, bld?: number) => act({ cmd: 'support', type, a, b, t, bridge, bld });
 export const actOrders = (list: { id: number; type: string | null; x?: number; y?: number }[]) => act({ cmd: 'orders', list });
 export const actRemove = (id: number) => act({ cmd: 'remove', id });
 export const actTime = (id: number, t: number) => act({ cmd: 'time', id, t });

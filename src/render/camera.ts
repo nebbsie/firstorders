@@ -29,6 +29,12 @@ export function P(x: number, y: number, dz = 0): [number, number] {
   if (_v.z > 1) return [-1e4, -1e4];
   return [(_v.x + 1) / 2 * view.cw, (1 - _v.y) / 2 * view.ch];
 }
+// World point at a fixed height (not following roofs) to screen pixels.
+export function Pa(x: number, y: number, h: number): [number, number] {
+  _v.set(x - W / 2, h, y - H / 2).project(camera);
+  if (_v.z > 1) return [-1e4, -1e4];
+  return [(_v.x + 1) / 2 * view.cw, (1 - _v.y) / 2 * view.ch];
+}
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
 // Screen pixel to the first ground, roof or bridge it hits.
 export function pick(sx: number, sy: number) {

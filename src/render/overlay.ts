@@ -1,9 +1,9 @@
 import { NET } from '../state';
 import { C, GW, K, M_PER_UNIT, COST, TOOLDEF, TEAM_COLORS, SUP_NAME, GRID_X0, GRID_Y0, grid } from '../config';
-import { S } from '../state';
+import { S, M } from '../state';
 import { canDeploy, opRange } from '../world';
 import { sqCenter, left, lineCells } from '../plan';
-import { P, view } from './camera';
+import { P, Pa, view } from './camera';
 import { input } from '../ui/input';
 
 let ctx: CanvasRenderingContext2D, cv: HTMLCanvasElement;
@@ -25,7 +25,9 @@ function groundLine(a: any, b: any, col: string, dash: boolean, head: boolean) {
 }
 function ring(x: number, y: number, r: number, col: string, dash: boolean, w?: number) {
   ctx.strokeStyle = col; ctx.lineWidth = w || 1.5; ctx.setLineDash(dash ? [4, 3] : []); ctx.beginPath(); let first = true;
-  for (let i = 0; i <= 32; i++) { const a = i / 32 * 6.283, p = P(x + Math.cos(a) * r, y + Math.sin(a) * r, .6); if (p[0] < -500) { first = true; continue; } if (first) { ctx.moveTo(p[0], p[1]); first = false; } else ctx.lineTo(p[0], p[1]); }
+  // Flat at the ground height of the centre, so the ring does not climb onto roofs.
+  const h0 = M.hAt(x, y) + .6;
+  for (let i = 0; i <= 32; i++) { const a = i / 32 * 6.283, p = Pa(x + Math.cos(a) * r, y + Math.sin(a) * r, h0); if (p[0] < -500) { first = true; continue; } if (first) { ctx.moveTo(p[0], p[1]); first = false; } else ctx.lineTo(p[0], p[1]); }
   ctx.stroke(); ctx.setLineDash([]);
 }
 
@@ -58,7 +60,14 @@ export function draw2D() {
     if (it.pos) { c = sqCenter(it); r = it.kind === 'rifles' ? 9 : 4; }
     else if (it.cells) { c = [(it.a.x + it.b.x) / 2, (it.a.y + it.b.y) / 2]; r = Math.hypot(it.b.x - it.a.x, it.b.y - it.a.y) / 2 + 3; }
     else if (it.a) { c = it.b ? [(it.a.x + it.b.x) / 2, (it.a.y + it.b.y) / 2] : [it.a.x, it.a.y]; r = it.b ? Math.hypot(it.b.x - it.a.x, it.b.y - it.a.y) / 2 : 16; }
-    if (it.building) { const p = it.building.p; for (let i = 0; i < p.length; i++) { const n = (i + 1) % p.length; groundLine({ x: p[i][0], y: p[i][1] }, { x: p[n][0], y: p[n][1] }, '#e8c547', false, false); } c = null; }
+    if (it.building) {
+      // The building as a box: roof outline, ground outline, and the corner edges.
+      const bd = it.building, p = bd.p, top = bd.top + .05, bot = bd.base + .4;
+      ctx.strokeStyle = '#f0b43c'; ctx.lineWidth = 2; ctx.beginPath();
+      for (const h of [top, bot]) p.forEach((q: number[], i: number) => { const s = Pa(q[0], q[1], h); i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]); if (i === p.length - 1) { const s0 = Pa(p[0][0], p[0][1], h); ctx.lineTo(s0[0], s0[1]); } });
+      for (const q of p) { const a = Pa(q[0], q[1], top), b = Pa(q[0], q[1], bot); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); }
+      ctx.stroke(); ctx.fillStyle = 'rgba(240,180,60,.12)'; ctx.beginPath(); p.forEach((q: number[], i: number) => { const s = Pa(q[0], q[1], top); i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]); }); ctx.fill(); c = null;
+    }
     if (c && !it.pos) ring(c[0], c[1], r, '#e8c547', false, 2);
   }
   for (const s of S.selMany || []) { const c = sqCenter(s); if (c) ring(c[0], c[1], s.kind === 'rifles' ? 9 : 4, '#e8c547', false, 2); }

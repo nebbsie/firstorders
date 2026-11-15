@@ -100,7 +100,10 @@ export function finishMap(raw: RawMap): MapData {
   B.forEach((b, i) => {
     let base = 1e9, sx = 0, sy = 0; for (const q of b.p) { base = Math.min(base, hAt(q[0], q[1])); sx += q[0]; sy += q[1]; }
     b.id = i; b.base = base - .4; b.top = base + .3 + b.h; b.cx = sx / b.p.length; b.cy = sy / b.p.length;
-    rasterPoly(b.p, ci => { if (isWet(terr[ci])) return; terr[ci] = T_BUILD; bldTop[ci] = b.top; bldId[ci] = i; });
+    b.cells = []; rasterPoly(b.p, ci => { if (isWet(terr[ci])) return; terr[ci] = T_BUILD; bldTop[ci] = b.top; bldId[ci] = i; b.cells.push(ci); });
+    // Strength: bigger and taller buildings take more shells to bring down. Castles are much tougher.
+    let ar = 0; for (let k = 0; k < b.p.length; k++) { const a = b.p[k], c = b.p[(k + 1) % b.p.length]; ar += a[0] * c[1] - c[0] * a[1]; }
+    b.hp0 = clamp(Math.abs(ar) / 2 * b.h * .05, 6, 160) * (b.btype === 'castle' ? 4 : 1); b.hp = b.hp0; b.down = null;
   });
 
   // Bridges are connected groups of bridge cells. Their ends are the land cells beside them.
@@ -153,5 +156,5 @@ export function finishMap(raw: RawMap): MapData {
     const x = (ci % GW) * C + 1, y = Math.floor(ci / GW) * C + 1;
     if (hashf(x, y, 3) < (t === T_WOOD ? .42 : .05)) trees.push([x + (hashf(x, y, 4) - .5) * 1.6, y + (hashf(x, y, 5) - .5) * 1.6, 3 + hashf(x, y, 6) * 4]);
   }
-  return { seed: raw.seed, name: raw.name, source: raw.source, credit: raw.credit, ground, terr, terr0: terr.slice(), TH, hAt, deck, deck0: deck.slice(), bridges, B, trees, bldTop, bldId, count: B.length, play };
+  return { seed: raw.seed, name: raw.name, source: raw.source, credit: raw.credit, ground, terr, terr0: terr.slice(), TH, hAt, deck, deck0: deck.slice(), bridges, B, trees, bldTop, bldId, count: B.length, play, bldId0: bldId.slice(), bldTop0: bldTop.slice() };
 }

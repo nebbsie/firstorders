@@ -1,4 +1,4 @@
-import { W, H, C, GW, GH, IW, IH, IC, DT, BUDGET, COST, PHASES, PHASE_LEN, HQ_HOLD, K, COV, KIND_NAME, SPY_RADIUS, T_ROAD, T_BRIDGE, T_WOOD, T_BUILD, T_WATER, clamp, grid } from './config';
+import { W, H, C, GW, GH, IW, IH, IC, DT, BUDGET, COST, T_GROUND, PHASES, PHASE_LEN, HQ_HOLD, K, COV, KIND_NAME, SPY_RADIUS, T_ROAD, T_BRIDGE, T_WOOD, T_BUILD, T_WATER, clamp, grid } from './config';
 import { S, M, OWN, VIS0, SEEN0, NET, hooks } from './state';
 import { cellOf, unitH, passable, nudge, opRange } from './world';
 import { aliveMembers, spentNow, sqName, nextCall, rollPersonalities, initOwn } from './plan';
@@ -13,7 +13,7 @@ export function log(team: number, msg: string) { S.log.unshift({ t: S.t, team, m
 export const income = (t: number) => S.teams[t].lost ? 0 : 200 + Math.round((S.terrCount[t] || 0) * 1.2);
 
 export function newBattle() {
-  if (M) { M.terr.set(M.terr0); M.deck.set(M.deck0); M.bridges.forEach(b => b.blown = null); }
+  if (M) { M.terr.set(M.terr0); M.deck.set(M.deck0); M.bridges.forEach(b => b.blown = null); M.bldId.set(M.bldId0); M.bldTop.set(M.bldTop0); for (const b of M.B) { b.hp = b.hp0; b.down = null; } }
   Object.assign(S, { phase: 'plan', round: 1, t: 0, units: [], shells: [], bombs: [], fx: [], tracers: [], craters: [], planes: [], cover: null, rec: null, result: null, log: [], stats: [], history: [], callN: [], vis: [], known: [], contactT: [], squads: [], structs: [], supports: [], sel: null, selMany: [] });
   S.bank = S.teams.map(() => BUDGET); SEEN0.fill(0); S.visG = null;
   for (const t of S.teams) { t.lost = false; t.hqHold = 0; t.hqBy = -1; } S.hqKnown = S.teams.map((t: any) => new Set([t.id]));
@@ -27,7 +27,7 @@ export function beginRound() {
     Object.assign(S, { t: 0, units: [], shells: [], bombs: [], fx: [], tracers: [], craters: [], planes: [], flow: new Map(), log: [], history: [] });
     rnd = Math.random; S.cover = new Uint8Array(GW * GH); S.stats = S.teams.map(() => ({ kills: 0, lost: 0, start: 0, roundKills: 0 }));
     S.known = S.teams.map(() => new Map()); S.contactT = S.teams.map(() => new Map());
-    S.rec = { frames: [], tracers: [], booms: [], shells: [], planes: [], phases: [], moments: [], own: [{ t: 0, o: OWN.slice() }], meta: null };
+    S.rec = { frames: [], tracers: [], booms: [], shells: [], planes: [], phases: [], moments: [], downs: [], own: [{ t: 0, o: OWN.slice() }], meta: null };
   }
   for (const t of S.teams) S.bank[t.id] -= spentNow(t.id);
   S.phaseStart = S.t; S.flow.clear(); S.rec.phases.push({ round: S.round, t: S.t });
@@ -150,7 +150,25 @@ function shoot(u: any, e: any, k: any) {
   if (rnd() < p) { e.hp -= u.kind === 'at' ? 4 : 1; if (e.hp <= 0) { kill(e, u.team); u.kills++; } }
   contact(S.squads.find((s: any) => s.id === u.sq));
 }
+// A building brought down: its cells become rubble (open ground with light cover), and anyone inside dies.
+// The guest calls this too when the host reports a collapse, with kills turned off.
+export function collapse(id: number, team: number, kills = true) {
+  const b = M.B[id]; if (!b || b.down != null) return; b.down = S.t;
+  for (const ci of b.cells) { M.terr[ci] = T_GROUND; M.bldTop[ci] = 0; M.bldId[ci] = -1; if (S.cover) S.cover[ci] = 1; }
+  if (kills) for (const u of S.units) if (u.alive && u.gar && b.cells.includes(cellOf(u.x, u.y))) kill(u, team);
+  S.flow.clear(); if (S.rec) S.rec.downs.push([S.t, id]);
+  if (kills && (b.name || b.btype && b.btype !== 'house' || S.squads.some((s: any) => s.bld === id))) log(-1, `${b.name || BTYPES[b.btype || 'house'].label} at ${grid(b.cx, b.cy)} destroyed`);
+}
+function damageBuildings(x: number, y: number, r: number, power: number, team: number) {
+  const hit = new Map<number, number>(), c0 = Math.floor(x / C), r0 = Math.floor(y / C), rc = Math.ceil(r / C);
+  for (let dy = -rc; dy <= rc; dy++) for (let dx = -rc; dx <= rc; dx++) {
+    const cx = c0 + dx, cy = r0 + dy; if (cx < 0 || cy < 0 || cx >= GW || cy >= GH) continue; const id = M.bldId[cy * GW + cx]; if (id < 0) continue;
+    const d = Math.hypot(dx, dy) * C; if (d <= r && (!hit.has(id) || d < hit.get(id))) hit.set(id, d);
+  }
+  hit.forEach((d, id) => { const b = M.B[id]; b.hp -= power * 8 * (1 - d / r * .7); if (b.hp <= 0) collapse(id, team); });
+}
 function explode(x: number, y: number, r: number, power: number, team: number) {
+  damageBuildings(x, y, r, power, team);
   S.fx.push({ x, y, r, life: .6, max: .6 }); S.craters.push({ x, y, r: r * .55 }); if (S.craters.length > 600) S.craters.shift(); S.rec.booms.push([S.t, x, y, r]);
   for (const v of S.units) {
     if (!v.alive || v.drop > 0) continue; const d = Math.hypot(v.x - x, v.y - y); if (d > r) continue;
@@ -201,7 +219,7 @@ function launchSupport(su: any) {
     const sc = S.units.some((f: any) => f.alive && f.team === su.team && f.kind === 'op' && Math.hypot(f.x - su.a.x, f.y - su.a.y) < opRange(f)) ? 4.5 : 8;
     for (let i = 0; i < 12; i++) addShell({ x0: z.x, y0: z.y, x1: su.a.x + gauss() * sc, y1: su.a.y + gauss() * sc, t: -i * .45, dur: 2.2, team: su.team, r: 7, power: .9 });
     log(su.team, `${T.name} artillery: shot, over, on ${grid(su.a.x, su.a.y)}`);
-  } else if (su.type === 'demo') blowBridge(su.bridge, su.team);
+  } else if (su.type === 'demo') { if (su.bld != null) { const b = M.B[su.bld]; for (let k = 0; k < 4; k++) explode(b.cx + (rnd() - .5) * 4, b.cy + (rnd() - .5) * 4, 6, .9, su.team); collapse(su.bld, su.team); } else blowBridge(su.bridge, su.team); }
   else {
     const line = su.type === 'air' || su.type === 'spy';
     const tx = line ? su.b.x : su.a.x, ty = line ? su.b.y : su.a.y, ax = line ? su.a.x : z.x, ay = line ? su.a.y : z.y;
