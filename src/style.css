@@ -118,13 +118,15 @@ table.cat td:first-child { color: var(--ink); white-space: nowrap; }
 
 .menu { position: absolute; inset: 0; z-index: 10; display: grid; place-items: center; background: rgba(13,14,16,.3); }
 .menu[hidden] { display: none; }
-.menuside { width: min(400px, 94vw); max-height: 92vh; padding: 20px; display: flex; flex-direction: column; gap: 8px; overflow: auto; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
-.menuside .title, .load .title { font-family: var(--f-title); font-size: 32px; color: var(--good); line-height: 1; margin-bottom: 10px; }
+.menuside { width: min(380px, 94vw); max-height: 92vh; padding: 20px; display: flex; flex-direction: column; gap: 8px; overflow: auto; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+.menuside .title, .load .title { font-family: var(--f-title); font-size: 32px; color: var(--good); line-height: 1; margin-bottom: 10px; text-align: center; }
+.menuside .note { text-align: center; }
 .menuside h3, #mapPick h3 { margin: 12px 0 2px; font: inherit; color: var(--gold); letter-spacing: .08em; }
 .mscreen { display: flex; flex-direction: column; gap: 6px; }
 .mscreen[hidden] { display: none; }
 .mscreen > h3:first-child { margin-top: 0; }
-.mbig { font-family: var(--f-title); font-size: 16px; padding: 8px 12px; text-align: left; }
+.mscreen[data-s="home"] { width: 200px; align-self: center; gap: 5px; margin: 6px 0; }
+.mscreen[data-s="home"] .btn { padding: 6px 10px; }
 .mback { align-self: flex-start; margin-top: 12px; }
 .setrow { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--edge-soft); }
 .setrow .btn { min-width: 70px; }

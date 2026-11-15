@@ -75,7 +75,7 @@ export function initMenu(start: (raw: RawMap, spec: MapSpec) => void, guestMap: 
     if (name === 'campaign') camp();
     if (name === 'settings') settings();
   };
-  document.querySelectorAll('.mbig').forEach((b: any) => b.onclick = () => show(b.dataset.go));
+  document.querySelectorAll('[data-go]').forEach((b: any) => b.onclick = () => show(b.dataset.go));
   $('#mBack').onclick = () => show('home');
   window.addEventListener('fo-menu', () => show('home'));
   // Multiplayer. The host picks the map; the guest gets the same map.
