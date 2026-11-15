@@ -36,7 +36,12 @@ export async function fetchTiles(s: number, w: number, n: number, e: number, pro
     const L = (name: string, fn: (f: any, rings: any[], ext: number) => void) => { const l = vt.layers[name]; if (!l) return; for (let i = 0; i < l.length; i++) { const f = l.feature(i); fn(f, f.loadGeometry().map((r: any[]) => r.map(p => lonLat(x, y, p.x, p.y, l.extent))), l.extent); } };
     // Only keep features whose middle lies in this tile, so pieces cut at tile edges are not doubled.
     const mine = (r: any[]) => { const c = r.reduce((a, p) => ({ lat: a.lat + p.lat / r.length, lon: a.lon + p.lon / r.length }), { lat: 0, lon: 0 }), a = lonLat(x, y, 0, 0, 1), b = lonLat(x, y, 1, 1, 1); return c.lon >= a.lon && c.lon < b.lon && c.lat <= a.lat && c.lat > b.lat; };
-    L('building', (f, rings) => { for (const r of rings) if (area(r) !== 0 && mine(r)) { const el = { type: 'way', tags: { building: 'yes', ...(f.properties.render_height ? { height: String(f.properties.render_height) } : {}) } as any, geometry: r }; elements.push(el); buildings.push(el); break; } });
+    // One tile feature can hold many buildings of the same height: every outer ring is a building.
+    // Outer rings share the winding of the first ring; the others are courtyards.
+    L('building', (f, rings) => {
+      const outer = rings.length ? Math.sign(area(rings[0])) : 0;
+      for (const r of rings) if (r.length > 3 && Math.sign(area(r)) === outer && mine(r)) { const el = { type: 'way', tags: { building: 'yes', ...(f.properties.render_height ? { height: String(f.properties.render_height) } : {}) } as any, geometry: r }; elements.push(el); buildings.push(el); }
+    });
     L('transportation', (f, rings) => {
       const p = f.properties; if (p.brunnel === 'tunnel') return;
       if (p.class === 'rail') { for (const r of rings) elements.push({ type: 'way', tags: { highway: 'footway' }, geometry: r }); return; }

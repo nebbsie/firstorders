@@ -84,7 +84,7 @@ export function initInput(cv: HTMLCanvasElement) {
       if (b) { const found = boxSelect(b); setSel(found.length === 1 ? found[0] : null, p.shift ? [...new Set([...(S.selMany || []), ...found])] : found); return; }
       // Nothing of yours under the click: a building there shows what it is.
       let hit = p.w ? hitTest(p.w) : null;
-      if (!hit && p.w) { const ci = cellOf(p.w.x, p.w.y), id = ci >= 0 ? M.bldId[ci] : -1; if (id >= 0) hit = { building: M.B[id] }; }
+      if (!hit && p.w) { const ci = cellOf(p.w.x, p.w.y), id = ci >= 0 ? M.bldId[ci] : -1; if (id >= 0) hit = { building: M.B[M.B[id].parent ?? id] }; }
       if (p.shift && hit && hit.pos && hit.team === NET.me) { const many = new Set(S.selMany || []); many.has(hit) ? many.delete(hit) : many.add(hit); const arr = [...many]; setSel(arr.length === 1 ? arr[0] : null, arr); }
       else setSel(hit);
       return;

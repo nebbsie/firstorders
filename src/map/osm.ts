@@ -112,7 +112,7 @@ export async function importPlace(place: Place, progress: (s: string) => void): 
   const reach = PLAY_R * (BATTLE_KM === 1 ? 1.35 : BATTLE_KM === 2 ? 1.2 : 1.1);
   const [n, w] = toLatLon(CX - reach, CX - reach), [s, e] = toLatLon(CX + reach, CX + reach);
   const bb = `${s.toFixed(6)},${w.toFixed(6)},${n.toFixed(6)},${e.toFixed(6)}`;
-  const key = `osm2:${lat0.toFixed(4)},${lon0.toFixed(4)}:${BATTLE_KM}`;
+  const key = `osm3:${lat0.toFixed(4)},${lon0.toFixed(4)}:${BATTLE_KM}`;
   let cached = await cacheGet<{ osm: any; dem: Float32Array | null }>(key);
   let osm = cached?.osm, dem = cached?.dem ?? null;
   if (!osm) {

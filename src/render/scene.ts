@@ -100,6 +100,8 @@ export function buildMap3D() {
     if (nn.dot(o) < 0) { const t = b; b = c; c = t; nn.negate(); } nn.normalize();
     for (const q of [a, b, c]) { Pa.push(q[0], q[1], q[2]); Na.push(nn.x, nn.y, nn.z); Ca.push(col[0], col[1], col[2]); }
   };
+  // A main building that has a tall part (its own tower) gets no extra spire.
+  const tallPart = new Set<number>(); for (const b of M.B) if (b.parent != null && b.h > M.B[b.parent].h + 1) tallPart.add(b.parent);
   for (const b of M.B) {
     const vStart = Pa.length / 3;
     // Buildings outside the battle circle are grey scenery.
@@ -112,7 +114,7 @@ export function buildMap3D() {
     // Churches and town halls get a pointed tower roof; castles get battlements along the walls.
     for (const f of faces) tri(T[f[0]], T[f[1]], T[f[2]], roof, _up);
     // Churches and town halls: a square tower with a pointed spire rising from the middle of the roof.
-    if (BT.spire && !out0) {
+    if (BT.spire && !out0 && b.parent == null && !tallPart.has(b.id)) {
       const half = clamp(Math.sqrt(Math.abs(area) / 2) / 5, 1.2, 3.5), x0 = b.cx - W / 2, z0 = b.cy - H / 2, y0 = b.top, y1 = b.top + half * 2.2, y2 = y1 + half * 3;
       const c = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => [x0 + u * half, z0 + v * half]), wall2 = (BT.wall || b.mat).map(v => v * .85 / 255);
       for (let i = 0; i < 4; i++) {

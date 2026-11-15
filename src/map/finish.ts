@@ -97,6 +97,17 @@ export function finishMap(raw: RawMap): MapData {
 
   const bldTop = new Float32Array(GW * GH), bldId = new Int32Array(GW * GH).fill(-1);
   const B = raw.B.filter(b => b.p.length >= 3);
+  // Building parts: a smaller building whose middle lies inside a bigger one is part of it (a cathedral's tower,
+  // chapels, aisles). Parts take the main building's colour, type and name, so the whole reads as one building.
+  const bbox = B.map(b => { let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9, a = 0; b.p.forEach((q, k) => { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); const r = b.p[(k + 1) % b.p.length]; a += q[0] * r[1] - r[0] * q[1]; }); b.area = Math.abs(a) / 2; return [x0, x1, y0, y1]; });
+  const order = B.map((_, i) => i).sort((i, j) => B[j].area - B[i].area);
+  for (let oi = 0; oi < order.length; oi++) {
+    const b = B[order[oi]], cx = b.p.reduce((s, q) => s + q[0], 0) / b.p.length, cy = b.p.reduce((s, q) => s + q[1], 0) / b.p.length;
+    for (let oj = 0; oj < oi; oj++) {
+      const j = order[oj], L = B[j], bb = bbox[j]; if (L.parent != null || L.area < b.area * 1.3 || cx < bb[0] || cx > bb[1] || cy < bb[2] || cy > bb[3] || !pointIn(L.p, cx, cy)) continue;
+      b.parent = j; b.mat = L.mat; b.v = L.v; if (L.btype) b.btype = L.btype; else if (b.btype) L.btype = b.btype; if (!L.name && b.name) L.name = b.name; break;
+    }
+  }
   B.forEach((b, i) => {
     let base = 1e9, sx = 0, sy = 0; for (const q of b.p) { base = Math.min(base, hAt(q[0], q[1])); sx += q[0]; sy += q[1]; }
     b.id = i; b.base = base - .4; b.top = base + .3 + b.h; b.cx = sx / b.p.length; b.cy = sy / b.p.length;
