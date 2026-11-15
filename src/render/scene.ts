@@ -2,6 +2,7 @@ import { NET, sw } from '../state';
 import * as THREE from 'three';
 import { W, H, C, GW, GH, IW, IH, IC, TRGB, T_WATER, T_BRIDGE, clamp, inPlay } from '../config';
 import { S, M, OWN } from '../state';
+import { smokeR } from '../sim';
 import { unitH } from '../world';
 import { camera, cam, FOV, view } from './camera';
 import { MODELS } from './models';
@@ -16,7 +17,7 @@ scene.background = new THREE.Color('#121410'); scene.fog = new THREE.Fog('#12141
 
 // What the renderer draws this frame: the live battle or a replay frame, with or without fog.
 export interface View {
-  units: any[]; tracers: any[]; fx: any[]; craters: any[]; shells: any[]; planes: any[]; bombs: any[];
+  units: any[]; smokes?: any[]; tracers: any[]; fx: any[]; craters: any[]; shells: any[]; planes: any[]; bombs: any[];
   fogOn: boolean; isVis: (u: any) => boolean; ghosts: any[]; seen: Uint8Array; vis: Uint8Array; replayT?: number;
 }
 
@@ -200,7 +201,7 @@ export function buildMap3D() {
 
 // Dynamic objects, created once and refilled every frame.
 const mModel: Record<string, any> = {}, nModel: Record<string, number> = {};
-let mTrench, mTrenchLip, mSand, mWire, mWall, mTrap, mPlane, mCrater, mBoom, ptUnits, ptBodies, ptGhosts, ptHeads, lineG;
+let mSmoke, mTrench, mTrenchLip, mSand, mWire, mWall, mTrap, mPlane, mCrater, mBoom, ptUnits, ptBodies, ptGhosts, ptHeads, lineG;
 const LMAX = 8000;
 function inst(geom: THREE.BufferGeometry, mat: THREE.Material, cap: number, shadow?: boolean) {
   const m = new THREE.InstancedMesh(geom, mat, cap); m.frustumCulled = false; const c = new THREE.Color(1, 1, 1);
@@ -219,6 +220,8 @@ function createDynamic() {
   for (const k of Object.keys(MODELS)) mModel[k] = inst(MODELS[k], new THREE.MeshLambertMaterial({ vertexColors: true }), k === 'hq' || k === 'flag' ? 8 : 400, true);
   mPlane = inst(box, new THREE.MeshLambertMaterial({ color: '#c87a2a' }), 40, true);
   mCrater = inst(new THREE.CircleGeometry(1, 7).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#211b14', transparent: true, opacity: .75, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }), 700);
+  // Smoke: grey puffs, a few per cloud, swelling and fading.
+  mSmoke = inst(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshLambertMaterial({ color: '#c9ccc8', transparent: true, opacity: .62, depthWrite: false }), 400);
   mBoom = inst(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicMaterial({ color: '#ffffff', blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }), 300);
   ptUnits = pointsObj(5000, 3, 1); ptBodies = pointsObj(5000, 2, 1); ptGhosts = pointsObj(3000, 3, .45); ptHeads = pointsObj(800, 3, 1);
   lineG = new THREE.BufferGeometry(); lineG.setAttribute('position', new THREE.BufferAttribute(new Float32Array(LMAX * 6), 3)); lineG.setAttribute('color', new THREE.BufferAttribute(new Float32Array(LMAX * 6), 3)); lineG.setDrawRange(0, 0);
@@ -331,6 +334,9 @@ export function update3D(V: View) {
   }
   done(mPlane, np);
   lineG.setDrawRange(0, L * 2); lineG.attributes.position.needsUpdate = true; lineG.attributes.color.needsUpdate = true;
+  let ns = 0; const tNow = V.replayT ?? S.t;
+  for (const m of V.smokes || []) { const r = smokeR(m, tNow); if (r <= 0) continue; for (let k = 0; k < 6 && ns < 400; k++) { const a = k * 1.05 + m.x, d = r * .45 * (k % 3) / 2, s = r * (.55 + (k % 2) * .2); setI(mSmoke, ns++, m.x + Math.cos(a) * d, m.y + Math.sin(a) * d, unitH(m.x, m.y) + s * .45, s, s * .7, s, 0, [1, 1, 1]); } }
+  done(mSmoke, ns);
   let nf = 0; for (const f of V.fx) { if (nf >= 300) break; const k = 1 - f.life / f.max, s = f.r * (.35 + k * .8), fade = 1 - k; setI(mBoom, nf++, f.x, f.y, unitH(f.x, f.y) + s * .5, s, s * .8, s, 0, [fade, fade * (.75 - k * .4), fade * (.45 - k * .4)]); } done(mBoom, nf);
   let nc = 0; for (const c of V.craters) { if (nc >= 700) break; setI(mCrater, nc++, c.x, c.y, M.hAt(c.x, c.y) + .06, c.r, 1, c.r, 0); } done(mCrater, nc);
   for (const br of M.bridges) if (br.group) br.group.visible = !(br.blown != null && (S.phase !== 'replay' || br.blown <= S.rt));

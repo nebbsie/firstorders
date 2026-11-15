@@ -50,7 +50,7 @@
 
   <div class="hud toast" id="toast" hidden></div>
   <button class="hud btn fpvexit" id="fpvExit" hidden title="Back to the map (Esc)">EXIT FIRST PERSON · ESC</button>
-  <div class="hud qbar" id="qbar" hidden><button class="btn" data-q="attack">ATTACK</button><button class="btn" data-q="defend">DEFEND</button><button class="btn" data-q="demolish">DEMOLISH</button><button class="btn" data-q="stop">STOP</button></div>
+  <div class="hud qbar" id="qbar" hidden><button class="btn" data-q="attack">ATTACK</button><button class="btn" data-q="defend">DEFEND</button><button class="btn" data-q="demolish">DEMOLISH</button><button class="btn" data-q="stop">STOP</button><span class="sep"></span><button class="btn" data-st="careful" title="Slow, uses cover, hard to pin down">CAREFUL</button><button class="btn" data-st="rush" title="Fast, keeps moving under fire, shoots worse">RUSH</button><button class="btn" data-st="ambush" title="Hidden, holds fire until the enemy is close">AMBUSH</button><button class="btn" data-st="fallback" title="Pull back when half the unit is lost">FALL BACK</button></div>
   <div class="hud panel banner" id="banner" hidden><b id="bannerBig"></b><span id="bannerSmall"></span></div>
   <div class="hud panel card" id="card" hidden><div class="ph"><span id="cardTitle"></span></div><div class="pb"><div id="cardBody"></div><div class="row"><button class="btn go" id="cardOk">GOT IT</button></div></div></div>
   <div class="hud panel result" id="result" hidden></div>
@@ -66,6 +66,9 @@
       <p>New units arrive in your start area. Engineers can build a FOB near where they stand; it is ready the next phase. Mortars, MG nests, AT guns and obs posts go in the start area or round a finished FOB, and also take a phase to build. Spy planes, artillery, air strikes and paradrops are ready from phase 2.</p>
       <h3>MOVING</h3>
       <p>Each unit has its own speed: riflemen cover about 250 m a phase, tanks about twice that, more on roads. The order line is solid as far as the unit gets this phase, then grey to where it arrives later. Units carry on with an order in later phases. BEGIN warns you about units with no orders.</p>
+      <h3>FIRE AND MOVEMENT</h3>
+      <p>Fire pins men down: MGs and blasts most, cover less. Pinned men stop and shoot badly; badly pinned men stop shooting. Pin an enemy with MGs or mortars, then move round them. Smoke (from phase 1) blocks sight for about 30 s.</p>
+      <p>Orders: Shift-click sets a waypoint first, for a flank. CAREFUL is slow, hard to pin. RUSH is fast and keeps moving under fire but shoots worse. AMBUSH hides and holds fire until the enemy is close. FALL BACK pulls a unit back when it loses half its men. In battle, each tag shows what the unit is doing and its strength.</p>
       <h3>FOG OF WAR</h3>
       <p>You see only what your troops can see: line of sight, blocked by hills, buildings and woods. Troops in woods are seen only at half range. Snipers and obs posts see far. A spy plane sees everything near its path. Faded dots are where you last saw the enemy. The AI plays by the same rules.</p>
       <h3>TERRAIN</h3>

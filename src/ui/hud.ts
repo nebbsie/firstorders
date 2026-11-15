@@ -4,7 +4,7 @@ import { S, M, VIS0, SEEN0, logText } from '../state';
 import { cellOf, bldNear, ENG_BUILD } from '../world';
 import { aliveMembers, sqCenter, itemCost, left, canRemove, removeItem, SUPPORT_ROUND } from '../plan';
 import { newBattle } from '../sim';
-import { actRemove, actOrders, actTime, actReady, actSpeed } from '../actions';
+import { actRemove, actOrders, actTime, actReady, actSpeed, actStance } from '../actions';
 import { startReplay, seek, exitReplay, refreshReplayFog } from '../replay';
 import { fit, cam, P } from '../render/camera';
 import { paintFog, paintTerritory, viewOpts, applyViews } from '../render/scene';
@@ -28,9 +28,13 @@ function quickBar() {
   let x = 0, y = 0, n = 0; for (const s of mine) { const c = sqCenter(s); if (c) { x += c[0]; y += c[1]; n++; } }
   if (!n) { el.hidden = true; return; }
   const [sx, sy] = P(x / n, y / n, 4); el.hidden = false; el.style.left = sx + 'px'; el.style.top = (sy - 30) + 'px';
-  const eng = mine.some((s: any) => s.kind === 'engineers'), key = eng + S.tool + mine.some((s: any) => s.order);
+  const eng = mine.some((s: any) => s.kind === 'engineers'), st = mine[0].stance || 'normal', fb = mine.every((s: any) => s.fallback), key = eng + S.tool + mine.some((s: any) => s.order) + st + fb + mine.map((s: any) => s.id).join(',');
   if (el.dataset.k === key) return; el.dataset.k = key;
-  el.querySelectorAll('.btn').forEach((b: any) => {
+  el.querySelectorAll('.btn[data-st]').forEach((b: any) => {
+    const v = b.dataset.st; b.classList.toggle('on', v === 'fallback' ? fb : v === st);
+    b.onclick = () => { const ids = mine.map((s: any) => s.id); if (v === 'fallback') actStance(ids, undefined, !fb); else actStance(ids, v === st ? 'normal' : v); el.dataset.k = ''; };
+  });
+  el.querySelectorAll('.btn[data-q]').forEach((b: any) => {
     const q = b.dataset.q; b.hidden = q === 'demolish' ? !eng : q === 'stop' ? !mine.some((s: any) => s.order) : false; b.classList.toggle('on', S.tool === q);
     b.onclick = () => {
       if (q === 'stop') { actOrders(S.selMany.map((s: any) => ({ id: s.id, type: null }))); renderInspector(); return; }
@@ -42,16 +46,29 @@ function quickBar() {
 const fogOn = () => S.phase === 'replay' ? S.replayFog : S.fog && (S.phase === 'plan' || S.phase === 'battle');
 
 // Phase card: says which phase this is and what to do now.
+// After a phase: what it cost, what it gained, what was seen, and the main events.
+function phaseReport(r: number) {
+  const rep = S.reports && S.reports[NET.me];
+  let h = `<p>You have <b>${left(NET.me)}</b> supply.</p>`;
+  if (rep) {
+    const sg = (n: number) => (n > 0 ? '+' : '') + n;
+    h = `<dl class="kv"><dt>Lost</dt><dd style="color:var(--bad)">${rep.lost}</dd><dt>Killed</dt><dd>${rep.kills}</dd><dt>Ground</dt><dd>${sg(Math.round(rep.terr / 10))}</dd><dt>Supply</dt><dd>${left(NET.me)}</dd>${rep.seen.length ? `<dt>Seen</dt><dd>${rep.seen.join(', ')}</dd>` : ''}</dl>`
+      + (rep.notes.length ? `<ul class="rep">${rep.notes.map((n: string) => `<li>${esc(logText(n))}</li>`).join('')}</ul>` : '<p class="hint">No contact this phase.</p>');
+  }
+  return h + `<p>Press <b>BEGIN PHASE ${r}</b> when ready.</p>`;
+}
+const esc = (s: string) => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 export function phaseCard() {
   const r = S.round, body = r === 1
     ? `<p><b>Take the enemy HQ. Hold your own.</b> An HQ falls when enemy troops hold its ground for 5 seconds.</p><p>Your ground is tinted blue. You can only build there.</p><p>Open <b>DEFENCES</b>, <b>UNITS</b> and <b>SUPPORT</b> below to buy. Select your units, then use <b>ORDERS</b> to send them.</p><p>You do not know where the enemy HQ is. A <b>SPY PLANE</b> or forward troops will find it.</p><p>Press <b>BEGIN PHASE 1</b> when ready.</p>`
-    : `<p>Phase ${r - 1} is over. You have <b>${left(NET.me)}</b> supply.</p><p>Build on the ground you now hold, buy more, and give new orders. Units with no new order carry on.</p><p>Faded dots are where you last saw the enemy.</p><p>Press <b>BEGIN PHASE ${r}</b> when ready.</p>`;
-  $('#cardTitle').textContent = `PHASE ${r} · ${r === 1 ? 'DEPLOY' : 'REINFORCE'}`; $('#cardBody').innerHTML = body; $('#card').hidden = false;
+    : phaseReport(r);
+  $('#cardTitle').textContent = r === 1 ? 'PHASE 1 · DEPLOY' : `PHASE ${r - 1} REPORT`; $('#cardBody').innerHTML = body; $('#card').hidden = false;
 }
 
 // Tool tiles open above their command in the bottom strip, as in Mall Architect.
 let openGroup = '';
 export function setTool(id: string) {
+  if (id !== S.tool) S.via = null;
   S.tool = id; document.querySelectorAll('.tile').forEach((b: any) => b.classList.toggle('on', b.dataset.tool === id));
   $('#cv').style.cursor = id === 'select' ? 'default' : 'crosshair'; if (id === 'select') $('#cursorNote').hidden = true;
 }
@@ -75,7 +92,7 @@ export function closeTools() { if (openGroup) openTools(openGroup); }
 // Window beside the tool panel while hovering a tile: what it is and where it works.
 function showInfo(id: string, tile: HTMLElement) {
   const def = TOOLS.flatMap(g => g.items).find(t => t[0] === id), inf = INFO[id]; if (!def || !inf) return;
-  $('#info').innerHTML = `<div class="ph"><span>${def[1]}</span><span>${COST[id] ? COST[id] + (def[2] === 'line' && id !== 'air' && id !== 'spy' ? ' / CELL' : '') : ''}</span></div><div class="pb"><p class="hint">${inf[0]}</p>${inf[1] ? `<dl class="kv" style="margin-top:8px"><dt>Best</dt><dd>${inf[1]}</dd></dl>` : ''}<p class="note">${def[2] === 'line' ? 'Drag a line.' : def[2] === 'order' ? 'Select units first.' : ['spy', 'barrage', 'para', 'demo', 'air'].includes(id) ? (S.round < SUPPORT_ROUND ? `Anywhere in the circle. Ready from phase ${SUPPORT_ROUND}.` : 'Anywhere in the circle.') : id === 'garrison' ? 'A building on your own ground.' : id === 'fob' ? 'Near your engineers. Ready next phase.' : ENG_BUILD.includes(id) ? 'In your start area, or round a finished FOB. Ready next phase.' : TOOLS.find(g => g.g === 'UNITS').items.some(i => i[0] === id) ? 'In your start area.' : 'On your own ground.'}</p></div>`;
+  $('#info').innerHTML = `<div class="ph"><span>${def[1]}</span><span>${COST[id] ? COST[id] + (def[2] === 'line' && id !== 'air' && id !== 'spy' ? ' / CELL' : '') : ''}</span></div><div class="pb"><p class="hint">${inf[0]}</p>${inf[1] ? `<dl class="kv" style="margin-top:8px"><dt>Best</dt><dd>${inf[1]}</dd></dl>` : ''}<p class="note">${def[2] === 'line' ? 'Drag a line.' : def[2] === 'order' ? 'Select units first.' : ['spy', 'barrage', 'para', 'demo', 'air', 'smoke'].includes(id) ? (S.round < SUPPORT_ROUND && id !== 'smoke' ? `Anywhere in the circle. Ready from phase ${SUPPORT_ROUND}.` : 'Anywhere in the circle.') : id === 'garrison' ? 'A building on your own ground.' : id === 'fob' ? 'Near your engineers. Ready next phase.' : ENG_BUILD.includes(id) ? 'In your start area, or round a finished FOB. Ready next phase.' : TOOLS.find(g => g.g === 'UNITS').items.some(i => i[0] === id) ? 'In your start area.' : 'On your own ground.'}</p></div>`;
   // A fixed spot just right of the tool panel, its bottom level with the panel's bottom.
   const el = $('#info'); el.hidden = false; el.style.left = $('#toolpanel').getBoundingClientRect().right + 6 + 'px';
 }
@@ -131,7 +148,7 @@ export function renderInspector() {
     title.textContent = { trench: 'Trench', sandbag: 'Sandbags', wall: 'Wall', wire: 'Wire', tanktrap: 'Tank traps' }[it.type];
     h = `<dl class="kv"><dt>Length</dt><dd>${it.cells.length} cells</dd><dt>Effect</dt><dd>${{ trench: '70% cover', sandbag: '50% cover', wall: 'blocks sight', wire: '1/3 speed', tanktrap: 'stops tanks' }[it.type]}</dd><dt>Cost</dt><dd>${itemCost(it)}</dd></dl>` + (canRemove(it) ? `<div class="row"><button class="btn stop" id="iDel">REMOVE</button></div>` : '');
   } else if (it) {
-    title.textContent = { barrage: 'Artillery', air: 'Air strike', para: 'Paradrop', demo: 'Demolition', spy: 'Spy plane' }[it.type];
+    title.textContent = { barrage: 'Artillery', air: 'Air strike', para: 'Paradrop', demo: 'Demolition', spy: 'Spy plane', smoke: 'Smoke' }[it.type];
     h = `<dl class="kv"><dt>Target</dt><dd>${grid(it.a.x, it.a.y)}</dd><dt>At</dt><dd>T+${Math.floor(it.t)} s, phase ${it.round}</dd><dt>Cost</dt><dd>${itemCost(it)}</dd></dl>`
       + (it.type === 'barrage' ? `<p class="hint" style="margin-top:8px">Hits every team in the circle, yours too.</p>` : it.type === 'spy' ? `<p class="hint" style="margin-top:8px">Sees everything within 55 of its path while it flies.</p>` : '')
       + (canRemove(it) ? `<div class="row"><button class="btn" id="iEarly">-5 S</button><button class="btn" id="iLate">+5 S</button><button class="btn stop" id="iDel">REMOVE</button></div>` : '');

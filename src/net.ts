@@ -82,11 +82,12 @@ export function hostTick(now: number) {
   const snap: any = {
     t: 'snap', phase: S.phase, round: S.round, time: S.t, phaseStart: S.phaseStart, speed: S.speed, paused: S.paused, bank: S.bank, ready: S.ready || {}, speedReq: S.speedReq || {},
     teams: S.teams.map((t: any) => ({ lost: t.lost, hqBy: t.hqBy, hqHold: t.hqHold, label: t.per ? t.per.label : '', human: t.human })),
-    f, b, squads: S.squads.map((q: any) => ({ id: q.id, team: q.team, kind: q.kind, call: q.call, x: q.x, y: q.y, pos: q.pos, members: q.members, state: q.state, tx: q.tx, ty: q.ty, order: q.team === g ? q.order : null, cur: q.team === g ? q.cur : null, round: q.round, live: q.live, temp: q.temp, bld: q.bld })),
+    f, b, squads: S.squads.map((q: any) => ({ id: q.id, team: q.team, kind: q.kind, call: q.call, x: q.x, y: q.y, pos: q.pos, members: q.members, state: q.state, tx: q.tx, ty: q.ty, order: q.team === g ? q.order : null, cur: q.team === g ? q.cur : null, round: q.round, live: q.live, temp: q.temp, bld: q.bld, status: q.status, alive: q.alive, stance: q.stance, fallback: q.fallback, fellBack: q.fellBack, via: q.team === g ? q.via : null, goal: q.team === g ? q.goal : null, readyRound: q.readyRound })),
     supports: S.supports.filter((s: any) => s.team === g).map((s: any) => ({ ...s })),
     shells: S.shells, bombs: S.bombs, fx: S.fx, tracers: S.tracers.map((t: any) => ({ ...t })), planes: S.planes.map((p: any) => ({ kind: p.kind, team: p.team, ax: p.ax, ay: p.ay, ux: p.ux, uy: p.uy, len: p.len, s: p.s })), craters: S.craters,
     vis: S.vis[g], visG: S.visG ? S.visG[g] : null, seenG: S.seenG ? S.seenG[g] : null,
     known: S.known[g] ? [...S.known[g].values()] : [], hqKnown: S.hqKnown ? [...S.hqKnown[g]] : [],
+    smokes: S.smokes || [], reports: S.reports || null,
     log: S.log.slice(0, 80), terrCount: S.terrCount, stats: S.stats, history: S.history, result: S.result,
     blown: M.bridges.map(br => br.blown), downs: M.B.filter(b => b.down != null).map(b => b.id), banner: S.netBanner,
   };
@@ -118,7 +119,7 @@ function applySnap(m: any) {
   const selIds = new Set((S.selMany || []).map((s: any) => s.id)), selId = S.sel ? S.sel.id : null;
   S.squads = m.squads; S.supports = m.supports;
   if (m.structs) { S.structs = m.structs; S.cover = new Uint8Array(M.terr.length); for (const s of S.structs) if (s.placedAt != null) for (const c of s.cells) S.cover[c] = COV[s.type]; }
-  Object.assign(S, { shells: m.shells, bombs: m.bombs, fx: m.fx, tracers: m.tracers, planes: m.planes, craters: m.craters, log: m.log, terrCount: m.terrCount, stats: m.stats, history: m.history, result: m.result });
+  Object.assign(S, { smokes: m.smokes || [], reports: m.reports, shells: m.shells, bombs: m.bombs, fx: m.fx, tracers: m.tracers, planes: m.planes, craters: m.craters, log: m.log, terrCount: m.terrCount, stats: m.stats, history: m.history, result: m.result });
   S.logDirty = true;
   S.vis[NET.me] = m.vis; if (m.visG) { VIS0.set(m.visG); SEEN0.set(m.seenG); }
   S.known[NET.me] = new Map(m.known.map((k: any) => [k.i, k])); if (!S.hqKnown) S.hqKnown = S.teams.map((t: any) => new Set([t.id])); S.hqKnown[NET.me] = new Set(m.hqKnown);

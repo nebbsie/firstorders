@@ -21,7 +21,7 @@ export const income = (t: number) => S.teams[t].lost ? 0 : 100 + Math.round((S.t
 
 export function newBattle() {
   if (M) { M.terr.set(M.terr0); M.deck.set(M.deck0); M.bridges.forEach(b => b.blown = null); M.bldId.set(M.bldId0); M.bldTop.set(M.bldTop0); for (const b of M.B) { b.hp = b.hp0; b.down = null; } }
-  Object.assign(S, { phase: 'plan', round: 1, t: 0, units: [], shells: [], bombs: [], fx: [], tracers: [], craters: [], planes: [], cover: null, rec: null, result: null, log: [], stats: [], history: [], callN: [], vis: [], known: [], contactT: [], squads: [], structs: [], supports: [], sel: null, selMany: [] });
+  Object.assign(S, { phase: 'plan', round: 1, t: 0, smokes: [], reports: null, units: [], shells: [], bombs: [], fx: [], tracers: [], craters: [], planes: [], cover: null, rec: null, result: null, log: [], stats: [], history: [], callN: [], vis: [], known: [], contactT: [], squads: [], structs: [], supports: [], sel: null, selMany: [] });
   S.bank = S.teams.map(() => BUDGET); SEEN0.fill(0); S.visG = null;
   for (const t of S.teams) { t.lost = false; t.hqHold = 0; t.hqBy = -1; } S.hqKnown = S.teams.map((t: any) => new Set([t.id]));
   rollPersonalities(); initOwn(); countGround(); updateVision();
@@ -31,21 +31,22 @@ export function newBattle() {
 
 export function beginRound() {
   if (S.round === 1) {
-    Object.assign(S, { t: 0, units: [], shells: [], bombs: [], fx: [], tracers: [], craters: [], planes: [], flow: new Map(), log: [], history: [] });
+    Object.assign(S, { t: 0, smokes: [], units: [], shells: [], bombs: [], fx: [], tracers: [], craters: [], planes: [], flow: new Map(), log: [], history: [] });
     rnd = Math.random; S.cover = new Uint8Array(GW * GH); S.stats = S.teams.map(() => ({ kills: 0, lost: 0, start: 0, roundKills: 0 }));
     S.known = S.teams.map(() => new Map()); S.contactT = S.teams.map(() => new Map());
-    S.rec = { frames: [], tracers: [], booms: [], shells: [], planes: [], phases: [], moments: [], downs: [], own: [{ t: 0, o: OWN.slice() }], meta: null };
+    S.rec = { frames: [], tracers: [], booms: [], shells: [], planes: [], phases: [], moments: [], downs: [], smokes: [], own: [{ t: 0, o: OWN.slice() }], meta: null };
   }
   for (const t of S.teams) S.bank[t.id] -= spentNow(t.id);
   S.phaseStart = S.t; S.flow.clear(); S.rec.phases.push({ round: S.round, t: S.t });
   for (const s of S.structs) if (s.round === S.round) { for (const ci of s.cells) S.cover[ci] = COV[s.type]; s.placedAt = S.t; }
   for (const sq of S.squads) {
     if (!sq.members) { if (sq.round === S.round) spawnSquad(sq); }
-    else if (sq.order) { sq.state = sq.order.type; sq.tx = sq.order.x; sq.ty = sq.order.y; sq.dir = sq.order.dir ?? sq.dir; sq.dbridge = sq.order.bridge; sq.dbld = sq.order.bld; sq.planted = null; faceMembers(sq); sq.arrived = -1; setPace(sq); sq.contact = S.t; assignSlots(sq); }
+    else if (sq.order) { sq.state = sq.order.type; sq.tx = sq.order.x; sq.ty = sq.order.y; useVia(sq, sq.order); sq.dir = sq.order.dir ?? sq.dir; sq.dbridge = sq.order.bridge; sq.dbld = sq.order.bld; sq.planted = null; faceMembers(sq); sq.arrived = -1; setPace(sq); sq.contact = S.t; assignSlots(sq); }
   }
   for (const sq of S.squads) if (sq.order) { if (sq.members && sq.order.type === 'attack') log(sq.team, `${sqName(sq)}: moving on ${grid(sq.order.x, sq.order.y)}`); sq.cur = sq.order; sq.order = null; }
   for (const su of S.supports) if (su.round === S.round) su.fired = false;
   for (const st of S.stats) st.roundKills = st.kills;
+  S.base = S.teams.map((t: any) => ({ lost: S.stats[t.id].lost, kills: S.stats[t.id].kills, terr: S.terrCount[t.id] || 0 }));
   S.phase = 'battle'; S.paused = false; log(-1, `Phase ${S.round} begins`);
   updateVision(); recFrame();
   hooks.banner(`PHASE ${S.round}`, S.round === 1 ? 'Plans locked' : 'Reinforcements in'); S.sel = null; S.selMany = []; hooks.sync();
@@ -59,7 +60,7 @@ export function goLive(it: any) {
 }
 export function applyOrder(sq: any) {
   if (!sq.members || !sq.order) return; const o = sq.order;
-  sq.state = o.type; sq.tx = o.x; sq.ty = o.y; sq.dir = o.dir ?? sq.dir; sq.dbridge = o.bridge; sq.dbld = o.bld; sq.planted = null; faceMembers(sq); sq.arrived = -1; setPace(sq); sq.contact = S.t; assignSlots(sq); sq.cur = o; sq.order = null;
+  sq.state = o.type; sq.tx = o.x; sq.ty = o.y; useVia(sq, o); sq.dir = o.dir ?? sq.dir; sq.dbridge = o.bridge; sq.dbld = o.bld; sq.planted = null; faceMembers(sq); sq.arrived = -1; setPace(sq); sq.contact = S.t; assignSlots(sq); sq.cur = o; sq.order = null;
   if (o.type === 'attack') log(sq.team, `${sqName(sq)}: moving on ${grid(o.x, o.y)}`);
 }
 // Pace: a unit walks only as fast as it needs to reach its objective near the end of the phase,
@@ -95,8 +96,19 @@ function demolishStep(sq: any) {
   sq.state = 'defend'; sq.planted = null; sq.dbridge = sq.dbld = undefined; assignSlots(sq);
 }
 function snapshotHistory() { S.history.push({ round: S.round, terr: S.terrCount.slice(), alive: S.teams.map((t: any) => S.units.filter((u: any) => u.alive && u.team === t.id).length) }); }
+// A short report for each side after a phase: losses, kills, ground, what was seen, and the main events.
+const NOTE = / lost at |heavy losses|no reply|destroyed|blown|HQ|falling back|pinned down|objective/;
+function makeReports() {
+  S.reports = S.teams.map((t: any) => {
+    const b = (S.base && S.base[t.id]) || { lost: 0, kills: 0, terr: 0 }, st = S.stats[t.id], seen = new Map<string, number>();
+    if (S.known[t.id]) for (const e of S.known[t.id].values()) if (e.t >= S.phaseStart) { const k = ['rifle', 'assault', 'engineer', 'medic', 'sniper'].includes(e.kind) ? 'infantry' : (KIND_NAME[e.kind] || e.kind); seen.set(k, (seen.get(k) || 0) + 1); }
+    const notes = S.log.filter((l: any) => l.t >= S.phaseStart && (l.team === t.id || l.team === -1) && NOTE.test(l.msg)).slice(0, 6).map((l: any) => l.msg);
+    return { round: S.round, lost: st.lost - b.lost, kills: st.kills - b.kills, terr: (S.terrCount[t.id] || 0) - b.terr, seen: [...seen].map(([k, n]) => `${n} ${k}`), notes };
+  });
+}
 function endRound() {
   recFrame(); captureGround(false); snapshotHistory();
+  makeReports();
   if (S.round >= PHASES) { finish(true); return; }
   for (const t of S.teams) S.bank[t.id] += income(t.id);
   S.round++; S.phase = 'plan'; log(-1, `Phase ${S.round - 1} over`);
@@ -105,14 +117,16 @@ function endRound() {
   hooks.banner(`PHASE ${S.round - 1} OVER`, 'Briefing: reinforce and give new orders'); S.tool = 'select'; S.sel = null; hooks.sync();
 }
 
+// An order may go by one waypoint first (for a flank). The unit heads for it, then for the goal.
+function useVia(sq: any, o: any) { sq.goal = { x: o.x, y: o.y }; sq.via = o.via || null; sq.fellBack = false; sq.sprung = false; if (sq.via) { sq.tx = sq.via.x; sq.ty = sq.via.y; } }
 function spawnSquad(sq: any, drop?: boolean) {
   sq.members = []; const kind = unitKind(sq.kind);
   for (const p of sq.pos) {
     const k = K[kind];
-    const u = { i: S.units.length, x: p[0], y: p[1], team: sq.team, sq: sq.id, kind, hp: k.hp, cd: rnd() * 1.2, scan: rnd() * .4, tgt: -1, sx: p[0], sy: p[1], alive: true, kills: 0, gar: sq.kind === 'garrison', hd: Math.atan2(-(H / 2 - p[1]), W / 2 - p[0]), drop: drop ? 1.2 + rnd() * .6 : 0, ready: sq.readyRound || 0 };
+    const u = { i: S.units.length, x: p[0], y: p[1], team: sq.team, sq: sq.id, kind, hp: k.hp, cd: rnd() * 1.2, scan: rnd() * .4, tgt: -1, sx: p[0], sy: p[1], alive: true, kills: 0, gar: sq.kind === 'garrison', hd: Math.atan2(-(H / 2 - p[1]), W / 2 - p[0]), drop: drop ? 1.2 + rnd() * .6 : 0, ready: sq.readyRound || 0, sup: 0, sqo: sq };
     sq.members.push(S.units.length); S.units.push(u); S.stats[sq.team].start++;
   }
-  const o = sq.order; sq.state = o ? o.type : 'hold'; sq.tx = o ? o.x : sq.x; sq.ty = o ? o.y : sq.y; sq.dir = o && o.dir != null ? o.dir : sq.face; sq.dbridge = o ? o.bridge : undefined; sq.dbld = o ? o.bld : undefined; sq.planted = null; faceMembers(sq); sq.contact = S.t; sq.arrived = -1; assignSlots(sq); setPace(sq);
+  const o = sq.order; sq.state = o ? o.type : 'hold'; sq.tx = o ? o.x : sq.x; sq.ty = o ? o.y : sq.y; if (o) useVia(sq, o); sq.dir = o && o.dir != null ? o.dir : sq.face; sq.dbridge = o ? o.bridge : undefined; sq.dbld = o ? o.bld : undefined; sq.planted = null; faceMembers(sq); sq.contact = S.t; sq.arrived = -1; assignSlots(sq); setPace(sq);
 }
 function assignSlots(sq: any) {
   const mem = aliveMembers(sq); if (!mem.length) return;
@@ -177,9 +191,12 @@ function flowFor(x: number, y: number, veh?: boolean) {
 }
 // Sight is blocked by ground that rises above the line, by buildings taller than the line,
 // by walls, and by more than 12 of woods. A unit inside a building sees out of its own building.
+// Smoke clouds grow for 3 s, hold, and thin out in their last 6 s.
+export function smokeR(m: any, t: number) { const a = t - m.t0; return a < 0 || a > m.life ? 0 : m.r * Math.min(1, .3 + a / 3) * Math.min(1, (m.life - a) / 6 + .2); }
+export function inSmoke(x: number, y: number) { for (const m of S.smokes) { const r = smokeR(m, S.t); if ((x - m.x) ** 2 + (y - m.y) ** 2 < r * r) return true; } return false; }
 export function los(ax: number, ay: number, bx: number, by: number) {
   const d = Math.hypot(bx - ax, by - ay), n = Math.ceil(d / 1.5), ha = unitH(ax, ay) + 1.4, hb = unitH(bx, by) + 1.4;
-  const ca = cellOf(ax, ay), cb = cellOf(bx, by), ia = ca >= 0 ? M.bldId[ca] : -1, ib = cb >= 0 ? M.bldId[cb] : -1; let wood = 0;
+  const ca = cellOf(ax, ay), cb = cellOf(bx, by), ia = ca >= 0 ? M.bldId[ca] : -1, ib = cb >= 0 ? M.bldId[cb] : -1; let wood = 0, smoke = 0;
   for (let i = 1; i < n; i++) {
     const f = i / n, x = ax + (bx - ax) * f, y = ay + (by - ay) * f, ci = cellOf(x, y); if (ci < 0) continue;
     const lh = ha + (hb - ha) * f, t = M.terr[ci], g = M.hAt(x, y);
@@ -187,6 +204,7 @@ export function los(ax: number, ay: number, bx: number, by: number) {
     if (S.cover && S.cover[ci] === 3 && lh < g + 2.6) return false;
     if (g > lh + .2) return false;
     if (t === T_WOOD && lh < g + 5) { wood += 1.5; if (wood > 12) return false; }
+    if (S.smokes && S.smokes.length && lh < g + 10 && inSmoke(x, y)) { smoke += 1.5; if (smoke > 4) return false; }
   }
   return true;
 }
@@ -214,15 +232,27 @@ function contact(sq: any) { if (sq) sq.contact = S.t; }
 function tankFire(u: any, e: any, k: any) {
   const d = Math.hypot(e.x - u.x, e.y - u.y), hit = rnd() < k.acc * (1 - .5 * d / k.range), x = hit ? e.x : e.x + gauss() * 4, y = hit ? e.y : e.y + gauss() * 4;
   S.tracers.push({ x0: u.x, y0: u.y, x1: x, y1: y, life: .15, team: u.team, u: u.i }); S.rec.tracers.push([S.t, u.x, u.y, x, y, u.team, u.i]); snd('gun', u.x, u.y);
+  u.fired = S.t;
   if (hit && e.kind === 'tank') { e.hp -= 3; if (e.hp <= 0) { kill(e, u.team); u.kills++; } } else explode(x, y, 3.5, .75, u.team);
   contact(S.squads.find((s: any) => s.id === u.sq));
 }
+// Suppression: fire landing on or near men makes them keep their heads down. It builds with each shot,
+// more from MGs and blasts, less in cover, and wears off in a few seconds. Tanks and FOBs do not care.
+function suppress(v: any, a: number) {
+  if (!v.alive || v.kind === 'tank' || v.kind === 'fob') return; const sq = v.sqo;
+  v.sup = Math.min(1.6, (v.sup || 0) + a * (1 - coverAt(v) * .5) * (sq && sq.stance === 'careful' ? .7 : 1));
+  if (sq) sq.shotAt = S.t;
+}
+const pinAt = (sq: any) => sq && sq.stance === 'rush' ? 1.2 : sq && sq.stance === 'careful' ? .5 : .75;
 function shoot(u: any, e: any, k: any) {
   u.hd = Math.atan2(-(e.y - u.y), e.x - u.x); if (u.kind === 'tank') { tankFire(u, e, k); return; }
   const tr = { x0: u.x, y0: u.y, x1: e.x + (rnd() - .5) * 2, y1: e.y + (rnd() - .5) * 2, life: .09, team: u.team, u: u.i };
   snd(u.kind === 'mg' ? 'mg' : u.kind === 'sniper' ? 'snipe' : u.kind === 'at' ? 'gun' : 'shot', u.x, u.y);
   S.tracers.push(tr); if (S.rec.tracers.length < 150000) S.rec.tracers.push([S.t, tr.x0, tr.y0, tr.x1, tr.y1, u.team, u.i]);
-  const d = Math.hypot(e.x - u.x, e.y - u.y), hb = clamp((unitH(u.x, u.y) - unitH(e.x, e.y)) * .02, 0, .15), p = (k.acc + hb) * (1 - coverAt(e)) * (1 - .5 * d / k.range);
+  const d = Math.hypot(e.x - u.x, e.y - u.y), hb = clamp((unitH(u.x, u.y) - unitH(e.x, e.y)) * .02, 0, .15), rushing = u.sqo && u.sqo.stance === 'rush' && u.moving;
+  // Suppressed men shoot badly; men rushing and firing on the move too.
+  const p = (k.acc + hb) * (1 - coverAt(e)) * (1 - .5 * d / k.range) * (1 - .6 * Math.min(1, u.sup || 0)) * (rushing ? .6 : 1);
+  u.fired = S.t; suppress(e, u.kind === 'mg' ? .16 : u.kind === 'sniper' ? .22 : u.kind === 'at' ? .1 : u.kind === 'assault' ? .08 : .06);
   if (rnd() < p) { e.hp -= u.kind === 'at' ? 4 : 1; if (e.hp <= 0 && !saved(e)) { kill(e, u.team); u.kills++; } }
   contact(S.squads.find((s: any) => s.id === u.sq));
 }
@@ -247,7 +277,7 @@ function explode(x: number, y: number, r: number, power: number, team: number) {
   damageBuildings(x, y, r, power, team); snd('boom', x, y, r);
   S.fx.push({ x, y, r, life: .6, max: .6 }); S.craters.push({ x, y, r: r * .55 }); if (S.craters.length > 600) S.craters.shift(); S.rec.booms.push([S.t, x, y, r]);
   for (const v of S.units) {
-    if (!v.alive || v.drop > 0) continue; const d = Math.hypot(v.x - x, v.y - y); if (d > r) continue;
+    if (!v.alive || v.drop > 0) continue; const d = Math.hypot(v.x - x, v.y - y); if (d < r * 1.8) suppress(v, .7 * (1 - d / (r * 1.8))); if (d > r) continue;
     if (v.kind === 'tank') { if (d < r * .5 && rnd() < power) { v.hp -= 3; if (v.hp <= 0) kill(v, team); } continue; }
     const ci = cellOf(v.x, v.y), cov = v.gar ? .5 : ci >= 0 && S.cover[ci] === 2 ? .55 : ci >= 0 && S.cover[ci] === 1 ? .3 : 0;
     if (rnd() < power * (1 - d / r * .6) * (1 - cov)) { v.hp -= 2; if (v.hp <= 0 && !saved(v)) kill(v, team); }
@@ -272,7 +302,7 @@ const TURN = 1.1; // tank turn speed, radians a second
 function moveUnit(u: any, k: any, sq: any) {
   const dx = u.sx - u.x, dy = u.sy - u.y, ds = Math.hypot(dx, dy); if (ds < .5) return;
   const ci = cellOf(u.x, u.y), cov = ci >= 0 ? S.cover[ci] : 0, tt = ci >= 0 ? M.terr[ci] : 0;
-  let sp = k.speed * (sq.pace || 1) * DT * moveFactor(ci, k.veh);
+  let sp = k.speed * (sq.pace || 1) * DT * moveFactor(ci, k.veh) * (sq.stance === 'careful' ? .65 : sq.stance === 'rush' ? 1.35 : 1);
   let tx = u.sx, ty = u.sy;
   // Go straight when the way is clear; otherwise follow the path field round buildings and water.
   const f = ds > 16 || !clearLine(u.x, u.y, u.sx, u.sy, k.veh) ? flowFor(sq.tx, sq.ty, k.veh) : null;
@@ -298,7 +328,24 @@ function moveUnit(u: any, k: any, sq: any) {
   else { u.x += (rnd() - .5) * .4; u.y += (rnd() - .5) * .4; }
 }
 function updateSquads() {
+  const tick = Math.floor(S.t * 2) !== Math.floor((S.t - DT) * 2);
   for (const sq of S.squads) {
+    if (sq.members && tick) squadStatus(sq);
+    if (sq.members && sq.via) {
+      // Waypoint reached: go on to the goal.
+      const m = aliveMembers(sq); if (m.length) { const cx = m.reduce((a: number, u: any) => a + u.x, 0) / m.length, cy = m.reduce((a: number, u: any) => a + u.y, 0) / m.length;
+        if (Math.hypot(cx - sq.via.x, cy - sq.via.y) < 12) { sq.via = null; sq.tx = sq.goal.x; sq.ty = sq.goal.y; setPace(sq); assignSlots(sq); log(sq.team, `${sqName(sq)}: waypoint reached, moving on ${grid(sq.tx, sq.ty)}`); } }
+      continue;
+    }
+    if (sq.members && sq.fallback && !sq.fellBack && MOVERS_SET.has(sq.kind)) {
+      // Fall back when badly hurt: pull back towards home and hold.
+      const m = aliveMembers(sq);
+      if (m.length && m.length < sq.members.length * .45) {
+        const cx = m.reduce((a: number, u: any) => a + u.x, 0) / m.length, cy = m.reduce((a: number, u: any) => a + u.y, 0) / m.length, z = S.teams[sq.team].zone, d = Math.hypot(z.x - cx, z.y - cy) || 1, back = Math.min(d, 60);
+        const q = nudge(cx + (z.x - cx) / d * back, cy + (z.y - cy) / d * back);
+        if (q) { sq.fellBack = true; sq.state = 'defend'; sq.tx = q[0]; sq.ty = q[1]; sq.stance = 'rush'; sq.pace = 1; assignSlots(sq); log(sq.team, `${sqName(sq)}: falling back to ${grid(q[0], q[1])}`); continue; }
+      }
+    }
     if (sq.members && sq.state === 'demolish') demolishStep(sq);
     if (!sq.members || sq.state !== 'attack') continue; const mem = aliveMembers(sq); if (!mem.length) continue; const cx = mem.reduce((a: number, u: any) => a + u.x, 0) / mem.length, cy = mem.reduce((a: number, u: any) => a + u.y, 0) / mem.length;
     const near = mem.filter((u: any) => Math.hypot(u.x - sq.tx, u.y - sq.ty) < 12).length;
@@ -311,8 +358,24 @@ function updateSquads() {
     }
   }
 }
+// What a unit is doing now, for its tag on the map: pinned, engaging, moving, holding.
+const MOVERS_SET = new Set(['rifles', 'assault', 'engineers', 'medics', 'sniper', 'tank']);
+function squadStatus(sq: any) {
+  const m = aliveMembers(sq); sq.alive = m.length; if (!m.length) { sq.status = 'LOST'; return; }
+  const sup = m.reduce((a: number, u: any) => a + (u.sup || 0), 0) / m.length, firing = m.some((u: any) => u.fired && S.t - u.fired < 2);
+  const was = sq.status;
+  sq.status = sq.readyRound > S.round ? 'BUILDING' : sq.fellBack && sq.state === 'defend' && m.some((u: any) => u.moving) ? 'FALLING BACK'
+    : sup > pinAt(sq) ? 'PINNED' : firing ? 'ENGAGING' : sq.state === 'demolish' ? 'DEMOLISHING'
+    : m.some((u: any) => u.moving) ? (sq.via ? 'FLANKING' : 'MOVING') : sq.state === 'defend' ? 'HOLDING' : sq.state === 'attack' ? 'MOVING' : 'IDLE';
+  if (sq.status === 'PINNED' && was !== 'PINNED' && sq.call) log(sq.team, `${sqName(sq)}: pinned down at ${grid(m[0].x, m[0].y)}`);
+}
 function launchSupport(su: any) {
   const T = S.teams[su.team], z = T.zone;
+  if (su.type === 'smoke') {
+    // Smoke: six rounds make a screen about 40 wide that blocks sight for half a minute.
+    for (let i = 0; i < 6; i++) addShell({ x0: z.x, y0: z.y, x1: su.a.x + gauss() * 7, y1: su.a.y + gauss() * 7, t: -i * .3, dur: 1.8, team: su.team, r: 0, power: 0, smoke: true });
+    log(su.team, `${T.name} smoke on ${grid(su.a.x, su.a.y)}`); return;
+  }
   if (su.type === 'barrage') {
     const sc = S.units.some((f: any) => f.alive && f.team === su.team && f.kind === 'op' && Math.hypot(f.x - su.a.x, f.y - su.a.y) < opRange(f)) ? 4.5 : 8;
     for (let i = 0; i < 12; i++) addShell({ x0: z.x, y0: z.y, x1: su.a.x + gauss() * sc, y1: su.a.y + gauss() * sc, t: -i * .45, dur: 2.2, team: su.team, r: 7, power: .9 });
@@ -357,7 +420,7 @@ function viewshed(g: Uint8Array, u: any, R: number) {
   mark(u.x, u.y);
   for (let k = 0; k < rays; k++) {
     const a = k / rays * 6.283, dx = Math.cos(a), dy = Math.sin(a); if (!inArc(u, u.x + dx * 10, u.y + dy * 10)) { for (let d = 1; d < 6; d += 1) mark(u.x + dx * d, u.y + dy * d); continue; }
-    let maxS = -1e9, wood = 0;
+    let maxS = -1e9, wood = 0, smoke = 0;
     for (let d = 1; d <= R; d += 1) {
       const x = u.x + dx * d, y = u.y + dy * d, ci = cellOf(x, y); if (ci < 0) break;
       const gr = M.hAt(x, y), t = M.terr[ci];
@@ -366,6 +429,7 @@ function viewshed(g: Uint8Array, u: any, R: number) {
       let top = gr;
       if (t === T_BUILD) { const id = M.bldId[ci]; if (id >= 0 && id !== own) top = M.bldTop[ci]; }
       else if (t === T_WOOD) { wood += 1; if (wood > 12) break; }
+      if (S.smokes && S.smokes.length && inSmoke(x, y)) { smoke += 1; if (smoke > 3) break; }
       if (S.cover && S.cover[ci] === 3) top = Math.max(top, gr + 2.6);
       maxS = Math.max(maxS, (top - ha) / d);
     }
@@ -382,7 +446,8 @@ export function updateVision() {
       let seen = false;
       for (const [p, sp] of spies) if (Math.hypot(e.x - sp[0], e.y - sp[1]) < SPY_RADIUS) { seen = true; p.seen.add(j); break; }
       if (!seen) {
-        const ce = cellOf(e.x, e.y), hid = ce >= 0 && M.terr[ce] === T_WOOD && e.kind !== 'tank' ? .5 : 1;
+        const ce = cellOf(e.x, e.y), sqE = e.sqo; let hid = ce >= 0 && M.terr[ce] === T_WOOD && e.kind !== 'tank' ? .5 : 1;
+        if (sqE && sqE.stance === 'ambush' && !sqE.sprung && !e.moving) hid *= .5; // men lying in wait are hard to spot
         for (const o of own) { const R = sightOf(o) * hid, dx = o.x - e.x, dy = o.y - e.y; if (Math.abs(dx) < R && Math.abs(dy) < R && dx * dx + dy * dy < R * R && inArc(o, e.x, e.y) && los(o.x, o.y, e.x, e.y)) { seen = true; break; } }
       }
       if (!seen) continue;
@@ -436,7 +501,7 @@ export function step() {
   for (const su of S.supports) if (su.round === S.round && !su.fired && pt >= su.t) { su.fired = true; launchSupport(su); }
   for (let i = 0; i < U.length; i++) {
     const u = U[i]; if (!u.alive) continue; if (u.drop > 0) { u.drop -= DT; continue; }
-    const k = K[u.kind]; u.cd -= DT; u.scan -= DT;
+    const k = K[u.kind]; u.cd -= DT; u.scan -= DT; if (u.sup) u.sup = Math.max(0, u.sup - DT * .2);
     // Under construction this phase (FOBs and heavy weapons): no fire and no movement yet.
     if (u.ready > S.round) continue;
     if (u.kind === 'op' || u.kind === 'fob') continue;
@@ -446,15 +511,23 @@ export function step() {
     }
     if (u.scan <= 0) { u.scan = .35 + rnd() * .25; u.tgt = findTarget(u, k.range); }
     let e = u.tgt >= 0 ? U[u.tgt] : null; if (e && (!e.alive || Math.hypot(e.x - u.x, e.y - u.y) > k.range)) { e = null; u.tgt = -1; }
+    const sq = u.sqo;
+    // Ambush: hold fire until the enemy is close or the unit is shot at; then everyone opens up.
+    if (e && sq && sq.stance === 'ambush' && !sq.sprung) { if (Math.hypot(e.x - u.x, e.y - u.y) < k.range * .55 || sq.shotAt) sq.sprung = true; else e = null; }
+    // Pinned men stop and keep their heads down; badly pinned men do not fire at all.
+    const pinned = !k.veh && (u.sup || 0) > pinAt(sq), headsDown = !k.veh && (u.sup || 0) > 1.15;
+    if (headsDown) e = null;
     if (e && k.veh) {
       // A tank stops, turns its hull onto the target, and fires only when it is lined up.
       const want = Math.atan2(-(e.y - u.y), e.x - u.x), d = Math.atan2(Math.sin(want - u.hd), Math.cos(want - u.hd));
       u.hd += clamp(d, -TURN * DT, TURN * DT);
       if (Math.abs(d) < .12 && u.cd <= 0) { shoot(u, e, k); u.cd = k.cd * (.8 + rnd() * .4); }
     } else if (e && u.cd <= 0) { shoot(u, e, k); u.cd = k.cd * (.7 + rnd() * .6); }
-    if (k.speed > 0 && !e && !u.gar) { const sq = S.squads.find((s: any) => s.id === u.sq); if (sq) moveUnit(u, k, sq); }
+    u.moving = false;
+    if (k.speed > 0 && !u.gar && !pinned && (!e || (!k.veh && sq && sq.stance === 'rush')) && sq) { const x0 = u.x, y0 = u.y; moveUnit(u, k, sq); u.moving = u.x !== x0 || u.y !== y0; }
   }
-  for (const s of S.shells) { s.t += DT; if (s.t >= s.dur && !s.done) { s.done = true; explode(s.x1, s.y1, s.r, s.power, s.team); } } S.shells = S.shells.filter((s: any) => !s.done);
+  for (const s of S.shells) { s.t += DT; if (s.t >= s.dur && !s.done) { s.done = true; if (s.smoke) { S.smokes.push({ x: s.x1, y: s.y1, r: 9, t0: S.t, life: 32 }); S.rec.smokes.push([S.t, s.x1, s.y1]); snd('launch', s.x1, s.y1); } else explode(s.x1, s.y1, s.r, s.power, s.team); } }
+  if (S.smokes.length) S.smokes = S.smokes.filter((m: any) => S.t - m.t0 < m.life); S.shells = S.shells.filter((s: any) => !s.done);
   for (const b of S.bombs) { b.t -= DT; if (b.t <= 0 && !b.done) { b.done = true; explode(b.x, b.y, 9, .95, b.team); } } S.bombs = S.bombs.filter((b: any) => !b.done);
   for (const p of S.planes) {
     p.s += p.speed * DT;

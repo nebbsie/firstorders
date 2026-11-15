@@ -92,7 +92,7 @@ export function addStruct(team: number, type: string, a: any, b: any) {
 }
 // Support (spy planes, artillery, air, paradrops, charges) is ready from phase 2.
 export const SUPPORT_ROUND = 2;
-export function addSupport(team: number, type: string, a: any, b: any, t: number) { if (S.round < SUPPORT_ROUND || left(team) < COST[type]) return null; const s: any = { id: S.nextId++, team, type, a, b, t, round: S.round }; S.supports.push(s); return s; }
+export function addSupport(team: number, type: string, a: any, b: any, t: number) { if ((S.round < SUPPORT_ROUND && type !== 'smoke') || left(team) < COST[type]) return null; const s: any = { id: S.nextId++, team, type, a, b, t, round: S.round }; S.supports.push(s); return s; }
 export function clearMine(team: number) {
   const mine = (it: any) => it.team === team && it.round === S.round && !it.members;
   S.squads = S.squads.filter((s: any) => !mine(s)); S.structs = S.structs.filter((s: any) => !mine(s)); S.supports = S.supports.filter((s: any) => !mine(s));

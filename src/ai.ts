@@ -107,7 +107,11 @@ export function aiPlan(team: number) {
   // The goal is the enemy HQ. Once one is found, attack it more and more often as the battle goes on.
   const hqs = S.teams.filter((o: any) => o.id !== team && !o.lost && S.hqKnown[team].has(o.id)).sort((a: any, b: any) => Math.hypot(a.zone.x - D.x, a.zone.y - D.y) - Math.hypot(b.zone.x - D.x, b.zone.y - D.y));
   if (hqs.length && r() < .35 + pr.aggr * .4 + (S.round - 1) * .12) A = { x: hqs[0].zone.x, y: hqs[0].zone.y };
-  const go = (s: any, tx: number, ty: number) => { const q = nudge(tx, ty); if (q) s.order = { type: 'attack', x: q[0], y: q[1] }; };
+  // Attackers move carefully in town and rush across open ground when bold; all pull back if badly hurt.
+  const go = (s: any, tx: number, ty: number) => { const q = nudge(tx, ty); if (!q) return; s.order = { type: 'attack', x: q[0], y: q[1] }; s.fallback = true;
+    s.stance = s.kind === 'tank' ? undefined : bldNear(tx, ty) >= 8 ? 'careful' : pr.aggr > .7 && r() < .5 ? 'rush' : undefined;
+    // Smoke to cover a long advance over open ground.
+    if (S.round >= 1 && left(team) >= 90 && r() < .35 && bldNear((D.x + tx) / 2, (D.y + ty) / 2) < 6) addSupport(team, 'smoke', { x: (D.x + tx) / 2 + (tx - D.x) * .2, y: (D.y + ty) / 2 + (ty - D.y) * .2 }, null, 6); };
   // Always keep a guard on our own HQ.
   const hq = T.zone, guarded = S.squads.some((s: any) => s.team === team && alive(s) && (PLATOONS.includes(s.kind) || s.kind === 'garrison') && (() => { const c = s.order && s.order.type === 'defend' ? [s.order.x, s.order.y] : sqCenter(s); return c && Math.hypot(c[0] - hq.x, c[1] - hq.y) < 14 && !(s.order && s.order.type === 'attack'); })());
   if (!guarded && left(team) >= 100) { const g = place('rifles', hq.x, hq.y); if (g) g.order = { type: 'defend', x: hq.x, y: hq.y }; }

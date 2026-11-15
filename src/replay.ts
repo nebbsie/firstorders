@@ -12,7 +12,7 @@ export function liveView(): View {
     const v0 = S.vis[NET.me];
     for (const g of S.known[NET.me].values()) { if (v0 && v0[g.i]) continue; if (S.phase === 'plan' || S.t - g.t < 20) ghosts.push(g); }
   }
-  return { units: S.units, tracers: S.tracers, fx: S.fx, craters: S.craters, shells: S.shells, planes: S.planes, bombs: S.bombs, fogOn, isVis: u => !!(S.vis[NET.me] && S.vis[NET.me][u.i]), ghosts, seen: SEEN0, vis: VIS0 };
+  return { units: S.units, smokes: S.smokes || [], tracers: S.tracers, fx: S.fx, craters: S.craters, shells: S.shells, planes: S.planes, bombs: S.bombs, fogOn, isVis: u => !!(S.vis[NET.me] && S.vis[NET.me][u.i]), ghosts, seen: SEEN0, vis: VIS0 };
 }
 
 function lbT(arr: any[], t: number, key?: boolean) { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if ((key ? arr[m].t : arr[m][0]) < t) lo = m + 1; else hi = m; } return lo; }
@@ -30,6 +30,7 @@ export function replayView(): View {
     o.x = x; o.y = y; us[j] = o;
   }
   RV.tracers = []; for (let k = lbT(R.tracers, rt - .09); k < R.tracers.length && R.tracers[k][0] <= rt; k++) { const q = R.tracers[k]; RV.tracers.push({ x0: q[1], y0: q[2], x1: q[3], y1: q[4], team: q[5] }); }
+  RV.smokes = (R.smokes || []).filter((q: any) => q[0] <= rt && rt - q[0] < 32).map((q: any) => ({ x: q[1], y: q[2], r: 9, t0: q[0], life: 32 }));
   const bEnd = lbT(R.booms, rt + 1e-6); RV.fx = []; for (let k = lbT(R.booms, rt - .6); k < bEnd; k++) { const q = R.booms[k]; RV.fx.push({ x: q[1], y: q[2], r: q[3], life: .6 - (rt - q[0]), max: .6 }); }
   RV.craters = []; for (let k = Math.max(0, bEnd - 600); k < bEnd; k++) { const q = R.booms[k]; RV.craters.push({ x: q[1], y: q[2], r: q[3] * .55 }); }
   RV.shells = []; for (const q of R.shells) if (q[0] <= rt && rt < q[0] + q[5]) RV.shells.push({ x0: q[1], y0: q[2], x1: q[3], y1: q[4], t: rt - q[0], dur: q[5] });

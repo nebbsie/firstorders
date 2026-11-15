@@ -35,7 +35,10 @@ const ordOf = (s: any, plan: boolean) => plan ? (s.order || (s.members && s.stat
 // A line along the way the units will walk.
 function routeLine(s: any, a: any, b: any, col: string, dash: boolean, head: boolean) {
   if (!MOVERS.includes(s.kind)) { groundLine(a, b, col, dash, head); return; }
-  const k = K[unitKind(s.kind)], veh = !!k?.veh, r = route(a.x, a.y, b.x, b.y, veh);
+  // A waypoint: the order's own, the one still ahead of a moving unit, or the one being set now.
+  const via = b === s.order ? s.order.via : b === s.cur ? s.via : (S.selMany || []).includes(s) ? S.via : null;
+  const k = K[unitKind(s.kind)], veh = !!k?.veh, r = via ? route(a.x, a.y, via.x, via.y, veh).concat(route(via.x, via.y, b.x, b.y, veh).slice(1)) : route(a.x, a.y, b.x, b.y, veh);
+  if (via) { const p = P(via.x, via.y, 2); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(p[0], p[1], 5, 0, 6.283); ctx.stroke(); }
   // How far the unit gets in the time left this phase. Beyond that the line turns grey: it arrives next phase or later.
   let time = S.phase === 'plan' ? PHASE_LEN : Math.max(0, PHASE_LEN - (S.t - S.phaseStart)), split: number[] = null, si = -1;
   for (let i = 0; i < r.length - 1 && !split; i++) {
@@ -121,7 +124,7 @@ export function draw2D() {
     if (s.round !== S.round || s.team !== NET.me || (!plan && s.fired)) continue;
     const col = s.type === 'spy' ? '#b8c0cc' : '#e8892e', lab = SUP_NAME[s.type] + ' T+' + Math.floor(s.t);
     if (s.b) { groundLine(s.a, s.b, col, true, true); const p = P(s.a.x, s.a.y, 4); if (plan) plate(p[0], p[1] - 12, lab, col); }
-    else { ring(s.a.x, s.a.y, s.type === 'barrage' ? 14 : 9, col, false); const p = P(s.a.x, s.a.y, 6); if (plan) plate(p[0], p[1] - 12, lab, col); }
+    else { ring(s.a.x, s.a.y, s.type === 'barrage' ? 14 : s.type === 'smoke' ? 20 : 9, col, false); const p = P(s.a.x, s.a.y, 6); if (plan) plate(p[0], p[1] - 12, lab, col); }
   }
   ctx.globalAlpha = 1;
   // Heavy weapons and FOBs still being built show when they will be ready.
@@ -136,7 +139,11 @@ export function draw2D() {
   const placed: number[][] = [];
   for (const s of S.squads) {
     if (s.team !== NET.me || !s.call) continue; const c = sqCenter(s); if (!c) continue; const p = P(c[0], c[1], 5); if (p[0] < -500) continue;
-    const o = ordOf(s, plan), tag = o ? `${o.type.toUpperCase()} ${grid(o.x, o.y)}${plan && !s.order ? ' CONT.' : ''}` : plan && MOVERS.includes(s.kind) && (!s.members || s.state === 'hold') ? 'NO ORDERS' : s.members && s.state === 'defend' ? 'HOLDING' : '';
+    const o = ordOf(s, plan), extra = (s.stance ? ' · ' + s.stance.toUpperCase() : '') + (s.fallback ? ' · FB' : '');
+    // Planning: the order (or NO ORDERS) and how the unit will move. In battle: what it is doing now, and its strength.
+    const tag = plan ? (o ? `${o.type.toUpperCase()} ${grid(o.x, o.y)}${!s.order ? ' CONT.' : ''}${extra}` : MOVERS.includes(s.kind) && (!s.members || s.state === 'hold') ? 'NO ORDERS' : s.members && s.state === 'defend' ? 'HOLDING' + extra : '')
+      : s.members ? `${s.status || ''} ${s.alive ?? s.members.length}/${s.members.length}` : '';
+    const tcol = plan ? (o ? '#e8c547' : '#8a8a80') : s.status === 'PINNED' || s.status === 'FALLING BACK' ? '#ff7a72' : s.status === 'ENGAGING' ? '#e8c547' : '#b8c0cc';
     ctx.font = '11px Departure, monospace'; const wn = ctx.measureText(s.call).width, wt = tag ? ctx.measureText(tag).width + 8 : 0, w = 20 + wn + wt + 6, x0 = Math.round(p[0] - w / 2); let y0 = Math.round(p[1] - 22);
     // Tags of units standing together stack upwards instead of covering each other.
     for (let tries = 0; tries < 8 && placed.some(r => x0 < r[0] + r[2] && r[0] < x0 + w && y0 < r[1] + 15 && r[1] < y0 + 15); tries++) y0 -= 16;
@@ -144,7 +151,7 @@ export function draw2D() {
     ctx.fillStyle = s === hv ? 'rgba(40,44,52,.95)' : 'rgba(20,21,25,.8)'; ctx.fillRect(x0, y0, w, 14);
     unitIcon(s.kind, x0 + 3, y0 + 2, TEAM_COLORS[0]);
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#f4f1e8'; ctx.fillText(s.call, x0 + 20, y0 + 7.5);
-    if (tag) { ctx.fillStyle = o ? '#e8c547' : '#8a8a80'; ctx.fillText(tag, x0 + 20 + wn + 8, y0 + 7.5); }
+    if (tag) { ctx.fillStyle = tcol; ctx.fillText(tag, x0 + 20 + wn + 8, y0 + 7.5); }
   }
   if (S.sel) {
     const it = S.sel; let c: number[] = null, r = 8;
@@ -222,14 +229,14 @@ function drawGhost() {
       if (k.min) { ring(hover.x, hover.y, k.min, 'rgba(255,122,114,.5)', true, 1); const p = P(hover.x + k.min, hover.y, 1); plate(p[0], p[1], `MIN ${Math.round(k.min * M_PER_UNIT)} M`, '#ff7a72'); }
       if (sight) { ring(hover.x, hover.y, sight, 'rgba(200,220,240,.7)', true, 1.5); const p = P(hover.x - sight, hover.y, 1); plate(p[0], p[1], `SEES ${Math.round(sight * M_PER_UNIT)} M`, '#c8dcf0'); }
     }
-    const sup = S.tool === 'barrage' || S.tool === 'para' || S.tool === 'demo', placeOk = canPlaceUnit(NET.me, S.tool, hover.x, hover.y), apart = sup || spacingOk(NET.me, S.tool, hover.x, hover.y), mine = placeOk && apart, ok = (sup || mine) && left(NET.me) >= COST[S.tool];
+    const sup = S.tool === 'barrage' || S.tool === 'para' || S.tool === 'demo' || S.tool === 'smoke', placeOk = canPlaceUnit(NET.me, S.tool, hover.x, hover.y), apart = sup || spacingOk(NET.me, S.tool, hover.x, hover.y), mine = placeOk && apart, ok = (sup || mine) && left(NET.me) >= COST[S.tool];
     // Where new units can go: the start area, and for mortars, MG nests and posts, round your engineers too.
     if (!sup && S.tool !== 'garrison') {
       const z = S.teams[NET.me].zone; if (S.tool !== 'fob') ring(z.x, z.y, z.r, 'rgba(143,227,166,.75)', true, 1.5);
       if (S.tool === 'fob') for (const s of S.squads) if (s.team === NET.me && s.kind === 'engineers' && s.members) { const c = sqCenter(s); if (c) ring(c[0], c[1], ENG_R, 'rgba(143,227,166,.75)', true, 1.5); }
       if (ENG_BUILD.includes(S.tool)) for (const s of S.squads) if (s.team === NET.me && s.kind === 'fob' && s.members && s.readyRound <= S.round) { const c = sqCenter(s); if (c) ring(c[0], c[1], FOB_R, 'rgba(143,227,166,.6)', true, 1.5); }
     }
-    ring(hover.x, hover.y, S.tool === 'barrage' ? 14 : PLATOONS.includes(S.tool) ? 6 : 3, ok ? okC : badC, false);
+    ring(hover.x, hover.y, S.tool === 'barrage' ? 14 : S.tool === 'smoke' ? 20 : PLATOONS.includes(S.tool) ? 6 : 3, ok ? okC : badC, false);
     const c = P(hover.x, hover.y, 4); plate(c[0], c[1] - 20, `${tool.name} ${COST[S.tool]}${!ok && !sup && !mine ? (!apart && placeOk ? ' · TOO CLOSE' : S.tool === 'garrison' ? ' · NOT YOUR GROUND' : S.tool === 'fob' ? ' · NEAR YOUR ENGINEERS' : ENG_BUILD.includes(S.tool) ? ' · START AREA OR FOB' : ' · START AREA ONLY') : ''}`, ok ? okC : badC);
   }
 }

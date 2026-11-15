@@ -10,12 +10,14 @@ const byId = (id: number) => S.squads.find((s: any) => s.id === id) || S.structs
 
 export function exec(team: number, m: any): any {
   // Plans are locked while a phase runs.
-  if (S.phase !== 'plan' && ['squad', 'struct', 'support', 'orders', 'remove', 'time'].includes(m.cmd)) return null;
+  if (S.phase !== 'plan' && ['squad', 'struct', 'support', 'orders', 'remove', 'time', 'stance'].includes(m.cmd)) return null;
   switch (m.cmd) {
     case 'squad': return live(addSquad(team, m.kind, m.x, m.y, m.face));
     case 'struct': return live(addStruct(team, m.type, m.a, m.b));
     case 'support': { const s = addSupport(team, m.type, m.a, m.b, m.t); if (!s) return null; if (m.bridge != null) s.bridge = m.bridge; if (m.bld != null) s.bld = m.bld; return live(s); }
-    case 'orders': for (const o of m.list) { const s = S.squads.find((q: any) => q.id === o.id && q.team === team); if (!s) continue; s.order = o.type ? { type: o.type, x: o.x, y: o.y, dir: o.dir, bridge: o.bridge, bld: o.bld } : null; if (S.phase === 'battle' && s.order) applyOrder(s); } return null;
+    case 'orders': for (const o of m.list) { const s = S.squads.find((q: any) => q.id === o.id && q.team === team); if (!s) continue; s.order = o.type ? { type: o.type, x: o.x, y: o.y, dir: o.dir, bridge: o.bridge, bld: o.bld, via: o.via || null } : null; if (S.phase === 'battle' && s.order) applyOrder(s); } return null;
+    // How a unit moves and fights: normal, careful, rush or ambush; and whether it falls back when badly hurt.
+    case 'stance': for (const id of m.ids) { const s = S.squads.find((q: any) => q.id === id && q.team === team); if (!s) continue; if (m.stance) s.stance = m.stance === 'normal' ? undefined : m.stance; if (m.fallback != null) s.fallback = m.fallback; } return null;
     case 'remove': { const it = byId(m.id); if (it && it.team === team && it.round === S.round && !it.members && !it.live && S.phase === 'plan') removeItem(it); return null; }
     case 'time': { const it = byId(m.id); if (it && it.team === team && !it.fired) it.t = m.t; return null; }
     case 'ready': { S.ready = S.ready || {}; S.ready[team] = true; if (S.phase === 'plan' && S.teams.every((t: any) => !t.human || t.lost || S.ready[t.id])) { S.ready = {}; S.speedReq = {}; beginRound(); } return null; }
@@ -36,6 +38,7 @@ export const actSquad = (kind: string, x: number, y: number, face?: number) => a
 export const actStruct = (type: string, a: any, b: any) => act({ cmd: 'struct', type, a, b });
 export const actSupport = (type: string, a: any, b: any, t: number, bridge?: number, bld?: number) => act({ cmd: 'support', type, a, b, t, bridge, bld });
 export const actOrders = (list: { id: number; type: string | null; x?: number; y?: number }[]) => act({ cmd: 'orders', list });
+export const actStance = (ids: number[], stance?: string, fallback?: boolean) => act({ cmd: 'stance', ids, stance, fallback });
 export const actRemove = (id: number) => act({ cmd: 'remove', id });
 export const actTime = (id: number, t: number) => act({ cmd: 'time', id, t });
 export const actReady = () => act({ cmd: 'ready' });

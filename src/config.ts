@@ -17,7 +17,7 @@ export const TEAM_NAMES = ['BLUE', 'RED', 'GOLD', 'GREEN', 'VIOLET', 'CYAN'];
 export const CALLSIGNS = ['ABLE', 'BAKER', 'CHARLIE', 'DOG', 'EASY', 'FOX', 'GEORGE', 'HOW', 'ITEM', 'JIG', 'KING', 'LOVE', 'MIKE', 'NAN', 'OBOE', 'PETER', 'QUEEN', 'ROGER', 'SUGAR', 'TARE'];
 export const TRGB = TEAM_COLORS.map(c => [parseInt(c.slice(1, 3), 16) / 255, parseInt(c.slice(3, 5), 16) / 255, parseInt(c.slice(5, 7), 16) / 255]);
 
-export const COST: Record<string, number> = { trench: 5, wire: 2, sandbag: 3, wall: 8, tanktrap: 6, rifles: 100, assault: 130, engineers: 120, medics: 90, garrison: 110, mg: 90, mortar: 120, sniper: 70, at: 110, tank: 320, op: 80, fob: 150, air: 480, barrage: 340, para: 400, demo: 160, spy: 180 };
+export const COST: Record<string, number> = { trench: 5, wire: 2, sandbag: 3, wall: 8, tanktrap: 6, rifles: 100, assault: 130, engineers: 120, medics: 90, garrison: 110, mg: 90, mortar: 120, sniper: 70, at: 110, tank: 320, op: 80, fob: 150, air: 480, barrage: 340, para: 400, demo: 160, spy: 180, smoke: 90 };
 export const T_GROUND = 0, T_ROAD = 1, T_PARK = 2, T_WATER = 3, T_BRIDGE = 4, T_BUILD = 5, T_WOOD = 6;
 export const COV: Record<string, number> = { sandbag: 1, trench: 2, wall: 3, wire: 4, tanktrap: 5 };
 
@@ -69,7 +69,8 @@ export const TOOLS: { g: string; items: [string, string, ToolMode, string][] }[]
     ['spy', 'SPY PLANE', 'line', 'Drag the flight path anywhere. It sees everything within 55 of its path while it flies.'],
     ['barrage', 'ARTILLERY', 'point', 'Click anywhere. Twelve shells land at the time you set.'],
     ['air', 'AIR STRIKE', 'line', 'Drag the bomb run anywhere.'],
-    ['para', 'PARADROP', 'point', 'Click anywhere. Sixteen riflemen land and hold the ground.']] },
+    ['para', 'PARADROP', 'point', 'Click anywhere. Sixteen riflemen land and hold the ground.'],
+    ['smoke', 'SMOKE', 'point', 'Click anywhere. A smoke screen blocks sight for about 30 s. Ready from phase 1.']] },
   { g: 'ORDERS', items: [
     ['attack', 'ATTACK', 'order', 'With platoons, snipers or tanks selected, click the ground to take. Or drag from one of them.'],
     ['defend', 'DEFEND', 'order', 'With platoons, snipers or tanks selected, click the ground to hold. Infantry use trenches there.']] },
@@ -80,6 +81,7 @@ TOOLDEF.select = { id: 'select', name: 'SELECT', mode: 'select', tip: '' };
 TOOLDEF.demolish = { id: 'demolish', name: 'DEMOLISH', mode: 'order', tip: '' };
 // Hover window text for each tool: what it is, where it works, what beats it.
 export const INFO: Record<string, [string, string, string]> = {
+  smoke: ['Six mortar smoke rounds make a screen about 100 m wide. No one sees through it for about 30 s. Cover an advance or blind an MG.', 'Between your attack and their guns', 'Wind of time: it thins out'],
   trench: ['A dug line. Infantry inside get 70% cover from bullets and some from blasts. Slows movement.', 'Open ground', 'Mortars, artillery'],
   wire: ['Barbed wire. No cover, but infantry cross it at a third of the speed. Tanks drive over it.', 'In front of MGs and trenches', 'Going round it, tanks'],
   sandbag: ['A low wall of sandbags. 50% cover. Cheap.', 'Roads, corners', 'Mortars, flanks'],
@@ -106,7 +108,7 @@ export const INFO: Record<string, [string, string, string]> = {
   defend: ['Selected units hold the ground you click. Infantry use trenches there.', '', ''],
 };
 export const KIND_NAME: Record<string, string> = { fob: 'FOB', rifles: 'Platoon', assault: 'Assault', engineers: 'Engineers', medics: 'Medics', garrison: 'Garrison', mg: 'MG nest', mortar: 'Mortar', sniper: 'Sniper', tank: 'Tank', at: 'AT gun', op: 'Obs post' };
-export const SUP_NAME: Record<string, string> = { barrage: 'ARTILLERY', air: 'AIR', para: 'PARA', demo: 'DEMOLISH', spy: 'SPY' };
+export const SUP_NAME: Record<string, string> = { barrage: 'ARTILLERY', air: 'AIR', para: 'PARA', demo: 'DEMOLISH', spy: 'SPY', smoke: 'SMOKE' };
 export const PERS = [
   { label: 'CAUTIOUS', aggr: .25, arty: .4 },
   { label: 'BALANCED', aggr: .5, arty: .45 },

@@ -38,7 +38,8 @@ function orderGroup(group: any[], type: string, w: any, face?: number) {
   let dx = w.x - gx, dy = w.y - gy; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
   if (face != null) { dx = Math.cos(face); dy = Math.sin(face); }
   const dir = Math.atan2(dy, dx);
-  const list: any[] = []; movers.forEach((s, k) => { const off = (k - (movers.length - 1) / 2) * 11, q = nudge(w.x - dy * off, w.y + dx * off); if (q) list.push({ id: s.id, type, x: q[0], y: q[1], dir }); });
+  const list: any[] = []; movers.forEach((s, k) => { const off = (k - (movers.length - 1) / 2) * 11, q = nudge(w.x - dy * off, w.y + dx * off); if (q) list.push({ id: s.id, type, x: q[0], y: q[1], dir, via: S.via ? { x: S.via.x - dy * off, y: S.via.y + dx * off } : null }); });
+  S.via = null;
   actOrders(list);
   setSel(movers.length === 1 ? movers[0] : null, movers);
 }
@@ -63,7 +64,7 @@ export function initInput(cv: HTMLCanvasElement) {
     if (tool.mode === 'order') {
       // Press on the target for the selected units; drag from there to set the way they face.
       const sel = (S.selMany || []).filter((s: any) => S.tool === 'demolish' ? s.kind === 'engineers' : MOVERS.includes(s.kind));
-      if (sel.length) { input.ptr = { mode: 'orderGroup', w0: w, w }; return; }
+      if (sel.length) { input.ptr = { mode: 'orderGroup', w0: w, w, shift: e.shiftKey }; return; }
       toast('Select your platoons, snipers or tanks first'); return;
     }
     input.ptr = { mode: tool.mode, w0: w, w };
@@ -112,6 +113,8 @@ export function initInput(cv: HTMLCanvasElement) {
       if (!spacingOk(NET.me, t, a.x, a.y)) { toast('Too close to another unit. Spread them out.'); return; }
       done(actSquad(t, a.x, a.y, face)); return;
     }
+    // Shift-click first sets a waypoint (to go round a flank); the next click sets the goal.
+    if (p.mode === 'orderGroup' && p.shift && S.tool !== 'demolish') { S.via = { x: p.w0.x, y: p.w0.y }; toast('Waypoint set. Now click the goal.'); return; }
     if (p.mode === 'orderGroup') { const dragged = Math.hypot(w.x - p.w0.x, w.y - p.w0.y) > 4; orderGroup(S.selMany, t, p.w0, dragged ? Math.atan2(w.y - p.w0.y, w.x - p.w0.x) : undefined); setTool('select'); return; }
     if (p.mode === 'point') {
       if (left(NET.me) < COST[t]) { toast('Not enough supply'); return; }
@@ -129,7 +132,7 @@ export function initInput(cv: HTMLCanvasElement) {
         if (S.supports.some((s: any) => s.type === 'demo' && s.bridge === bi)) { toast('Charges are already set on this bridge'); return; }
         const br = M.bridges[bi]; done(actSupport('demo', { x: br.cx, y: br.cy }, null, 20, bi)); return;
       }
-      if (t === 'barrage' || t === 'para') { done(actSupport(t, { x: w.x, y: w.y }, null, t === 'barrage' ? 15 : 30)); return; }
+      if (t === 'barrage' || t === 'para' || t === 'smoke') { done(actSupport(t, { x: w.x, y: w.y }, null, t === 'barrage' ? 15 : t === 'smoke' ? 5 : 30)); return; }
       if (!canPlaceUnit(NET.me, t, w.x, w.y)) { toast(t === 'garrison' ? 'Pick a building on your own ground' : t === 'fob' ? `Engineers build FOBs: within ${Math.round(ENG_R * MPU)} m of your engineers` : ENG_BUILD.includes(t) ? `Start area, or within ${Math.round(FOB_R * MPU)} m of a finished FOB` : 'New units go in your start area'); return; }
       if (!spacingOk(NET.me, t, w.x, w.y)) { toast('Too close to another unit. Spread them out.'); return; }
       const s = actSquad(t, w.x, w.y); if (!s && NET.mode !== 'guest') { toast(t === 'garrison' ? 'Click a building on your ground that is not held yet' : 'No open ground there'); return; }
