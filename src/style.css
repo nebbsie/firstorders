@@ -149,6 +149,10 @@ table.cat td:first-child { color: var(--ink); white-space: nowrap; }
 /* Phase progress, top middle. */
 .speedreq { top: 40px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; align-items: center; padding: 4px 4px 4px 10px; background: var(--window); border: 1px solid var(--warn); color: var(--ink); white-space: nowrap; z-index: 3; }
 .speedreq .btn { padding: 2px 8px; }
+.hqbar { top: 70px; left: 50%; transform: translateX(-50%); width: min(380px, 60vw); padding: 6px 10px; background: var(--window); border: 1px solid var(--line); text-align: center; pointer-events: none; }
+.hqbar span { display: block; letter-spacing: .06em; margin-bottom: 4px; }
+.hqbar .track { height: 8px; background: var(--track); border: 1px solid var(--edge); }
+.hqbar #hqFill { height: 100%; width: 0; }
 .phasebar { top: 10px; left: 50%; transform: translateX(-50%); width: min(360px, 40vw); text-align: center; pointer-events: none; }
 .phasebar span { display: block; color: var(--gold); letter-spacing: .08em; margin-bottom: 4px; text-shadow: 0 1px 2px #000; }
 .phasebar .track { height: 6px; background: var(--track); border: 1px solid var(--edge); }

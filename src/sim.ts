@@ -580,11 +580,11 @@ function captureGround(capture: boolean) {
   countGround(); if (changed) hooks.ground();
   if (capture) checkHQs();
 }
-// An HQ falls when another team holds its ground for HQ_HOLD seconds. Its troops surrender and its ground goes to the captor.
+// An HQ falls when another team holds its ground for HQ_HOLD seconds (a full phase). Driven off, the count runs back down at twice the speed. Its troops surrender and its ground goes to the captor.
 function checkHQs() {
   for (const t of S.teams) {
     if (t.lost) continue; const o = OWN[Math.floor(t.zone.y / IC) * IW + Math.floor(t.zone.x / IC)];
-    if (o >= 0 && o !== t.id) { if (t.hqBy !== o) { t.hqBy = o; t.hqHold = 0; log(-1, `${S.teams[o].name} troops are in the ${t.name} HQ`); S.rec.moments.push({ t: S.t, x: t.zone.x, y: t.zone.y, big: false }); } t.hqHold += .5; } else { t.hqBy = -1; t.hqHold = 0; }
+    if (o >= 0 && o !== t.id) { if (t.hqBy !== o) { t.hqBy = o; t.hqHold = 0; log(-1, `${S.teams[o].name} troops are in the ${t.name} HQ`); S.rec.moments.push({ t: S.t, x: t.zone.x, y: t.zone.y, big: false }); } t.hqHold += .5; } else if (t.hqHold > 0) { t.hqHold = Math.max(0, t.hqHold - 1); if (!t.hqHold) t.hqBy = -1; } else t.hqBy = -1;
     if (t.hqHold < HQ_HOLD) continue;
     const by = S.teams[t.hqBy]; t.lost = true;
     for (const u of S.units) if (u.alive && u.team === t.id) { u.alive = false; S.stats[t.id].lost++; }

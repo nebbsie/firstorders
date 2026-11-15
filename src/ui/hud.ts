@@ -1,5 +1,5 @@
 import { NET } from '../state';
-import { PLAY_R, M_PER_UNIT, MOVERS, PHASE_LEN, COST, TOOLS, INFO, KIND_NAME, T_BUILD, T_WATER, T_BRIDGE, T_ROAD, T_WOOD, T_PARK, HS, grid, fmtT, clamp } from '../config';
+import { HQ_HOLD, PLAY_R, M_PER_UNIT, MOVERS, PHASE_LEN, COST, TOOLS, INFO, KIND_NAME, T_BUILD, T_WATER, T_BRIDGE, T_ROAD, T_WOOD, T_PARK, HS, grid, fmtT, clamp } from '../config';
 import { S, M, VIS0, SEEN0, logText } from '../state';
 import { cellOf, bldNear, ENG_BUILD } from '../world';
 import { aliveMembers, sqCenter, itemCost, left, canRemove, removeItem, SUPPORT_ROUND } from '../plan';
@@ -61,7 +61,7 @@ function phaseReport(r: number) {
 const esc = (s: string) => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 export function phaseCard() {
   const r = S.round, body = r === 1
-    ? `<p><b>Take the enemy HQ. Hold your own.</b> An HQ falls when enemy troops hold its ground for 5 seconds.</p><p>Your ground is tinted blue. You can only build there.</p><p>Open <b>DEFENCES</b>, <b>UNITS</b> and <b>SUPPORT</b> below to buy. Select your units, then use <b>ORDERS</b> to send them.</p><p>You do not know where the enemy HQ is. A <b>SPY PLANE</b> or forward troops will find it.</p><p>Press <b>BEGIN PHASE 1</b> when ready.</p>`
+    ? `<p><b>Take the enemy HQ. Hold your own.</b> An HQ falls when enemy troops hold its ground for a full minute.</p><p>Your ground is tinted blue. You can only build there.</p><p>Open <b>DEFENCES</b>, <b>UNITS</b> and <b>SUPPORT</b> below to buy. Select your units, then use <b>ORDERS</b> to send them.</p><p>You do not know where the enemy HQ is. A <b>SPY PLANE</b> or forward troops will find it.</p><p>Press <b>BEGIN PHASE 1</b> when ready.</p>`
     : phaseReport(r);
   const mi = S.campaign; if (r === 1 && mi != null) { const m = MISSIONS[mi]; $('#cardTitle').textContent = `MISSION ${mi + 1} · ${m.name}`; $('#cardBody').innerHTML = `<p><b>${m.brief}</b></p>` + body; $('#card').hidden = false; return; }
   $('#cardTitle').textContent = r === 1 ? 'PHASE 1 · DEPLOY' : `PHASE ${r - 1} REPORT`; $('#cardBody').innerHTML = body; $('#card').hidden = false;
@@ -275,7 +275,7 @@ export function bindStrip(toMenu: () => void) {
 }
 // Refreshes the parts of the HUD that change every few frames.
 export function hudPulse() {
-  syncClock(); renderRadio(); syncSpeedReq(); syncBegin();
+  syncClock(); renderRadio(); syncSpeedReq(); syncBegin(); syncHQBar();
   if (S.phase === 'battle') renderInspector();
   else if (S.phase === 'replay') { const nw = $('#now'), fl = $('#fill'); if (nw) nw.style.left = tpos(S.rt / S.rec.end); if (fl) fl.style.width = `calc((100% - 16px) * ${S.rt / S.rec.end})`; }
 }
@@ -297,4 +297,14 @@ export const idleUnits = () => S.squads.filter((s: any) => s.team === NET.me && 
 function syncBegin() {
   if (S.phase !== 'plan' || S.waiting) return; const n = idleUnits().length;
   $('#bBegin').textContent = (NET.mode === 'solo' ? `BEGIN PHASE ${S.round}` : `READY · PHASE ${S.round}`) + (n ? ` · ${n} IDLE` : '');
+}
+
+// HQ capture: a bar while any HQ is being held by the enemy. Your HQ falling shows red; one you are taking, green.
+function syncHQBar() {
+  const el = $('#hqBar'); if (S.phase !== 'battle' && S.phase !== 'plan') { el.hidden = true; return; }
+  const t = S.teams.find((x: any) => !x.lost && x.hqHold > 0 && (x.id === NET.me || x.hqBy === NET.me)) || S.teams.find((x: any) => !x.lost && x.hqHold > 0 && S.hqKnown && S.hqKnown[NET.me] && S.hqKnown[NET.me].has(x.id));
+  if (!t) { el.hidden = true; return; }
+  const mine = t.id === NET.me, col = mine ? 'var(--bad)' : t.hqBy === NET.me ? 'var(--go)' : 'var(--gold)', by = S.teams[t.hqBy];
+  $('#hqText').textContent = mine ? `YOUR HQ IS FALLING · ${Math.floor(t.hqHold)} / ${HQ_HOLD} S` : `${by && t.hqBy === NET.me ? 'TAKING' : (by ? by.name + ' TAKING' : 'TAKING')} ${t.name} HQ · ${Math.floor(t.hqHold)} / ${HQ_HOLD} S`;
+  $('#hqText').style.color = col; ($('#hqFill') as HTMLElement).style.width = Math.min(100, t.hqHold / HQ_HOLD * 100) + '%'; ($('#hqFill') as HTMLElement).style.background = col; el.hidden = false;
 }

@@ -280,7 +280,7 @@ export function update3D(V: View) {
       if (MODEL_KINDS.has(u.kind)) emp(u.kind, u.x, u.y, c, u.hd);
     } else if (nb < 5000) {
       if (u.team !== NET.me && V.fogOn && !cellSeen(V.seen, u.x, u.y)) continue;
-      bp[nb * 3] = u.x - W / 2; bp[nb * 3 + 1] = unitH(u.x, u.y) + .2; bp[nb * 3 + 2] = u.y - H / 2; bc[nb * 3] = .16 + c[0] * .4; bc[nb * 3 + 1] = .1 + c[1] * .25; bc[nb * 3 + 2] = .08 + c[2] * .25; nb++;
+      bp[nb * 3] = u.x - W / 2; bp[nb * 3 + 1] = unitH(u.x, u.y) + .2; bp[nb * 3 + 2] = u.y - H / 2; bc[nb * 3] = .42; bc[nb * 3 + 1] = .42; bc[nb * 3 + 2] = .4; nb++; // the dead: plain grey dots
       // Wrecked guns and tanks stay where they fell, burnt dark.
       if (MODEL_KINDS.has(u.kind)) { const m = mModel[u.kind]; if (m && nModel[u.kind] < 400) setI(m, nModel[u.kind]++, u.x, u.y, unitH(u.x, u.y) - .15, 1.6, 1.3, 1.6, (u.hd || 0) + .3, [.22, .2, .18]); }
     }
