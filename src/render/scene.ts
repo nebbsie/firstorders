@@ -61,10 +61,13 @@ export function initRenderer(canvas: HTMLCanvasElement) {
 }
 
 // Ground owned by each side. Under fog, other sides' ground shows only where you have looked.
-export function paintTerritory(seen: Uint8Array | null) {
+// Under fog, enemy ground shows only as last seen: who held it when your troops last looked there.
+const KOWN = new Int8Array(IW * IH).fill(-1);
+export function paintTerritory(seen: Uint8Array | null, vis?: Uint8Array) {
   const img = ictx.createImageData(IW, IH), px = img.data;
+  if (seen && vis) { if (S.phase === 'plan' && S.round === 1) KOWN.fill(-1); for (let i = 0; i < IW * IH; i++) if (vis[i]) KOWN[i] = OWN[i]; }
   for (let i = 0; i < IW * IH; i++) {
-    const o = OWN[i]; if (o < 0 || (seen && o !== NET.me && !seen[i])) continue;
+    const o = !seen ? OWN[i] : OWN[i] === NET.me ? NET.me : KOWN[i]; if (o < 0 || (seen && o !== NET.me && !seen[i])) continue;
     const c = TRGB[sw(o)]; px[i * 4] = c[0] * 255; px[i * 4 + 1] = c[1] * 255; px[i * 4 + 2] = c[2] * 255; px[i * 4 + 3] = viewOpts.area ? 175 : o === NET.me ? 52 : 64;
   }
   ictx.putImageData(img, 0, 0); terrTex.needsUpdate = true;

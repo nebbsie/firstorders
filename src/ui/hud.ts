@@ -221,7 +221,7 @@ export function syncUI() {
 export function refreshFogPaint() {
   if (S.phase === 'replay') { refreshReplayFog(); return; }
   const on = S.fog && (S.phase === 'plan' || S.phase === 'battle');
-  paintFog(VIS0, SEEN0, on); paintTerritory(on ? SEEN0 : null);
+  paintFog(VIS0, SEEN0, on); paintTerritory(on ? SEEN0 : null, VIS0);
 }
 // Share of the battle circle (about 50 ground cells across).
 const PLAY_CELLS = Math.PI * (PLAY_R / 4) ** 2;
@@ -240,7 +240,7 @@ export function showResult() {
   <table><tr><th>Team</th><th>Alive</th><th>Lost</th><th>Kills</th><th>Ground</th></tr>${S.teams.map((t: any) => `<tr><td style="color:${t.color}">${t.name}${t.id !== NET.me ? ' · ' + (t.human ? 'PLAYER' : t.per.label) : ' · YOU'}</td><td>${r.alive[t.id]}</td><td>${st[t.id].lost}</td><td>${st[t.id].kills}</td><td>${pct(r.terr[t.id])}%</td></tr>`).join('')}</table>
   ${rows ? `<table style="margin-top:10px"><tr><th>Ground by phase</th>${S.teams.map((t: any) => `<th>${t.name}</th>`).join('')}</tr>${rows}</table>` : ''}
   ${camp}<div class="row" style="margin-top:12px"><button class="btn go" id="rReplay">WATCH REPLAY</button>${S.campaign != null ? (won && S.campaign + 1 < MISSIONS.length ? '<button class="btn go" id="rNext">NEXT MISSION</button>' : '<button class="btn" id="rRetry">TRY AGAIN</button>') : '<button class="btn" id="rNew">NEW BATTLE</button>'}</div></div>`;
-  el.hidden = false;
+  el.hidden = false; refreshFogPaint(); // the end of the battle shows everything: no fog
   $('#rReplay').onclick = goReplay; const bn = el.querySelector('#rNew') as HTMLElement; if (bn) bn.onclick = () => { newBattle(); fit(); phaseCard(); };
   const bx = el.querySelector('#rNext') as HTMLElement; if (bx) bx.onclick = () => { el.hidden = true; window.dispatchEvent(new CustomEvent('fo-mission', { detail: ci + 1 })); };
   const br = el.querySelector('#rRetry') as HTMLElement; if (br) br.onclick = () => { el.hidden = true; window.dispatchEvent(new CustomEvent('fo-mission', { detail: ci })); }; $('#rHide').onclick = () => el.hidden = true;
