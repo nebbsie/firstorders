@@ -1,6 +1,7 @@
 import { W, H, C, GW, GH, M_PER_UNIT, BATTLE_KM, CX, PLAY_R, T_GROUND, T_ROAD, T_PARK, T_WATER, T_BRIDGE, T_WOOD, hashf } from '../config';
 import type { RawMap, Building } from './types';
 import { cacheGet, cachePut } from './cache';
+import { fetchTiles } from './tiles';
 import { BTYPES, btypeFromTags } from './btypes';
 
 export interface Place { name: string; full: string; lat: number; lon: number }
@@ -111,7 +112,7 @@ export async function importPlace(place: Place, progress: (s: string) => void): 
   const reach = PLAY_R * (BATTLE_KM === 1 ? 1.35 : BATTLE_KM === 2 ? 1.2 : 1.1);
   const [n, w] = toLatLon(CX - reach, CX - reach), [s, e] = toLatLon(CX + reach, CX + reach);
   const bb = `${s.toFixed(6)},${w.toFixed(6)},${n.toFixed(6)},${e.toFixed(6)}`;
-  const key = `osm:${lat0.toFixed(4)},${lon0.toFixed(4)}:${BATTLE_KM}`;
+  const key = `osm2:${lat0.toFixed(4)},${lon0.toFixed(4)}:${BATTLE_KM}`;
   let cached = await cacheGet<{ osm: any; dem: Float32Array | null }>(key);
   let osm = cached?.osm, dem = cached?.dem ?? null;
   if (!osm) {
@@ -124,7 +125,9 @@ way["landuse"~"^(forest|grass|meadow|farmland|orchard|recreation_ground|cemetery
 relation["landuse"~"^(forest|farmland|meadow|grass|reservoir|basin)$"](${bb});
 way["leisure"~"^(park|garden|pitch|golf_course|nature_reserve|common)$"](${bb});relation["leisure"="park"](${bb});
 );out geom;`;
-    osm = await overpass(q, progress);
+    // Fast path: OpenFreeMap tiles. If they fail, ask the Overpass servers.
+    try { osm = await fetchTiles(s, w, n, e, progress); if (!osm.elements.length) throw new Error('empty'); }
+    catch { osm = await overpass(q, progress); }
     try { dem = await elevationGrid(lat0, lon0, toLatLon, progress); } catch { dem = null; }
     await cachePut(key, { osm, dem });
   }

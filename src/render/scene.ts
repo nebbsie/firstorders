@@ -110,8 +110,17 @@ export function buildMap3D() {
     const T = p.map(q => [q[0] - W / 2, b.top, q[1] - H / 2]), Bt = p.map(q => [q[0] - W / 2, b.base, q[1] - H / 2]);
     const faces = THREE.ShapeUtils.triangulateShape(p.map(q => new THREE.Vector2(q[0], q[1])), []);
     // Churches and town halls get a pointed tower roof; castles get battlements along the walls.
-    if (BT.spire && !out0) { const apex = [b.cx - W / 2, b.top + Math.min(14, b.h * .9 + 3), b.cy - H / 2]; for (let i = 0; i < p.length; i++) { const n = (i + 1) % p.length, ex = p[n][0] - p[i][0], ey = p[n][1] - p[i][1]; if (area > 0) out.set(ey, 1, -ex); else out.set(-ey, 1, ex); tri(T[i], T[n], apex, roof, out); } }
-    else for (const f of faces) tri(T[f[0]], T[f[1]], T[f[2]], roof, _up);
+    for (const f of faces) tri(T[f[0]], T[f[1]], T[f[2]], roof, _up);
+    // Churches and town halls: a square tower with a pointed spire rising from the middle of the roof.
+    if (BT.spire && !out0) {
+      const half = clamp(Math.sqrt(Math.abs(area) / 2) / 5, 1.2, 3.5), x0 = b.cx - W / 2, z0 = b.cy - H / 2, y0 = b.top, y1 = b.top + half * 2.2, y2 = y1 + half * 3;
+      const c = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => [x0 + u * half, z0 + v * half]), wall2 = (BT.wall || b.mat).map(v => v * .85 / 255);
+      for (let i = 0; i < 4; i++) {
+        const a0 = c[i], a1 = c[(i + 1) % 4]; out.set((a0[0] + a1[0]) / 2 - x0, 0, (a0[1] + a1[1]) / 2 - z0);
+        tri([a0[0], y0, a0[1]], [a1[0], y0, a1[1]], [a1[0], y1, a1[1]], wall2, out); tri([a0[0], y0, a0[1]], [a1[0], y1, a1[1]], [a0[0], y1, a0[1]], wall2, out);
+        out.set((a0[0] + a1[0]) / 2 - x0, half * .6, (a0[1] + a1[1]) / 2 - z0); tri([a0[0], y1, a0[1]], [a1[0], y1, a1[1]], [x0, y2, z0], roof, out);
+      }
+    }
     if (BT.battlements && !out0) for (let i = 0; i < p.length; i++) {
       const n = (i + 1) % p.length, len = Math.hypot(p[n][0] - p[i][0], p[n][1] - p[i][1]), k = Math.max(1, Math.floor(len / 1.6));
       for (let s = 0; s < k; s += 2) { const f0 = s / k, f1 = Math.min(1, (s + 1) / k), a0 = [p[i][0] + (p[n][0] - p[i][0]) * f0, p[i][1] + (p[n][1] - p[i][1]) * f0], a1 = [p[i][0] + (p[n][0] - p[i][0]) * f1, p[i][1] + (p[n][1] - p[i][1]) * f1];
