@@ -39,7 +39,7 @@ function startMap(raw: RawMap, spec: MapSpec) {
   if (NET.mode === 'host' && !connected()) { menuStatus('Waiting for your friend to join with your code.'); pending = () => startMap(raw, spec); return; }
   const busy = document.getElementById('busy'); busy.hidden = false;
   setTimeout(async () => {
-    buildMap(raw);
+    buildMap(raw); if (spec.spawn == null) spec.spawn = (Math.random() * 1e9) | 0; S.spawnSeed = spec.spawn;
     if (NET.mode === 'host') { busy.textContent = 'WAITING FOR YOUR FRIEND TO LOAD THE MAP'; await sendMap(spec, S.nTeams); busy.textContent = 'BUILDING MAP'; }
     showMenu(false); busy.hidden = true; makeTeams(); newBattle(); refreshFogPaint(); phaseCard();
   }, 30);

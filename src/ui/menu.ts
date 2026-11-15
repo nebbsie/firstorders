@@ -7,7 +7,7 @@ import type { RawMap } from '../map/types';
 
 const $ = (s: string) => document.querySelector(s) as HTMLElement;
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-export type MapSpec = ({ kind: 'sample'; seed: number } | { kind: 'osm'; place: Place }) & { km: number };
+export type MapSpec = ({ kind: 'sample'; seed: number } | { kind: 'osm'; place: Place }) & { km: number; spawn?: number };
 
 // Load the map a spec names. The guest uses this to load the same map as the host.
 export async function loadSpec(spec: MapSpec, status: (s: string) => void): Promise<RawMap> {

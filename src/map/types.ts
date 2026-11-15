@@ -6,7 +6,7 @@ export interface Building {
   id?: number; base?: number; top?: number; cx?: number; cy?: number;
   btype?: string; name?: string;  // what the building is (church, police, castle...) and its real name, if known
   cells?: number[]; hp0?: number; hp?: number; down?: number | null; vr?: number[];
-  parent?: number; area?: number;  // a part of a bigger building (a tower, a chapel) points to the main one
+  parent?: number; area?: number; parts?: any[]; spire?: { half: number; y1: number; y2: number };  // a part of a bigger building (a tower, a chapel) points to the main one
 }
 export interface Bridge {
   cells: number[]; ramp: number[]; ends: number[]; deck: number; cx: number; cy: number;

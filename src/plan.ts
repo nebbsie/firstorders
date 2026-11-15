@@ -4,10 +4,12 @@ import { S, M, OWN } from './state';
 import { cellOf, passTerr, nudge, canDeploy, cellPos, canPlaceUnit } from './world';
 
 export function makeTeams() {
-  S.teams = []; const N = S.nTeams;
+  // Start areas: a random turn of the whole ring, then each side moved a little round and in or out.
+  // Host and guest share the seed, so both get the same places.
+  S.teams = []; const N = S.nTeams, rs = mulberry32(S.spawnSeed ?? 1), a0 = rs() * Math.PI * 2;
   for (let i = 0; i < N; i++) {
-    const a = 2.356 + i * Math.PI * 2 / N, r = N <= 3 ? 40 : N <= 4 ? 36 : 30;
-    let x = CX + Math.cos(a) * PLAY_R * .68, y = CY + Math.sin(a) * PLAY_R * .68;
+    const a = a0 + i * Math.PI * 2 / N + (rs() - .5) * (Math.PI / N) * .8, d = PLAY_R * (.52 + rs() * .26), r = N <= 3 ? 40 : N <= 4 ? 36 : 30;
+    let x = CX + Math.cos(a) * d, y = CY + Math.sin(a) * d;
     // Move a start area that is mostly water or buildings in towards the centre.
     for (let k = 0; k < 20; k++) {
       let bad = 0, all = 0;
@@ -20,7 +22,7 @@ export function makeTeams() {
       if (Math.max(Math.abs(dx), Math.abs(dy)) !== rr) continue; const px = x + dx * C, py = y + dy * C, ci = cellOf(px, py); if (ci < 0 || !M.play[ci] || !pref.includes(M.terr[ci])) continue;
       let clear = true; for (let ey = -2; ey <= 2 && clear; ey++) for (let ex = -2; ex <= 2; ex++) { const n = cellOf(px + ex * C, py + ey * C); if (n < 0 || M.terr[n] === T_BUILD || M.terr[n] === T_WATER || M.terr[n] === T_BRIDGE) { clear = false; break; } }
       if (clear) return [Math.floor(px / C) * C + 1, Math.floor(py / C) * C + 1]; } return null; };
-    const spot = open([T_GROUND, T_PARK]) || open([T_ROAD]); if (spot) { x = spot[0]; y = spot[1]; }
+    const spot = open([T_GROUND, T_PARK, T_ROAD]); if (spot) { x = spot[0]; y = spot[1]; }
     S.teams.push({ id: i, name: TEAM_NAMES[i], color: TEAM_COLORS[i], human: i === 0 || (NET.mode !== 'solo' && i === 1), zone: { x, y, r } });
   }
 }

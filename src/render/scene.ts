@@ -150,6 +150,7 @@ export function buildMap3D() {
     // Churches and town halls: a square tower with a pointed spire rising from the middle of the roof.
     if (BT.spire && !out0 && b.parent == null && !tallPart.has(b.id)) {
       const half = clamp(Math.sqrt(Math.abs(area) / 2) / 5, 1.2, 3.5), x0 = b.cx - W / 2, z0 = b.cy - H / 2, y0 = b.top, y1 = b.top + half * 2.2, y2 = y1 + half * 3;
+      b.spire = { half, y1, y2 }; // the selection outline draws it too
       const c = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => [x0 + u * half, z0 + v * half]), wall2 = (BT.wall || b.mat).map(v => v * .85 / 255);
       for (let i = 0; i < 4; i++) {
         const a0 = c[i], a1 = c[(i + 1) % 4]; out.set((a0[0] + a1[0]) / 2 - x0, 0, (a0[1] + a1[1]) / 2 - z0);

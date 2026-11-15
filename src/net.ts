@@ -99,7 +99,7 @@ export function hostTick(now: number) {
 
 // ---- guest side ----
 function onGuestData(m: any) {
-  if (m.t === 'map') { S.nTeams = m.nTeams; ev.map && ev.map(m.spec); }
+  if (m.t === 'map') { S.nTeams = m.nTeams; S.spawnSeed = m.spec.spawn; ev.map && ev.map(m.spec); }
   if (m.t === 'snap') applySnap(m);
 }
 export function guestLoaded() { send({ t: 'loaded' }); }

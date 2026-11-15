@@ -3,6 +3,7 @@ import { C, GW, K, M_PER_UNIT, PLATOONS, MOVERS, unitKind, CX, CY, COST, TOOLDEF
 import { S, M } from '../state';
 import { canDeploy, opRange, canPlaceUnit, ENG_BUILD, ENG_R } from '../world';
 import { sqCenter, left, lineCells } from '../plan';
+import { route } from '../sim';
 import { P, Pa, view } from './camera';
 import { input } from '../ui/input';
 
@@ -15,6 +16,12 @@ function plate(x: number, y: number, text: string, col: string) {
   const w = Math.round(ctx.measureText(text).width + 10); x = Math.round(x); y = Math.round(y);
   ctx.fillStyle = 'rgba(20,21,25,.94)'; ctx.fillRect(x - (w >> 1), y - 8, w, 16); ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.strokeRect(x - (w >> 1) + .5, y - 7.5, w - 1, 15);
   ctx.fillStyle = '#f4f1e8'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, x, y + 1);
+}
+// A line along the way the units will walk.
+function routeLine(s: any, a: any, b: any, col: string, dash: boolean, head: boolean) {
+  if (!MOVERS.includes(s.kind)) { groundLine(a, b, col, dash, head); return; }
+  const r = route(a.x, a.y, b.x, b.y, !!K[unitKind(s.kind)]?.veh);
+  for (let i = 0; i < r.length - 1; i++) groundLine({ x: r[i][0], y: r[i][1] }, { x: r[i + 1][0], y: r[i + 1][1] }, col, dash, head && i === r.length - 2);
 }
 function groundLine(a: any, b: any, col: string, dash: boolean, head: boolean) {
   const n = Math.max(2, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 6)); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.setLineDash(dash ? [6, 4] : []); ctx.beginPath();
@@ -34,7 +41,19 @@ function cone(x: number, y: number, face: number, arc: number, range: number, si
   ctx.setLineDash([]);
 }
 function sightOfKind(s: any) { const k = K[unitKind(s.kind)]; return s.kind === 'op' ? opRange({ x: s.x, y: s.y }) : k.sight + (s.kind === 'garrison' ? 15 : 0); }
+// A building and all its parts (towers, wings), with the spire if it has one.
 function boxOutline(bd: any, col: string) {
+  const root = M.B[bd.parent ?? bd.id];
+  if (!root.parts) root.parts = M.B.filter(b => b.id === root.id || b.parent === root.id);
+  for (const b of root.parts) if (b.down == null) partOutline(b, col);
+  const sp = root.spire; if (!sp || root.down != null) return;
+  const c = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => [root.cx + u * sp.half, root.cy + v * sp.half]), apex = Pa(root.cx, root.cy, sp.y2);
+  ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath();
+  c.forEach((q, i) => { const s = Pa(q[0], q[1], sp.y1); i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]); }); const s0 = Pa(c[0][0], c[0][1], sp.y1); ctx.lineTo(s0[0], s0[1]);
+  for (const q of c) { const a = Pa(q[0], q[1], root.top), b = Pa(q[0], q[1], sp.y1); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.moveTo(b[0], b[1]); ctx.lineTo(apex[0], apex[1]); }
+  ctx.stroke();
+}
+function partOutline(bd: any, col: string) {
   const p = bd.p, top = bd.top + .05, bot = bd.base + .4; ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath();
   for (const h of [top, bot]) { p.forEach((q: number[], i: number) => { const s = Pa(q[0], q[1], h); i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]); }); const s0 = Pa(p[0][0], p[0][1], h); ctx.lineTo(s0[0], s0[1]); }
   for (const q of p) { const a = Pa(q[0], q[1], top), b = Pa(q[0], q[1], bot); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); }
@@ -62,7 +81,7 @@ export function draw2D() {
     if (s.team !== NET.me) continue; const o = plan ? s.order : s.cur; if (!o) continue; const c = sqCenter(s); if (!c) continue; const col = TEAM_COLORS[NET.me];
     if (o.type === 'defend') ring(o.x, o.y, 16, col, true);
     if (o.dir != null) groundLine(o, { x: o.x + Math.cos(o.dir) * 10, y: o.y + Math.sin(o.dir) * 10 }, col, false, true);
-    groundLine({ x: c[0], y: c[1] }, o, col, o.type === 'defend', true);
+    routeLine(s, { x: c[0], y: c[1] }, o, col, o.type === 'defend', true);
     if (plan && (S.selMany || []).includes(s)) { const m = P(o.x, o.y, 3); plate(m[0], m[1] - 14, `${s.call || ''} ${o.type.toUpperCase()} ${grid(o.x, o.y)}`.trim(), col); }
   }
   for (const s of S.supports) {
@@ -132,12 +151,12 @@ function drawGhost() {
   }
   if (ptr && ptr.mode === 'orderGroup') {
     const d = Math.hypot(ptr.w.x - ptr.w0.x, ptr.w.y - ptr.w0.y);
-    for (const s of S.selMany || []) { const c = sqCenter(s); if (c && MOVERS.includes(s.kind)) groundLine({ x: c[0], y: c[1] }, ptr.w0, 'rgba(232,197,71,.5)', S.tool === 'defend', false); }
+    for (const s of S.selMany || []) { const c = sqCenter(s); if (c && MOVERS.includes(s.kind)) routeLine(s, { x: c[0], y: c[1] }, ptr.w0, 'rgba(232,197,71,.5)', S.tool === 'defend', false); }
     if (d > 4) { const a = Math.atan2(ptr.w.y - ptr.w0.y, ptr.w.x - ptr.w0.x), px = -Math.sin(a), py = Math.cos(a), n = (S.selMany || []).length, half = Math.max(8, n * 6); groundLine({ x: ptr.w0.x - px * half, y: ptr.w0.y - py * half }, { x: ptr.w0.x + px * half, y: ptr.w0.y + py * half }, '#e8c547', false, false); groundLine(ptr.w0, { x: ptr.w0.x + Math.cos(a) * 14, y: ptr.w0.y + Math.sin(a) * 14 }, '#e8c547', false, true); }
     const p = P(ptr.w0.x, ptr.w0.y, 3); plate(p[0], p[1] - 16, `${S.tool.toUpperCase()} ${grid(ptr.w0.x, ptr.w0.y)}${d > 4 ? ' · FACING' : ''}`, '#e8c547'); return;
   }
-  if ((S.tool === 'attack' || S.tool === 'defend') && !ptr) { for (const s of S.selMany || []) { const c = sqCenter(s); if (c && ['rifles', 'sniper', 'tank'].includes(s.kind)) groundLine({ x: c[0], y: c[1] }, hover, 'rgba(232,197,71,.6)', S.tool === 'defend', true); } }
-  if (ptr && ptr.mode === 'order') { const c = sqCenter(ptr.sq); if (!c) return; groundLine({ x: c[0], y: c[1] }, ptr.w, '#e8c547', S.tool === 'defend', true); const b = P(ptr.w.x, ptr.w.y, 3); plate(b[0], b[1] - 16, `${S.tool.toUpperCase()} ${grid(ptr.w.x, ptr.w.y)}`, '#e8c547'); return; }
+  if ((S.tool === 'attack' || S.tool === 'defend') && !ptr) { for (const s of S.selMany || []) { const c = sqCenter(s); if (c && MOVERS.includes(s.kind)) routeLine(s, { x: c[0], y: c[1] }, hover, 'rgba(232,197,71,.6)', S.tool === 'defend', true); } }
+  if (ptr && ptr.mode === 'order') { const c = sqCenter(ptr.sq); if (!c) return; routeLine(ptr.sq, { x: c[0], y: c[1] }, ptr.w, '#e8c547', S.tool === 'defend', true); const b = P(ptr.w.x, ptr.w.y, 3); plate(b[0], b[1] - 16, `${S.tool.toUpperCase()} ${grid(ptr.w.x, ptr.w.y)}`, '#e8c547'); return; }
   if (tool.mode === 'point') {
     // Placing a unit: show where it will shoot (solid red) and how far it will see (dashed).
     const k = K[unitKind(S.tool)];

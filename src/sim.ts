@@ -137,6 +137,27 @@ function clearLine(ax: number, ay: number, bx: number, by: number, veh?: boolean
   for (let i = 1; i <= n; i++) if (!passable(cellOf(ax + (bx - ax) * i / n, ay + (by - ay) * i / n), veh)) return false;
   return true;
 }
+// The way troops will walk from a to b, as a few straight legs round buildings and water. Used to draw orders.
+const routes = new Map<string, { f: Uint16Array; pts: number[][] }>();
+export function route(ax: number, ay: number, bx: number, by: number, veh?: boolean): number[][] {
+  const s0 = cellOf(ax, ay), t = nudge(bx, by); if (s0 < 0 || !t) return [[ax, ay], [bx, by]];
+  const key = s0 + ',' + cellOf(t[0], t[1]) + (veh ? 'v' : ''); const hit = routes.get(key); if (hit && S.flow && S.flow.get(cellOf(t[0], t[1]) * 2 + (veh ? 1 : 0)) === hit.f) return hit.pts;
+  if (!S.flow) S.flow = new Map(); const f = flowFor(bx, by, veh); if (!f || f[s0] === 65535) return [[ax, ay], [bx, by]];
+  const pts: number[][] = [[ax, ay]]; let c = s0;
+  for (let k = 0; k < 3000 && f[c] > 0; k++) {
+    let best = f[c], bc = -1; const cx = c % GW, cy = (c / GW) | 0;
+    for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+      if (!ox && !oy) continue; const nx = cx + ox, ny = cy + oy; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
+      const n = ny * GW + nx; if (f[n] < best && (ox === 0 || oy === 0 || (passable(cy * GW + nx, veh) && passable(ny * GW + cx, veh)))) { best = f[n]; bc = n; }
+    }
+    if (bc < 0) break; c = bc; pts.push([(c % GW) * C + 1, ((c / GW) | 0) * C + 1]);
+  }
+  pts.push([bx, by]);
+  // Keep only the corners: from each point, jump to the furthest point still in a clear straight line.
+  const out = [pts[0]]; let i = 0;
+  while (i < pts.length - 1) { let j = pts.length - 1; while (j > i + 1 && !clearLine(pts[i][0], pts[i][1], pts[j][0], pts[j][1], veh)) j--; out.push(pts[j]); i = j; }
+  if (routes.size > 300) routes.clear(); routes.set(key, { f, pts: out }); return out;
+}
 // One shared path field per destination (and per vehicle class), reused by every unit going there.
 function flowFor(x: number, y: number, veh?: boolean) {
   const t = nudge(x, y); if (!t) return null; const tc = cellOf(t[0], t[1]), key = tc * 2 + (veh ? 1 : 0);
