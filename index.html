@@ -15,6 +15,8 @@
   <div class="hud topleft"><button class="btn" id="bMenu" title="Pick another place">MENU</button><button class="btn side" id="bHelp">HELP</button></div>
   <div class="hud speedreq" id="speedReq" hidden><span id="srText"></span><button class="btn" id="srAgree">AGREE</button></div>
   <div class="hud hqbar" id="hqBar" hidden><span id="hqText"></span><div class="track"><div id="hqFill"></div></div></div>
+  <div class="hud panel roster" id="roster" hidden></div>
+  <div class="hud panel tut" id="tut" hidden></div>
   <div class="hud phasebar" id="phasebar" hidden><span id="pbLabel"></span><div class="track"><div id="pbFill"></div></div></div>
   <div class="hud timebar" id="timebar">
     <div class="plate"><span class="k" id="phaseName">PHASE 1</span><b id="clock">DEPLOY</b></div>
@@ -96,8 +98,10 @@
       <h3>FIRE AND MOVEMENT</h3>
       <p>Fire pins men down: MGs and blasts most, cover less. Pinned men stop and shoot badly; badly pinned men stop shooting. Pin an enemy with MGs or mortars, then move round them. Smoke (from phase 1) blocks sight for about 30 s.</p>
       <p>Orders: Shift-click sets a waypoint first, for a flank. SUPPRESS makes a unit stay put and fire on a spot, to pin whoever is there. FOLLOW sends it along behind another unit. DEFEND near a trench or sandbags mans them. A unit caught by surprise goes to ground and is slow to fire back. CAREFUL is slow, hard to pin and hard to surprise. RUSH is fast and keeps moving under fire but shoots worse. AMBUSH hides and holds fire until the enemy is close. FALL BACK pulls a unit back when it loses half its men. In battle, each tag shows what the unit is doing and its strength.</p>
+      <h3>MORALE</h3>
+      <p>Losses and being pinned wear a unit down. A shaken unit will not advance and shoots worse. A broken unit runs for home and takes no orders until it rallies. Morale comes back out of the fight, faster near your HQ, and a little between phases. The list at the top left shows each unit's strength and morale.</p>
       <h3>WINNING</h3>
-      <p>Hold the enemy HQ ground for 40 seconds; a bar at the top shows the count. If nobody has won after 10 phases, the side holding more ground wins. An HQ under attack at the end gives up to three phases of overtime.</p>
+      <p>Hold the enemy HQ ground for 40 seconds; a bar at the top shows the count. When the last phase ends, the side holding more ground wins. Campaign missions have their own goals and phase limits; a skirmish can run 6, 10 or 14 phases. An HQ under attack at the end gives up to three phases of overtime.</p>
       <h3>CAMPAIGN AND FRIENDS</h3>
       <p>The campaign is seven battles; each win unlocks more units. With a friend: HOST A GAME, send the code, and choose AGAINST ME or ON MY TEAM. Speed and pause change only when you both agree.</p>
       <h3>FOG OF WAR</h3>
@@ -123,6 +127,7 @@
       <div class="mscreen" data-s="home">
         <button class="btn go" data-go="campaign">CAMPAIGN</button>
         <button class="btn" data-go="skirmish">SKIRMISH</button>
+        <button class="btn" id="mTutorial" title="A short guided battle">TUTORIAL</button>
         <button class="btn side" data-go="multi">MULTIPLAYER</button>
         <button class="btn" data-go="settings">SETTINGS</button>
       </div>
@@ -158,6 +163,8 @@
       <div class="hint" id="mStatus">Search for a real place, or play a sample town. Each place downloads once.</div>
       <h3>BATTLE SIZE</h3>
       <div class="row" id="mSize" style="margin-top:0"><button class="btn" data-km="1" title="Close fighting, fast battles">1 KM</button><button class="btn" data-km="2" title="Room to manoeuvre">2 KM</button><button class="btn" data-km="3" title="A whole town; larger download">3 KM</button></div>
+      <h3>PHASES</h3>
+      <div class="row" id="mPhases" style="margin-top:0"><button class="btn" data-p="6" title="A short battle">6</button><button class="btn" data-p="10">10</button><button class="btn" data-p="14" title="A long battle">14</button></div>
       <h3>TEAMS</h3>
       <div class="row" id="mTeams"><button class="btn" data-n="2">2</button><button class="btn" data-n="3">3</button><button class="btn" data-n="4">4</button><button class="btn" data-n="6">6</button></div>
       <div class="row menuact"><button class="btn go mapbtn" id="mImport" disabled>PLAY THIS PLACE</button><button class="btn side mapbtn" id="mSample">PLAY SAMPLE TOWN</button></div>

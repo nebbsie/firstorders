@@ -3,14 +3,14 @@ import { HQ_HOLD, PLAY_R, M_PER_UNIT, MOVERS, PHASE_LEN, COST, TOOLS, INFO, KIND
 import { S, M, VIS0, SEEN0, logText } from '../state';
 import { cellOf, bldNear, ENG_BUILD } from '../world';
 import { aliveMembers, sqCenter, itemCost, left, canRemove, removeItem, SUPPORT_ROUND } from '../plan';
-import { newBattle } from '../sim';
+import { newBattle, phaseLimit } from '../sim';
 import { actRemove, actOrders, actTime, actReady, actSpeed, actStance } from '../actions';
 import { startReplay, seek, exitReplay, refreshReplayFog } from '../replay';
 import { fit, cam, P } from '../render/camera';
 import { paintFog, paintTerritory, viewOpts, applyViews } from '../render/scene';
 import { BTYPES } from '../map/btypes';
 import { toggleMute, isMuted } from '../audio';
-import { isAllowed, MISSIONS, saveWin } from '../campaign';
+import { isAllowed, MISSIONS, saveWin, GOAL_TEXT } from '../campaign';
 
 const $ = (s: string) => document.querySelector(s) as HTMLElement;
 let toastT = 0, bannerT = 0;
@@ -67,7 +67,7 @@ export function phaseCard() {
   const r = S.round, body = r === 1
     ? `<p><b>Take the enemy HQ. Hold your own.</b> An HQ falls when enemy troops hold its ground for 40 seconds.</p><p>Your ground is tinted blue. You can only build there.</p><p>Open <b>DEFENCES</b>, <b>UNITS</b> and <b>SUPPORT</b> below to buy. Select your units, then use <b>ORDERS</b> to send them.</p><p>You do not know where the enemy HQ is. A <b>SPY PLANE</b> or forward troops will find it.</p><p>Press <b>BEGIN PHASE 1</b> when ready.</p>`
     : phaseReport(r);
-  const mi = S.campaign; if (r === 1 && mi != null) { const m = MISSIONS[mi]; $('#cardTitle').textContent = `MISSION ${mi + 1} · ${m.name}`; $('#cardBody').innerHTML = `<p><b>${m.brief}</b></p>` + body; $('#card').hidden = false; return; }
+  const mi = S.campaign; if (r === 1 && mi != null) { const m = MISSIONS[mi]; $('#cardTitle').textContent = `MISSION ${mi + 1} · ${m.name}`; $('#cardBody').innerHTML = `<p><b>${m.brief}</b></p><p style="color:var(--gold)">GOAL: ${GOAL_TEXT[m.goal]} ${m.phases} phases.</p>` + body; $('#card').hidden = false; return; }
   $('#cardTitle').textContent = r === 1 ? 'PHASE 1 · DEPLOY' : `PHASE ${r - 1} REPORT`; $('#cardBody').innerHTML = body; $('#card').hidden = false;
 }
 
@@ -204,8 +204,8 @@ function syncPhaseBar() {
 function syncClock() {
   syncPhaseBar();
   const ph = S.phase;
-  if (ph === 'plan') { $('#phaseName').textContent = `PHASE ${S.round}`; $('#clock').textContent = S.round === 1 ? 'DEPLOY' : 'REINFORCE'; }
-  else if (ph === 'battle') { $('#phaseName').textContent = `PHASE ${S.round}`; $('#clock').textContent = `T+${Math.floor(S.t - S.phaseStart)}`; }
+  if (ph === 'plan') { $('#phaseName').textContent = `PHASE ${S.round} / ${phaseLimit()}`; $('#clock').textContent = S.round === 1 ? 'DEPLOY' : 'REINFORCE'; }
+  else if (ph === 'battle') { $('#phaseName').textContent = `PHASE ${S.round} / ${phaseLimit()}`; $('#clock').textContent = `T+${Math.floor(S.t - S.phaseStart)}`; }
   else if (ph === 'replay') { $('#phaseName').textContent = 'REPLAY'; $('#clock').textContent = `${fmtT(S.rt)} / ${fmtT(S.rec.end)}`; }
   else if (ph === 'done') { $('#phaseName').textContent = 'DEBRIEF'; $('#clock').textContent = fmtT(S.t); }
   if (S.teams.length && S.bank.length) $('#supply').textContent = String(Math.max(0, left(NET.me)));
@@ -279,7 +279,7 @@ export function bindStrip(toMenu: () => void) {
 }
 // Refreshes the parts of the HUD that change every few frames.
 export function hudPulse() {
-  syncClock(); renderRadio(); syncSpeedReq(); syncBegin(); syncHQBar();
+  syncClock(); renderRadio(); syncSpeedReq(); syncBegin(); syncHQBar(); renderRoster(); tutorialTick();
   if (S.phase === 'battle') renderInspector();
   else if (S.phase === 'replay') { const nw = $('#now'), fl = $('#fill'); if (nw) nw.style.left = tpos(S.rt / S.rec.end); if (fl) fl.style.width = `calc((100% - 16px) * ${S.rt / S.rec.end})`; }
 }
@@ -311,4 +311,39 @@ function syncHQBar() {
   const mine = t.id === NET.me, col = mine ? 'var(--bad)' : t.hqBy === NET.me ? 'var(--go)' : 'var(--gold)', by = S.teams[t.hqBy];
   $('#hqText').textContent = mine ? `YOUR HQ IS FALLING · ${Math.floor(t.hqHold)} / ${HQ_HOLD} S` : `${by && t.hqBy === NET.me ? 'TAKING' : (by ? by.name + ' TAKING' : 'TAKING')} ${t.name} HQ · ${Math.floor(t.hqHold)} / ${HQ_HOLD} S`;
   $('#hqText').style.color = col; ($('#hqFill') as HTMLElement).style.width = Math.min(100, t.hqHold / HQ_HOLD * 100) + '%'; ($('#hqFill') as HTMLElement).style.background = col; el.hidden = false;
+}
+
+// Roster, top left: every unit of yours, its strength, morale and what it is doing. Click a row to select the unit.
+let rosterKey = '';
+function renderRoster() {
+  const el = $('#roster'); if (S.phase !== 'plan' && S.phase !== 'battle') { el.hidden = true; return; }
+  const mine = S.squads.filter((s: any) => s.team === NET.me && (!s.members || aliveMembers(s).length));
+  if (!mine.length) { el.hidden = true; return; } el.hidden = false;
+  const rows = mine.map((s: any) => {
+    const n = s.members ? aliveMembers(s).length : s.pos.length, N = s.pos.length, mo = s.morale ?? 1, plan = S.phase === 'plan';
+    const st = s.readyRound > S.round ? 'BUILDING' : plan ? (s.order ? s.order.type.toUpperCase() : s.broken ? 'BROKEN' : MOVERS.includes(s.kind) && (!s.members || s.state === 'hold') ? 'NO ORDERS' : (s.state || '').toUpperCase()) : (s.status || '');
+    const bad = st === 'PINNED' || st === 'BROKEN' || st === 'SHAKEN' || st === 'FALLING BACK' || st === 'NO ORDERS';
+    return { id: s.id, html: `<button class="rrow${(S.selMany || []).includes(s) || S.sel === s ? ' on' : ''}" data-id="${s.id}"><b>${s.call || KIND_NAME[s.kind].toUpperCase()}</b><span class="rk">${s.call ? KIND_NAME[s.kind].toUpperCase() : ''}</span><span class="rbar"><i style="width:${Math.round(n / N * 100)}%"></i></span><span class="rn">${n}</span><span class="rmo" title="Morale"><i style="width:${Math.round(mo * 100)}%;background:${mo < .35 ? 'var(--bad)' : mo < .65 ? 'var(--warn)' : 'var(--good)'}"></i></span><span class="rs${bad ? ' bad' : ''}">${st}</span></button>` };
+  });
+  const key = rows.map((r: any) => r.html).join(''); if (key === rosterKey) return; rosterKey = key;
+  el.innerHTML = `<div class="rhead"><span>YOUR UNITS</span><span>${mine.length}</span></div>` + key;
+  el.querySelectorAll('.rrow').forEach((b: any) => b.onclick = () => { const s = S.squads.find((q: any) => q.id === +b.dataset.id); if (!s) return; setSel(s); const c = sqCenter(s); if (c) { cam.tx = c[0]; cam.ty = c[1]; cam.userMoved = true; } });
+}
+
+// Tutorial: a short list of steps over a real battle. Each step finishes when the player has done the thing.
+const TUT: { text: string; done: () => boolean }[] = [
+  { text: 'Buy a platoon: click <b>RIFLES</b> in the list at the bottom left, then click inside your start area (the green dashed ring).', done: () => S.squads.some((s: any) => s.team === NET.me && s.kind === 'rifles') },
+  { text: 'Select it: click its name tag. A panel opens above it. Press <b>ATTACK</b>, then click the ground towards the middle of the map. The line shows how far it gets this phase.', done: () => S.squads.some((s: any) => s.team === NET.me && s.order) },
+  { text: 'Buy an <b>MG NEST</b> and place it in the start area, facing the enemy. Guns take one phase to build.', done: () => S.squads.some((s: any) => s.team === NET.me && s.kind === 'mg') },
+  { text: 'Press <b>BEGIN PHASE 1</b> (or Space). Plans are locked and the phase plays out for 60 seconds.', done: () => S.phase === 'battle' },
+  { text: 'Watch. Each tag shows what the unit is doing. You see only what your troops can see. The list at the top left shows strength and morale.', done: () => S.phase === 'plan' && S.round >= 2 },
+  { text: 'Read the report, then press GOT IT. Buy more, and give new orders. Try <b>SUPPRESS</b> on a spot where you saw the enemy, or set a unit to <b>CAREFUL</b>.', done: () => S.round >= 2 && S.phase === 'battle' },
+  { text: 'To win, hold the ground at the enemy HQ for 40 seconds, or hold more ground when the last phase ends. That is all: good luck.', done: () => S.round >= 3 },
+];
+function tutorialTick() {
+  const el = $('#tut'); if (S.tutorial == null || S.phase === 'menu' || S.phase === 'done' || S.phase === 'replay') { el.hidden = true; return; }
+  while (S.tutorial < TUT.length && TUT[S.tutorial].done()) S.tutorial++;
+  if (S.tutorial >= TUT.length) { S.tutorial = null; el.hidden = true; return; }
+  el.hidden = false; const h = `<div class="ph"><span>TUTORIAL · ${S.tutorial + 1} / ${TUT.length}</span><button class="btn x" id="tutSkip" title="Stop the tutorial">X</button></div><div class="pb"><p>${TUT[S.tutorial].text}</p></div>`;
+  if (el.dataset.k !== String(S.tutorial)) { el.dataset.k = String(S.tutorial); el.innerHTML = h; ($('#tutSkip') as HTMLElement).onclick = () => { S.tutorial = null; el.hidden = true; }; }
 }

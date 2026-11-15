@@ -41,6 +41,7 @@ export function beginRound() {
   for (const s of S.structs) if (s.round === S.round) { for (const ci of s.cells) S.cover[ci] = COV[s.type]; s.placedAt = S.t; }
   for (const sq of S.squads) {
     if (!sq.members) { if (sq.round === S.round) spawnSquad(sq); }
+    else if (sq.order && sq.broken) { sq.order = null; }
     else if (sq.order) { sq.state = sq.order.type; sq.tx = sq.order.x; sq.ty = sq.order.y; useVia(sq, sq.order); sq.dir = sq.order.dir ?? sq.dir; sq.dbridge = sq.order.bridge; sq.dbld = sq.order.bld; sq.planted = null; faceMembers(sq); sq.arrived = -1; setPace(sq); sq.contact = S.t; assignSlots(sq); }
   }
   for (const sq of S.squads) if (sq.order) { if (sq.members && sq.order.type === 'attack') log(sq.team, `${sqName(sq)}: moving on ${grid(sq.order.x, sq.order.y)}`); sq.cur = sq.order; sq.order = null; }
@@ -97,7 +98,7 @@ function demolishStep(sq: any) {
 }
 function snapshotHistory() { S.history.push({ round: S.round, terr: S.terrCount.slice(), alive: S.teams.map((t: any) => S.units.filter((u: any) => u.alive && u.team === t.id).length) }); }
 // A short report for each side after a phase: losses, kills, ground, what was seen, and the main events.
-const NOTE = / lost at |heavy losses|no reply|destroyed|blown|HQ|falling back|pinned down|objective/;
+const NOTE = / lost at |heavy losses|no reply|destroyed|blown|HQ|falling back|pinned down|objective|broke|rallied/;
 function makeReports() {
   S.reports = S.teams.map((t: any) => {
     const b = (S.base && S.base[t.id]) || { lost: 0, kills: 0, terr: 0 }, st = S.stats[t.id], seen = new Map<string, number>();
@@ -106,13 +107,18 @@ function makeReports() {
     return { round: S.round, lost: st.lost - b.lost, kills: st.kills - b.kills, terr: (S.terrCount[t.id] || 0) - b.terr, seen: [...seen].map(([k, n]) => `${n} ${k}`), notes };
   });
 }
+export const phaseLimit = () => S.maxPhases || PHASES;
 function endRound() {
   recFrame(); captureGround(false); snapshotHistory();
   makeReports();
   // Overtime: while an HQ is under attack at the last phase, play on (three more phases at most).
   const contested = S.teams.some((t: any) => !t.lost && t.hqHold > 0);
-  if (S.round >= PHASES + 3 || (S.round >= PHASES && !contested)) { finish(true); return; }
-  if (S.round >= PHASES) log(-1, 'Overtime: an HQ is under attack');
+  const LIM = phaseLimit(), ot = S.goal === 'hold' ? 0 : 3;
+  // Ground goal: twice the enemy's ground wins at once.
+  if (S.goal === 'ground' && S.round >= 3) { const a = S.terrCount[0] || 0, b = Math.max(...S.teams.filter((t: any) => t.id !== 0 && !t.lost).map((t: any) => S.terrCount[t.id] || 0)); if (a >= b * 2 && a > 300) { finish(false, 0); return; } if (b >= a * 2 && b > 300) { finish(false, S.teams.find((t: any) => t.id !== 0 && !t.lost).id); return; } }
+  if (S.round >= LIM + ot || (S.round >= LIM && !contested)) { finish(true); return; }
+  if (S.round >= LIM) log(-1, 'Overtime: an HQ is under attack');
+  for (const sq of S.squads) if (sq.members) sq.morale = Math.min(1, (sq.morale ?? 1) + .15); // a rest between phases
   for (const t of S.teams) S.bank[t.id] += income(t.id);
   S.round++; S.phase = 'plan'; log(-1, `Phase ${S.round - 1} over`);
   updateVision();
@@ -233,8 +239,11 @@ function findTarget(u: any, range: number) {
   }
   return best;
 }
+const MORALE_KINDS = new Set(['rifles', 'assault', 'engineers', 'medics', 'sniper']);
 function kill(v: any, team: number) {
-  if (!v.alive) return; v.alive = false; S.stats[v.team].lost++; if (team !== v.team && team >= 0) S.stats[team].kills++;
+  if (!v.alive) return; v.alive = false; S.stats[v.team].lost++;
+  // Losses shake the unit: half its men gone costs about half its morale.
+  if (v.sqo && v.sqo.members && MORALE_KINDS.has(v.sqo.kind)) v.sqo.morale = Math.max(0, (v.sqo.morale ?? 1) - .95 / v.sqo.members.length); if (team !== v.team && team >= 0) S.stats[team].kills++;
   // Teams that see the unit fall learn it is gone; the others still think it is there.
   S.teams.forEach((t: any) => { if (S.vis[t.id] && S.vis[t.id][v.i] && S.known[t.id]) S.known[t.id].delete(v.i); });
   if (['mg', 'mortar', 'tank', 'at', 'op', 'sniper', 'fob'].includes(v.kind)) log(v.team, `${S.teams[v.team].name} ${KIND_NAME[v.kind] || v.kind} lost at ${grid(v.x, v.y)}`);
@@ -271,7 +280,7 @@ function shoot(u: any, e: any, k: any) {
   S.tracers.push(tr); if (S.rec.tracers.length < 150000) S.rec.tracers.push([S.t, tr.x0, tr.y0, tr.x1, tr.y1, u.team, u.i]);
   const d = Math.hypot(e.x - u.x, e.y - u.y), hb = clamp((unitH(u.x, u.y) - unitH(e.x, e.y)) * .02, 0, .15), rushing = u.sqo && u.sqo.stance === 'rush' && u.moving;
   // Suppressed men shoot badly; men rushing and firing on the move too.
-  const p = (k.acc + hb) * (1 - coverAt(e)) * (1 - .5 * d / k.range) * (1 - .6 * Math.min(1, u.sup || 0)) * (rushing ? .6 : 1);
+  const p = (k.acc + hb) * (1 - coverAt(e)) * (1 - .5 * d / k.range) * (1 - .6 * Math.min(1, u.sup || 0)) * (rushing ? .6 : 1) * (u.sqo && (u.sqo.morale ?? 1) < .35 ? .7 : 1);
   u.fired = S.t; suppress(e, u.kind === 'mg' ? .16 : u.kind === 'sniper' ? .25 : u.kind === 'at' ? .1 : u.kind === 'assault' ? .12 : .14);
   // Near misses keep the men beside the target down too: MG fire sweeps a whole section.
   if (u.kind === 'mg' && rnd() < .5) for (const i of (e.sqo && e.sqo.members) || []) { const v = S.units[i]; if (v !== e && v.alive && Math.abs(v.x - e.x) < 7 && Math.abs(v.y - e.y) < 7) suppress(v, .07); }
@@ -409,8 +418,18 @@ function squadStatus(sq: any) {
   // Pinned: a third or more of the men are down under fire.
   const sup = m.filter((u: any) => (u.sup || 0) > pinAt(sq)).length >= m.length / 3 ? 9 : 0, firing = m.some((u: any) => u.fired && S.t - u.fired < 2);
   const was = sq.status;
-  sq.status = sq.readyRound > S.round ? 'BUILDING' : sq.fellBack && sq.state === 'defend' && m.some((u: any) => u.moving) ? 'FALLING BACK'
-    : sup > pinAt(sq) ? 'PINNED' : firing ? (sq.state === 'suppress' ? 'SUPPRESSING' : 'ENGAGING') : sq.state === 'follow' ? 'FOLLOWING' : sq.state === 'demolish' ? 'DEMOLISHING'
+  // Morale: falls while pinned, comes back out of the fight, faster near the HQ. Below .35 the unit is shaken
+  // (will not advance, shoots worse); below .15 it breaks and runs for home until it rallies.
+  if (MORALE_KINDS.has(sq.kind)) {
+    const z = S.teams[sq.team].zone, quiet = !sq.shotAt || S.t - sq.shotAt > 8, home = Math.hypot(m[0].x - z.x, m[0].y - z.y) < 35;
+    sq.morale = clamp((sq.morale ?? 1) + (sup ? -.02 : quiet ? (home ? .03 : .012) : 0), 0, 1);
+    if (!sq.broken && sq.morale < .15) {
+      const cx = m.reduce((a: number, u: any) => a + u.x, 0) / m.length, cy = m.reduce((a: number, u: any) => a + u.y, 0) / m.length, d = Math.hypot(z.x - cx, z.y - cy) || 1, q = nudge(cx + (z.x - cx) / d * Math.min(d, 70), cy + (z.y - cy) / d * Math.min(d, 70));
+      sq.broken = true; sq.via = null; sq.state = 'defend'; if (q) { sq.tx = q[0]; sq.ty = q[1]; } sq.keepStance = sq.stance; sq.stance = 'rush'; sq.pace = 1; assignSlots(sq); if (sq.call) log(sq.team, `${sqName(sq)}: broke and is running`);
+    } else if (sq.broken && sq.morale > .45) { sq.broken = false; sq.stance = sq.keepStance; if (sq.call) log(sq.team, `${sqName(sq)}: rallied at ${grid(m[0].x, m[0].y)}`); }
+  }
+  sq.status = sq.readyRound > S.round ? 'BUILDING' : sq.broken ? 'BROKEN' : sq.fellBack && sq.state === 'defend' && m.some((u: any) => u.moving) ? 'FALLING BACK'
+    : sup > pinAt(sq) ? 'PINNED' : MORALE_KINDS.has(sq.kind) && (sq.morale ?? 1) < .35 ? 'SHAKEN' : firing ? (sq.state === 'suppress' ? 'SUPPRESSING' : 'ENGAGING') : sq.state === 'follow' ? 'FOLLOWING' : sq.state === 'demolish' ? 'DEMOLISHING'
     : m.some((u: any) => u.moving) ? (sq.via ? 'FLANKING' : 'MOVING') : sq.state === 'defend' ? 'HOLDING' : sq.state === 'attack' ? 'MOVING' : 'IDLE';
   if (sq.status === 'PINNED' && was !== 'PINNED' && sq.call) log(sq.team, `${sqName(sq)}: pinned down at ${grid(m[0].x, m[0].y)}`);
 }
@@ -560,7 +579,7 @@ export function step() {
     // Ambush: hold fire until the enemy is close or the unit is shot at; then everyone opens up.
     if (e && sq && sq.stance === 'ambush' && !sq.sprung) { if (Math.hypot(e.x - u.x, e.y - u.y) < k.range * .55 || sq.shotAt) sq.sprung = true; else e = null; }
     // Pinned men stop and keep their heads down; badly pinned men do not fire at all.
-    const pinned = !k.veh && (u.sup || 0) > pinAt(sq), headsDown = !k.veh && (u.sup || 0) > 1.15;
+    const pinned = !k.veh && ((u.sup || 0) > pinAt(sq) || (sq && !sq.broken && (sq.morale ?? 1) < .35 && sq.state === 'attack')), headsDown = !k.veh && (u.sup || 0) > 1.15;
     if (headsDown) e = null;
     // Suppressing fire: with no enemy in sight, fire at the ordered spot to keep heads down there.
     if (!e && !headsDown && sq && sq.state === 'suppress' && u.cd <= 0 && !k.veh) {
@@ -634,7 +653,9 @@ function checkEnd() { }
 function finish(byTime: boolean, winner = -1) {
   recFrame(); captureGround(false);
   const alive = S.teams.map((t: any) => S.units.filter((u: any) => u.alive && u.team === t.id).length); let w = winner;
-  if (byTime) { let bv = -1; S.teams.forEach((t: any, i: number) => { if (!t.lost && S.terrCount[i] > bv) { bv = S.terrCount[i]; w = i; } }); }
+  if (byTime) { let bv = -1; S.teams.forEach((t: any, i: number) => { if (!t.lost && S.terrCount[i] > bv) { bv = S.terrCount[i]; w = i; } });
+    // Campaign goals: holding out wins for the defender; a failed assault loses.
+    if (S.goal === 'hold' && !S.teams[0].lost) w = 0; if (S.goal === 'assault') w = S.teams.find((t: any) => t.id !== 0 && !t.lost)?.id ?? w; }
   S.phase = 'done'; S.result = { winner: w, alive, terr: S.terrCount.slice(), byTime };
   S.rec.meta = S.units.map((u: any) => ({ team: u.team, kind: u.kind })); S.rec.end = S.t; S.finalOwn = OWN.slice();
   log(-1, byTime ? 'Phase limit reached' : 'Battle over'); hooks.result(); hooks.sync();

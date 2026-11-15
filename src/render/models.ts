@@ -20,8 +20,8 @@ function build(parts: Part[]) {
 }
 // A sandbag: a squat box with a darker seam strip, so stacks read as bags and not blocks.
 const BAG = '#b9a67c', BAG2 = '#a8956c', WOOD = '#7a5f3a', WOOD2 = '#5f4a2e', CANVAS = '#6e7150';
-function bag(x: number, y: number, z: number, yaw: number, col = BAG): Part[] {
-  return [[box(.86, .26, .42), col, [x, y, z], [0, yaw, 0]], [box(.9, .05, .2), BAG2, [x, y + .12, z], [0, yaw, 0]]];
+function bag(x: number, y: number, z: number, yaw: number, col = BAG, len = .8): Part[] {
+  return [[box(len, .27, .46), col, [x, y, z], [0, yaw, 0]], [box(len * .5, .29, .48), BAG2, [x, y, z], [0, yaw, 0]]];
 }
 // A ring of sandbags, open at the front (+x), two layers with the top one staggered.
 function sandRing(r: number, n: number, layers = 2, gap = .55): Part[] {
@@ -78,7 +78,7 @@ export const MODELS: Record<string, THREE.BufferGeometry> = {
   // A soldier: pale tunic and helmet that take the team colour, dark legs, a rifle. Faces +x.
   soldier: build([
     [box(.22, .5, .34), '#55564a', [0, .25, 0]], [box(.26, .46, .42), '#ececec', [0, .73, 0]],
-    [box(.2, .2, .2), '#d6b08e', [0, 1.06, 0]], [cyl(.17, .2, .11, 8), '#b4b4b4', [0, 1.19, 0]],
+    [box(.2, .2, .2), '#d6b08e', [0, 1.06, 0]], [cyl(.1, .17, .13, 8), '#b4b4b4', [0, 1.2, 0]], [cyl(.19, .19, .03, 8), '#a8a8a8', [0, 1.14, 0]],
     [box(.62, .05, .05), '#2e2a25', [.3, .82, .17]],
   ]),
   // The dead: the same figure lying down, all grey.
@@ -109,7 +109,8 @@ export const MODELS: Record<string, THREE.BufferGeometry> = {
   ]),
   // FOB: a ridge tent, crates and fuel drums, a radio mast, a table, and a ring of bags.
   fob: build([
-    [cyl(1.25, 1.25, 3, 3), CANVAS, [-.2, .62, -.5], [Math.PI / 2, 0, Math.PI / 2]], [box(3.1, .05, .1), '#565a3f', [-.2, 1.26, -.5]],
+    [box(3, .06, 1.52), CANVAS, [-.2, .6, -.05], [-.927, 0, 0]], [box(3, .06, 1.52), '#62654a', [-.2, .6, -.95], [.927, 0, 0]], [box(3.1, .07, .12), '#565a3f', [-.2, 1.22, -.5]],
+    [box(.05, .9, .8), '#3b3c33', [1.28, .45, -.5]], [box(.05, 1.1, 1.3), '#62654a', [-1.68, .5, -.5]],
     [box(.08, 1.3, .08), WOOD2, [1.32, .65, -.5]], [box(.08, 1.3, .08), WOOD2, [-1.72, .65, -.5]],
     ...crate(1.5, 0, 1.2, .8, .2), ...crate(2.2, 0, .55, .7, -.3), ...crate(1.6, .56, 1.15, .6, .5),
     [cyl(.3, .3, .8, 9), '#55603f', [.2, .4, 1.6]], [cyl(.3, .3, .8, 9), '#55603f', [-.5, .4, 1.75]], [cyl(.3, .3, .8, 9), '#6b3f33', [-.15, .4, 2.3]],
@@ -124,7 +125,7 @@ export const MODELS: Record<string, THREE.BufferGeometry> = {
 const torus = (r: number) => new THREE.TorusGeometry(r, .02, 4, 9);
 export const DEFENCES: Record<string, THREE.BufferGeometry> = {
   // Sandbag wall: three layers, the middle one staggered.
-  sandbag: build([...[-.66, 0, .66].flatMap(x => bag(x, .13, 0, 0)), ...[-.34, .34].flatMap(x => bag(x, .4, 0, 0, '#b3a077')), ...[-.66, 0, .66].flatMap(x => bag(x, .67, 0, 0))]),
+  sandbag: build([...[-.68, 0, .68].flatMap(x => bag(x, .14, 0, 0, BAG, .62)), ...[-.34, .34].flatMap(x => bag(x, .42, 0, 0, '#b3a077', .62)), ...[-.68, 0, .68].flatMap(x => bag(x, .7, 0, 0, BAG, .62))]),
   // Trench: a dark cut with duckboards, and an earth bank on each side.
   trench: build([
     [box(2.02, .06, 1.1), '#2e2318', [0, .04, 0]], ...[-.75, -.25, .25, .75].map(x => [box(.36, .04, .8), '#6a573c', [x, .09, 0]] as Part),

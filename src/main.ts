@@ -6,7 +6,7 @@ import { newBattle, step } from './sim';
 import { liveView, replayView, followCam, replayRate } from './replay';
 import { camera, cam, view, applyCam, fit, fpv } from './render/camera';
 import { unitH } from './world';
-import { initRenderer, renderer, buildMap3D, update3D, render } from './render/scene';
+import { initRenderer, renderer, buildMap3D, update3D, render, scene, THREE_ } from './render/scene';
 import { initOverlay, resizeOverlay, draw2D } from './render/overlay';
 import { initInput, keyCam } from './ui/input';
 import { setTool, syncUI, banner, showResult, tickHud, hudPulse, bindStrip, refreshFogPaint, phaseCard, toast } from './ui/hud';
@@ -103,4 +103,4 @@ showMenu(true);
 setTimeout(() => { try { setMap(finishMap(sampleTown(4242))); buildMap3D(); refreshFogPaint(); } finally { showLoading(null); } }, 60);
 (document.fonts ? Promise.all([document.fonts.load('11px Departure'), document.fonts.load('16px KenneyMono')]).catch(() => { }) : Promise.resolve()).then(() => requestAnimationFrame(frame));
 // Developer hook for checking state in the browser console (dev server only).
-if (import.meta.env.DEV) (window as any).__fo = { S, NET, VIS0, SEEN0, OWN, renderer, exec, cam, fpv, step, refreshFogPaint, get M() { return M; } };
+if (import.meta.env.DEV) (window as any).__fo = { S, NET, VIS0, SEEN0, OWN, renderer, exec, cam, fpv, step, refreshFogPaint, scene, THREE: THREE_, get M() { return M; } };

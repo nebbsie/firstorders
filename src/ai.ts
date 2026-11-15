@@ -116,7 +116,7 @@ export function aiPlan(team: number) {
   // No HQ found yet: from phase 3, push towards where the enemy came from, to find it.
   else if (!hqs.length && th.zone && S.round >= 3 && r() < .3 + S.round * .12) A = { x: th.zone.x, y: th.zone.y };
   // The last phases: everything goes for the nearest enemy HQ (or where the enemy came from), to force a result.
-  const allIn = S.round >= 5; if (allIn) { const t = hqs[0] || S.teams.filter((o: any) => o.id !== team && !o.lost).sort((a: any, b: any) => Math.hypot(a.zone.x - ox, a.zone.y - oy) - Math.hypot(b.zone.x - ox, b.zone.y - oy))[0]; if (t) A = { x: t.zone.x, y: t.zone.y }; }
+  const allIn = S.round >= 5 || (S.goal === 'hold' && S.round >= 2); if (allIn) { const t = hqs[0] || S.teams.filter((o: any) => o.id !== team && !o.lost).sort((a: any, b: any) => Math.hypot(a.zone.x - ox, a.zone.y - oy) - Math.hypot(b.zone.x - ox, b.zone.y - oy))[0]; if (t) A = { x: t.zone.x, y: t.zone.y }; }
   // Attackers move carefully in town and rush across open ground when bold; all pull back if badly hurt.
   const go = (s: any, tx: number, ty: number) => { const q = nudge(tx, ty); if (!q) return; s.order = { type: 'attack', x: q[0], y: q[1] }; s.fallback = true;
     s.stance = s.kind === 'tank' ? undefined : foesNear(tx, ty, 40) > 2 && bldNear(tx, ty) >= 8 ? 'careful' : pr.aggr > .7 && r() < .5 ? 'rush' : undefined;

@@ -63,6 +63,11 @@ export function initMenu(start: (raw: RawMap, spec: MapSpec) => void, guestMap: 
   window.addEventListener('fo-mission', (e: any) => { if (e.detail < MISSIONS.length) mission(e.detail); });
   window.addEventListener('fo-campaign', camp);
   document.querySelectorAll('#mSideRow .btn').forEach((b: any) => b.onclick = () => { S.coop = b.dataset.side === 'with'; document.querySelectorAll('#mSideRow .btn').forEach((x: any) => x.classList.toggle('on', x === b)); });
+  // Tutorial: the first campaign map with a weak enemy, and steps on screen.
+  $('#mTutorial').onclick = () => { useMission(null); S.allowed = new Set(['trench', 'wire', 'rifles', 'mg', 'sandbag']); S.aiMult = .5; S.maxPhases = 8; S.tutorial = 0; setBattleSize(1); sizes(); S.nTeams = 2; teams(); start(sampleTown(1101), { kind: 'sample', seed: 1101, km: 1 }); };
+  const phases = () => document.querySelectorAll('#mPhases .btn').forEach((b: any) => b.classList.toggle('on', +b.dataset.p === (S.skirmishPhases || 10)));
+  document.querySelectorAll('#mPhases .btn').forEach((b: any) => b.onclick = () => { S.skirmishPhases = +b.dataset.p; S.maxPhases = S.skirmishPhases; phases(); });
+  phases();
   // Screens: home, then campaign, skirmish, multiplayer or settings. The map chooser is one block that
   // moves to the screen that needs it (skirmish, or multiplayer once you host).
   const pick = $('#mapPick');

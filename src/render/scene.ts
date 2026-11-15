@@ -47,12 +47,24 @@ const fogTex = new THREE.CanvasTexture(flayer); fogTex.magFilter = THREE.LinearF
 const ulayer = document.createElement('canvas'); ulayer.width = IW; ulayer.height = IH; const uctx = ulayer.getContext('2d');
 const unseenTex = new THREE.CanvasTexture(ulayer); unseenTex.magFilter = THREE.LinearFilter; unseenTex.minFilter = THREE.LinearFilter; unseenTex.flipY = false;
 const winScale = { value: 1 };
-function greyUnseen<T extends THREE.Material>(m: T, windows = false): T {
-  if (windows) (m as any).defines = { ...((m as any).defines || {}), FO_WIN: '' };
+const timeU = { value: 0 };
+// fx: 'win' window rows on walls, 'sway' trees move in the wind, 'water' ripples.
+function greyUnseen<T extends THREE.Material>(m: T, fx: boolean | 'sway' | 'water' = false): T {
+  if (fx) (m as any).defines = { ...((m as any).defines || {}), [fx === 'sway' ? 'FO_SWAY' : fx === 'water' ? 'FO_WATER' : 'FO_WIN']: '' };
   m.onBeforeCompile = (sh: any) => {
-    sh.uniforms.unseenMap = { value: unseenTex }; sh.uniforms.winScale = winScale;
+    sh.uniforms.unseenMap = { value: unseenTex }; sh.uniforms.winScale = winScale; sh.uniforms.foTime = timeU;
     sh.vertexShader = `varying vec3 vFoW;
-` + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
+uniform float foTime;
+` + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      #ifdef FO_SWAY
+        // Trees lean in the wind: the top moves, the foot stays. Each tree has its own beat.
+        float foPh = instanceMatrix[3].x * .37 + instanceMatrix[3].z * .23;
+        transformed.x += (sin(foTime * 1.4 + foPh) * .045 + sin(foTime * 3.1 + foPh * 1.7) * .012) * position.y * position.y;
+        transformed.z += cos(foTime * 1.1 + foPh) * .03 * position.y * position.y;
+      #endif
+      #ifdef FO_WATER
+        transformed.y += sin(foTime * .9 + position.x * .35 + position.z * .27) * .05 + sin(foTime * 1.7 + position.x * .8 - position.z * .6) * .02;
+      #endif`).replace('#include <project_vertex>', `#include <project_vertex>
       vec4 fowP = vec4(transformed, 1.0);
       #ifdef USE_INSTANCING
         fowP = instanceMatrix * fowP;
@@ -60,8 +72,15 @@ function greyUnseen<T extends THREE.Material>(m: T, windows = false): T {
       vFoW = (modelMatrix * fowP).xyz;`);
     sh.fragmentShader = `uniform sampler2D unseenMap;
 uniform float winScale;
+uniform float foTime;
 varying vec3 vFoW;
 ` + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+      #ifdef FO_WATER
+        // Slow bands of light and dark that drift across the water.
+        float foR = sin(vFoW.x * .5 + vFoW.z * .3 + foTime * .7) * sin(vFoW.z * .62 - vFoW.x * .21 - foTime * .5);
+        float foG = sin(vFoW.x * .17 - vFoW.z * .23 + foTime * .33);
+        diffuseColor.rgb += vec3(.04, .055, .06) * foR + vec3(.02, .03, .035) * foG;
+      #endif
       #ifdef FO_WIN
         // Rows of dark windows on walls (faces that stand upright), one bay about every 3 m.
         vec3 fowN = normalize(cross(dFdx(vFoW), dFdy(vFoW)));
@@ -166,7 +185,7 @@ export function buildMap3D() {
     wp.push(...a, ...d, ...b, ...b, ...d, ...e);
   }
   const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3)); wg.computeVertexNormals();
-  const water = new THREE.Mesh(wg, greyUnseen(new THREE.MeshLambertMaterial({ color: '#3f6874', transparent: true, opacity: .82 }))); water.renderOrder = 2; mapGroup.add(water);
+  const water = new THREE.Mesh(wg, greyUnseen(new THREE.MeshLambertMaterial({ color: '#3f6874', transparent: true, opacity: .82 }), 'water')); water.renderOrder = 2; mapGroup.add(water);
 
   // Buildings: one merged mesh of flat-shaded walls and roofs. Roofs are triangulated, so L-shapes work.
   const Pa: number[] = [], Na: number[] = [], Ca: number[] = [];
@@ -245,7 +264,7 @@ export function buildMap3D() {
   }
   for (const inside of [true, false]) {
     const list = M.trees.filter(t => inPlay(t[0], t[1]) === inside); if (!list.length) continue;
-    const tm = new THREE.InstancedMesh(inside ? MODELS.tree : MODELS.treeGrey, greyUnseen(new THREE.MeshLambertMaterial({ vertexColors: true })), list.length);
+    const tm = new THREE.InstancedMesh(inside ? MODELS.tree : MODELS.treeGrey, greyUnseen(new THREE.MeshLambertMaterial({ vertexColors: true }), 'sway'), list.length);
     list.forEach((t, i) => { const w = (1.3 + t[2] * .18) * 2, sh = .82 + ((t[0] * 7.31 + t[1] * 3.17) % 1) * .3; _q.setFromAxisAngle(_up, t[0]); _p.set(t[0] - W / 2, M.hAt(t[0], t[1]) - .1, t[1] - H / 2); _s.set(w, t[2] * 1.15, w); _m.compose(_p, _q, _s); tm.setMatrixAt(i, _m); _c.setRGB(sh, sh, sh); tm.setColorAt(i, _c); });
     tm.castShadow = inside; tm.receiveShadow = true; mapGroup.add(tm); xrayable.push(tm);
   }
@@ -424,4 +443,6 @@ export function update3D(V: View) {
   for (const br of M.bridges) if (br.group) br.group.visible = !(br.blown != null && (S.phase !== 'replay' || br.blown <= S.rt));
   updateStructs(V); updateDowns();
 }
-export function render() { renderer.render(scene, camera); }
+export function render() { timeU.value = performance.now() / 1000; renderer.render(scene, camera); }
+
+export const THREE_ = THREE; // developer checks only

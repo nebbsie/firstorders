@@ -194,3 +194,19 @@ table.cat td:first-child { color: var(--ink); white-space: nowrap; }
 .phasebar span { display: block; color: var(--gold); letter-spacing: .08em; margin-bottom: 4px; text-shadow: 0 1px 2px #000; }
 .phasebar .track { height: 6px; background: var(--track); border: 1px solid var(--edge); }
 .phasebar #pbFill { height: 100%; width: 0; background: var(--gold); }
+
+.roster { top: 44px; left: 8px; width: 330px; max-height: 32vh; overflow: auto; padding: 4px; display: flex; flex-direction: column; gap: 1px; background: rgba(24,25,29,.9); }
+.roster[hidden], .tut[hidden] { display: none; }
+.rhead { display: flex; justify-content: space-between; color: var(--gold); letter-spacing: .08em; padding: 2px 4px 4px; }
+.rrow { display: grid; grid-template-columns: 62px 62px 34px 18px 22px 1fr; align-items: center; gap: 5px; padding: 3px 4px; background: none; border: 1px solid transparent; color: var(--text); cursor: pointer; text-align: left; font: inherit; }
+.rrow:hover { background: var(--plate); }
+.rrow.on { border-color: var(--gold); background: var(--on); }
+.rrow b { font-weight: normal; color: var(--info); white-space: nowrap; overflow: hidden; }
+.rrow .rk { color: var(--muted); font-size: 10px; white-space: nowrap; overflow: hidden; }
+.rbar, .rmo { height: 5px; background: var(--track); border: 1px solid var(--edge-soft); }
+.rbar i, .rmo i { display: block; height: 100%; background: var(--soft); }
+.rn { text-align: right; color: var(--soft); }
+.rs { color: var(--soft); white-space: nowrap; overflow: hidden; text-align: right; }
+.rs.bad { color: var(--bad); }
+.tut { top: 44px; left: 50%; transform: translateX(-50%); width: min(430px, 60vw); border-color: var(--info); }
+.tut p { margin: 0; }

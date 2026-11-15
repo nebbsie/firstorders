@@ -80,9 +80,9 @@ export function hostTick(now: number) {
   const sk = S.structs.map((s: any) => s.id + ':' + (s.placedAt ?? '')).join(',');
   const ownKey = S.rec ? S.rec.own.length : 0;
   const snap: any = {
-    t: 'snap', phase: S.phase, round: S.round, time: S.t, phaseStart: S.phaseStart, speed: S.speed, paused: S.paused, bank: S.bank, ready: S.ready || {}, speedReq: S.speedReq || {},
+    t: 'snap', phase: S.phase, round: S.round, time: S.t, phaseStart: S.phaseStart, speed: S.speed, paused: S.paused, bank: S.bank, ready: S.ready || {}, speedReq: S.speedReq || {}, maxPhases: S.maxPhases || 0, goal: S.goal || 'hq',
     teams: S.teams.map((t: any) => ({ lost: t.lost, hqBy: t.hqBy, hqHold: t.hqHold, label: t.per ? t.per.label : '', human: t.human })),
-    f, b, squads: S.squads.map((q: any) => ({ id: q.id, team: q.team, kind: q.kind, call: q.call, x: q.x, y: q.y, pos: q.pos, members: q.members, state: q.state, tx: q.tx, ty: q.ty, order: q.team === g ? q.order : null, cur: q.team === g ? q.cur : null, round: q.round, live: q.live, temp: q.temp, bld: q.bld, status: q.status, alive: q.alive, stance: q.stance, fallback: q.fallback, fellBack: q.fellBack, via: q.team === g ? q.via : null, goal: q.team === g ? q.goal : null, readyRound: q.readyRound })),
+    f, b, squads: S.squads.map((q: any) => ({ id: q.id, team: q.team, kind: q.kind, call: q.call, x: q.x, y: q.y, pos: q.pos, members: q.members, state: q.state, tx: q.tx, ty: q.ty, order: q.team === g ? q.order : null, cur: q.team === g ? q.cur : null, round: q.round, live: q.live, temp: q.temp, bld: q.bld, status: q.status, alive: q.alive, morale: q.morale, broken: q.broken, stance: q.stance, fallback: q.fallback, fellBack: q.fellBack, via: q.team === g ? q.via : null, goal: q.team === g ? q.goal : null, readyRound: q.readyRound })),
     supports: S.supports.filter((s: any) => s.team === g).map((s: any) => ({ ...s })),
     shells: S.shells, bombs: S.bombs, fx: S.fx, tracers: S.tracers.map((t: any) => ({ ...t })), planes: S.planes.map((p: any) => ({ kind: p.kind, team: p.team, ax: p.ax, ay: p.ay, ux: p.ux, uy: p.uy, len: p.len, s: p.s })), craters: S.craters,
     vis: S.vis[g], visG: S.visG ? S.visG[g] : null, seenG: S.seenG ? S.seenG[g] : null,
@@ -108,7 +108,7 @@ export function guestLoaded() { send({ t: 'loaded' }); }
 function applySnap(m: any) {
   S.lastSnap = performance.now();
   const was = S.phase, wasRound = S.round, wasLost = S.teams.map((t: any) => t.lost);
-  Object.assign(S, { phase: m.phase, round: m.round, t: m.time, phaseStart: m.phaseStart, speed: m.speed, paused: m.paused, bank: m.bank, ready: m.ready, speedReq: m.speedReq });
+  Object.assign(S, { phase: m.phase, round: m.round, t: m.time, phaseStart: m.phaseStart, speed: m.speed, paused: m.paused, bank: m.bank, ready: m.ready, speedReq: m.speedReq, maxPhases: m.maxPhases, goal: m.goal });
   m.teams.forEach((t: any, i: number) => { const T = S.teams[i]; if (!T) return; T.lost = t.lost; T.hqBy = t.hqBy; T.hqHold = t.hqHold; T.human = t.human; T.per = { label: t.label }; });
   const n = m.f.length / 4; S.units.length = n;
   for (let i = 0; i < n; i++) {
