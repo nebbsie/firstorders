@@ -11,6 +11,9 @@ export const S: any = {
   // Fog of war: per team, which units it sees now and where it last saw enemy units.
   fog: true, vis: [], known: [], contactT: [],
 };
+// Network: 'solo' against the AI, 'host' runs the battle for a friend, 'guest' shows the host's battle.
+// me is the team this screen plays.
+export const NET: { mode: 'solo' | 'host' | 'guest'; me: number; send: (m: any) => void } = { mode: 'solo', me: 0, send: () => { } };
 export let M: MapData = null as any;
 export function setMap(m: MapData) { M = m; }
 export const OWN = new Int8Array(IW * IH);

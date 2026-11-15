@@ -1,5 +1,5 @@
 import { W, H, C, GW, GH, IW, IH, IC, DT, BUDGET, COST, PHASES, PHASE_LEN, HQ_HOLD, K, COV, KIND_NAME, SPY_RADIUS, T_ROAD, T_BRIDGE, T_WOOD, T_BUILD, T_WATER, clamp, grid } from './config';
-import { S, M, OWN, VIS0, SEEN0, hooks } from './state';
+import { S, M, OWN, VIS0, SEEN0, NET, hooks } from './state';
 import { cellOf, unitH, passable, nudge, opRange } from './world';
 import { aliveMembers, spentNow, sqName, nextCall, rollPersonalities, initOwn } from './plan';
 import { aiPlan } from './ai';
@@ -14,10 +14,10 @@ export const income = (t: number) => S.teams[t].lost ? 0 : 200 + Math.round((S.t
 export function newBattle() {
   if (M) { M.terr.set(M.terr0); M.deck.set(M.deck0); M.bridges.forEach(b => b.blown = null); }
   Object.assign(S, { phase: 'plan', round: 1, t: 0, units: [], shells: [], bombs: [], fx: [], tracers: [], craters: [], planes: [], cover: null, rec: null, result: null, log: [], stats: [], history: [], callN: [], vis: [], known: [], contactT: [], squads: [], structs: [], supports: [], sel: null, selMany: [] });
-  S.bank = S.teams.map(() => BUDGET); SEEN0.fill(0);
+  S.bank = S.teams.map(() => BUDGET); SEEN0.fill(0); S.visG = null;
   for (const t of S.teams) { t.lost = false; t.hqHold = 0; t.hqBy = -1; } S.hqKnown = S.teams.map((t: any) => new Set([t.id]));
   rollPersonalities(); initOwn(); countGround(); updateVision();
-  for (let t = 1; t < S.nTeams; t++) aiPlan(t);
+  for (const t of S.teams) if (!t.human) aiPlan(t.id);
   hooks.ground(); hooks.sync();
 }
 
@@ -61,7 +61,7 @@ function endRound() {
   for (const t of S.teams) S.bank[t.id] += income(t.id);
   S.round++; S.phase = 'plan'; log(-1, `Phase ${S.round - 1} over`);
   updateVision();
-  for (let t = 1; t < S.nTeams; t++) if (!S.teams[t].lost) aiPlan(t);
+  for (const t of S.teams) if (!t.human && !t.lost) aiPlan(t.id);
   hooks.banner(`PHASE ${S.round - 1} OVER`, 'Briefing: reinforce and give new orders'); S.tool = 'select'; S.sel = null; hooks.sync();
 }
 
@@ -235,7 +235,7 @@ function recFrame() {
 const sightOf = (u: any) => u.kind === 'op' ? opRange(u) : K[u.kind].sight + (u.gar ? 15 : 0);
 function spyPos(p: any) { return p.kind === 'spy' && p.s > -10 && p.s < p.len + 10 ? [p.ax + p.ux * p.s, p.ay + p.uy * p.s] : null; }
 export function updateVision() {
-  const U = S.units, N = S.teams.length, newContacts = new Map<string, number>(); let contactAt = '';
+  const U = S.units, N = S.teams.length, newContacts = S.teams.map(() => new Map<string, number>()), contactAt: string[] = S.teams.map(() => '');
   for (let t = 0; t < N; t++) {
     const vis = new Uint8Array(U.length), own = U.filter((u: any) => u.alive && u.team === t && !(u.drop > 0));
     const spies = S.planes.filter((p: any) => p.team === t).map((p: any) => [p, spyPos(p)]).filter((q: any) => q[1]);
@@ -250,10 +250,10 @@ export function updateVision() {
       }
       if (!seen) continue;
       vis[j] = 1;
-      if (t === 0 && S.phase === 'battle') {
-        const sq = S.squads.find((s: any) => s.id === e.sq), last = S.contactT[0].get(e.sq);
-        if (sq && (last == null || S.t - last > 30)) { const k = KIND_NAME[sq.kind] || sq.kind; newContacts.set(k, (newContacts.get(k) || 0) + 1); if (!contactAt) contactAt = grid(e.x, e.y); }
-        S.contactT[0].set(e.sq, S.t);
+      if (S.teams[t].human && S.phase === 'battle') {
+        const sq = S.squads.find((s: any) => s.id === e.sq), last = S.contactT[t].get(e.sq);
+        if (sq && (last == null || S.t - last > 30)) { const k = KIND_NAME[sq.kind] || sq.kind; newContacts[t].set(k, (newContacts[t].get(k) || 0) + 1); if (!contactAt[t]) contactAt[t] = grid(e.x, e.y); }
+        S.contactT[t].set(e.sq, S.t);
       }
       S.known[t].set(j, { x: e.x, y: e.y, kind: e.kind, team: e.team, t: S.t, i: j });
     }
@@ -264,22 +264,27 @@ export function updateVision() {
     if (o.id === t.id || o.lost || S.hqKnown[t.id].has(o.id)) continue; const hx = o.zone.x, hy = o.zone.y;
     const seen = U.some((u: any) => u.alive && u.team === t.id && !(u.drop > 0) && Math.hypot(u.x - hx, u.y - hy) < sightOf(u) && los(u.x, u.y, hx, hy))
       || S.planes.some((p: any) => { const sp = p.team === t.id && spyPos(p); return sp && Math.hypot(sp[0] - hx, sp[1] - hy) < SPY_RADIUS; });
-    if (seen) { S.hqKnown[t.id].add(o.id); if (t.id === 0) log(0, `${o.name} HQ found at ${grid(hx, hy)}`); }
+    if (seen) { S.hqKnown[t.id].add(o.id); if (t.human) log(t.id, `${o.name} HQ found at ${grid(hx, hy)}`); }
   }
   // One radio line per sighting pass: "Contact near G2: 3 Platoon, MG nest".
-  if (newContacts.size) log(0, `Contact near ${contactAt}: ${[...newContacts].map(([k, n]) => n > 1 ? `${n} ${k}` : k).join(', ')}`);
+  newContacts.forEach((m, t) => { if (m.size) log(t, `Contact near ${contactAt[t]}: ${[...m].map(([k, n]) => n > 1 ? `${n} ${k}` : k).join(', ')}`); });
   // The player's view of the ground: what their troops and planes can see, and their own ground.
-  VIS0.fill(0);
-  for (let i = 0; i < OWN.length; i++) if (OWN[i] === 0) VIS0[i] = 1;
-  const mark = (x: number, y: number, R: number) => {
-    const r = R / IC, cx = x / IC, cy = y / IC;
-    for (let gy = Math.max(0, Math.floor(cy - r)); gy <= Math.min(IH - 1, Math.ceil(cy + r)); gy++)
-      for (let gx = Math.max(0, Math.floor(cx - r)); gx <= Math.min(IW - 1, Math.ceil(cx + r)); gx++)
-        if ((gx + .5 - cx) ** 2 + (gy + .5 - cy) ** 2 <= r * r) VIS0[gy * IW + gx] = 1;
-  };
-  for (const u of U) if (u.alive && u.team === 0 && !(u.drop > 0)) mark(u.x, u.y, sightOf(u));
-  for (const p of S.planes) { const sp = p.team === 0 && spyPos(p); if (sp) mark(sp[0], sp[1], SPY_RADIUS); }
-  for (let i = 0; i < VIS0.length; i++) if (VIS0[i]) SEEN0[i] = 1;
+  // Each team's view of the ground: what its troops and planes see now, plus its own ground.
+  if (!S.visG || S.visG.length !== N) { S.visG = S.teams.map(() => new Uint8Array(IW * IH)); S.seenG = S.teams.map(() => new Uint8Array(IW * IH)); }
+  for (let t = 0; t < N; t++) {
+    const g = S.visG[t], seen = S.seenG[t]; g.fill(0);
+    for (let i = 0; i < OWN.length; i++) if (OWN[i] === t) g[i] = 1;
+    const mark = (x: number, y: number, R: number) => {
+      const r = R / IC, cx = x / IC, cy = y / IC;
+      for (let gy = Math.max(0, Math.floor(cy - r)); gy <= Math.min(IH - 1, Math.ceil(cy + r)); gy++)
+        for (let gx = Math.max(0, Math.floor(cx - r)); gx <= Math.min(IW - 1, Math.ceil(cx + r)); gx++)
+          if ((gx + .5 - cx) ** 2 + (gy + .5 - cy) ** 2 <= r * r) g[gy * IW + gx] = 1;
+    };
+    for (const u of U) if (u.alive && u.team === t && !(u.drop > 0)) mark(u.x, u.y, sightOf(u));
+    for (const p of S.planes) { const sp = p.team === t && spyPos(p); if (sp) mark(sp[0], sp[1], SPY_RADIUS); }
+    for (let i = 0; i < g.length; i++) if (g[i]) seen[i] = 1;
+  }
+  VIS0.set(S.visG[NET.me]); SEEN0.set(S.seenG[NET.me]);
   hooks.vision();
 }
 
@@ -344,7 +349,7 @@ function checkHQs() {
     if (S.rec) S.rec.own.push({ t: S.t, o: OWN.slice() }); countGround(); hooks.ground();
     log(-1, `${by.name} took the ${t.name} HQ. ${t.name} surrenders.`); S.rec.moments.push({ t: S.t, x: t.zone.x, y: t.zone.y, big: true }); hooks.banner(`${t.name} HQ TAKEN`, `${by.name} holds it`);
     const left = S.teams.filter((x: any) => !x.lost);
-    if (left.length <= 1 || t.id === 0) { snapshotHistory(); finish(false, t.id === 0 ? by.id : left[0].id); return; }
+    if (left.length <= 1 || (t.human && NET.mode === 'solo')) { snapshotHistory(); finish(false, left.length <= 1 ? left[0].id : by.id); return; }
   }
 }
 function checkEnd() { }

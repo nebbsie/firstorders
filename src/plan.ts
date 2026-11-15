@@ -1,3 +1,4 @@
+import { NET } from './state';
 import { C, GW, GH, COST, KIND_NAME, TEAM_COLORS, TEAM_NAMES, CALLSIGNS, PERS, T_BRIDGE, CX, CY, PLAY_R, mulberry32 } from './config';
 import { S, M, OWN } from './state';
 import { cellOf, passTerr, nudge, canDeploy, cellPos } from './world';
@@ -14,10 +15,10 @@ export function makeTeams() {
       if (bad < all * .35) break;
       x += (CX - x) * .12; y += (CY - y) * .12;
     }
-    S.teams.push({ id: i, name: TEAM_NAMES[i], color: TEAM_COLORS[i], ai: i > 0, zone: { x, y, r } });
+    S.teams.push({ id: i, name: TEAM_NAMES[i], color: TEAM_COLORS[i], human: i === 0 || (NET.mode !== 'solo' && i === 1), zone: { x, y, r } });
   }
 }
-export function rollPersonalities() { for (const t of S.teams) { t.rng = mulberry32((Math.random() * 1e9) | 0); t.per = t.id === 0 ? PERS[1] : PERS[Math.floor(Math.random() * PERS.length)]; } }
+export function rollPersonalities() { for (const t of S.teams) { t.rng = mulberry32((Math.random() * 1e9) | 0); t.per = t.human ? PERS[1] : PERS[Math.floor(Math.random() * PERS.length)]; } }
 export function initOwn() { OWN.fill(-1); for (let i = 0; i < OWN.length; i++) { const [x, y] = cellPos(i); for (const t of S.teams) if (Math.hypot(x - t.zone.x, y - t.zone.y) <= t.zone.r) OWN[i] = t.id; } }
 
 export function nextCall(team: number) { const n = S.callN[team] = (S.callN[team] || 0) + 1; return CALLSIGNS[(n - 1) % CALLSIGNS.length]; }
@@ -73,5 +74,5 @@ export function clearMine(team: number) {
   S.squads = S.squads.filter((s: any) => !mine(s)); S.structs = S.structs.filter((s: any) => !mine(s)); S.supports = S.supports.filter((s: any) => !mine(s));
   S.squads.forEach((s: any) => { if (s.team === team) s.order = null; });
 }
-export const canRemove = (it: any) => S.phase === 'plan' && it.team === 0 && it.round === S.round && !it.members && !it.live;
+export const canRemove = (it: any) => S.phase === 'plan' && it.team === NET.me && it.round === S.round && !it.members && !it.live;
 export function removeItem(it: any) { for (const k of ['squads', 'structs', 'supports']) { const i = S[k].indexOf(it); if (i >= 0) S[k].splice(i, 1); } }

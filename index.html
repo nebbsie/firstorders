@@ -78,13 +78,16 @@
     <div class="panel menubox">
       <div class="title">FIRST ORDERS</div>
       <p class="hint">Battles on real places. Plan, watch, reinforce, replay.</p>
-      <h3>FIGHT IN A REAL PLACE</h3>
-      <div class="searchrow"><input id="mQuery" class="input" placeholder="Town, street or postcode" autocomplete="off"><button class="btn" id="mSearch">SEARCH</button></div>
-      <div class="results" id="mResults"></div>
+      <h3>PLAY A FRIEND</h3>
+      <div class="row" style="margin-top:0"><button class="btn side guestonly" id="mHost" title="Get a code to send to your friend, then pick the map">HOST A GAME</button><input id="mCode" class="input hostonly" placeholder="CODE" maxlength="5" autocomplete="off" style="max-width:90px;flex:none;text-transform:uppercase"><button class="btn hostonly" id="mJoin">JOIN</button><button class="btn" id="mSolo" title="Play against the AI instead">VS AI</button></div>
+      <div class="hint" id="mNet">Or play against the AI. Your friend needs the same website.</div>
+      <h3 class="hostonly">FIGHT IN A REAL PLACE</h3>
+      <div class="searchrow hostonly"><input id="mQuery" class="input" placeholder="Town, street or postcode" autocomplete="off"><button class="btn" id="mSearch">SEARCH</button></div>
+      <div class="results hostonly" id="mResults"></div>
       <div class="hint" id="mStatus">The battle is a 1 km circle. Each place downloads once, then it is kept in this browser.</div>
-      <h3>TEAMS</h3>
-      <div class="row" id="mTeams"><button class="btn" data-n="2">2</button><button class="btn" data-n="3">3</button><button class="btn" data-n="4">4</button><button class="btn" data-n="6">6</button></div>
-      <div class="row menuact"><button class="btn go" id="mImport" disabled>IMPORT AND PLAY</button><button class="btn side" id="mSample">PLAY SAMPLE TOWN</button></div>
+      <h3 class="hostonly">TEAMS</h3>
+      <div class="row hostonly" id="mTeams"><button class="btn" data-n="2">2</button><button class="btn" data-n="3">3</button><button class="btn" data-n="4">4</button><button class="btn" data-n="6">6</button></div>
+      <div class="row menuact hostonly"><button class="btn go mapbtn" id="mImport" disabled>IMPORT AND PLAY</button><button class="btn side mapbtn" id="mSample">PLAY SAMPLE TOWN</button></div>
       <p class="note">Map data © OpenStreetMap contributors. Elevation: AWS Terrain Tiles.</p>
     </div>
   </div>

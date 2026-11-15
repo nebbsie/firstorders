@@ -1,3 +1,4 @@
+import { NET } from './state';
 import { clamp } from './config';
 import { S, OWN, VIS0, SEEN0 } from './state';
 import { cam } from './render/camera';
@@ -7,11 +8,11 @@ import { paintTerritory, paintFog, type View } from './render/scene';
 export function liveView(): View {
   const fogOn = S.fog && (S.phase === 'plan' || S.phase === 'battle');
   const ghosts: any[] = [];
-  if (fogOn && S.known[0]) {
-    const v0 = S.vis[0];
-    for (const g of S.known[0].values()) { if (v0 && v0[g.i]) continue; if (S.phase === 'plan' || S.t - g.t < 20) ghosts.push(g); }
+  if (fogOn && S.known[NET.me]) {
+    const v0 = S.vis[NET.me];
+    for (const g of S.known[NET.me].values()) { if (v0 && v0[g.i]) continue; if (S.phase === 'plan' || S.t - g.t < 20) ghosts.push(g); }
   }
-  return { units: S.units, tracers: S.tracers, fx: S.fx, craters: S.craters, shells: S.shells, planes: S.planes, bombs: S.bombs, fogOn, isVis: u => !!(S.vis[0] && S.vis[0][u.i]), ghosts, seen: SEEN0, vis: VIS0 };
+  return { units: S.units, tracers: S.tracers, fx: S.fx, craters: S.craters, shells: S.shells, planes: S.planes, bombs: S.bombs, fogOn, isVis: u => !!(S.vis[NET.me] && S.vis[NET.me][u.i]), ghosts, seen: SEEN0, vis: VIS0 };
 }
 
 function lbT(arr: any[], t: number, key?: boolean) { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if ((key ? arr[m].t : arr[m][0]) < t) lo = m + 1; else hi = m; } return lo; }

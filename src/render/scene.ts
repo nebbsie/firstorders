@@ -1,3 +1,4 @@
+import { NET } from '../state';
 import * as THREE from 'three';
 import { W, H, C, GW, GH, IW, IH, IC, TRGB, clamp, inPlay } from '../config';
 import { S, M, OWN } from '../state';
@@ -38,8 +39,8 @@ export function initRenderer(canvas: HTMLCanvasElement) {
 export function paintTerritory(seen: Uint8Array | null) {
   const img = ictx.createImageData(IW, IH), px = img.data;
   for (let i = 0; i < IW * IH; i++) {
-    const o = OWN[i]; if (o < 0 || (seen && o !== 0 && !seen[i])) continue;
-    const c = TRGB[o]; px[i * 4] = c[0] * 255; px[i * 4 + 1] = c[1] * 255; px[i * 4 + 2] = c[2] * 255; px[i * 4 + 3] = viewOpts.area ? 175 : o === 0 ? 92 : 80;
+    const o = OWN[i]; if (o < 0 || (seen && o !== NET.me && !seen[i])) continue;
+    const c = TRGB[o]; px[i * 4] = c[0] * 255; px[i * 4 + 1] = c[1] * 255; px[i * 4 + 2] = c[2] * 255; px[i * 4 + 3] = viewOpts.area ? 175 : o === NET.me ? 92 : 80;
   }
   ictx.putImageData(img, 0, 0); terrTex.needsUpdate = true;
 }
@@ -159,9 +160,9 @@ let structKey = '';
 const cellSeen = (seen: Uint8Array, x: number, y: number) => seen[Math.floor(clamp(y, 0, H - .01) / IC) * IW + Math.floor(clamp(x, 0, W - .01) / IC)];
 export function visibleStruct(s: any, V?: View) {
   if (S.phase === 'replay') return s.placedAt != null && s.placedAt <= S.rt;
-  if (S.phase === 'plan' && s.team !== 0 && s.round >= S.round) return false;
+  if (S.phase === 'plan' && s.team !== NET.me && s.round >= S.round) return false;
   if (S.phase !== 'plan' && s.placedAt == null) return false;
-  if (V && V.fogOn && s.team !== 0) return s.cells.some((c: number) => cellSeen(V.seen, (c % GW) * C + 1, Math.floor(c / GW) * C + 1));
+  if (V && V.fogOn && s.team !== NET.me) return s.cells.some((c: number) => cellSeen(V.seen, (c % GW) * C + 1, Math.floor(c / GW) * C + 1));
   return true;
 }
 function updateStructs(V: View) {
@@ -197,16 +198,16 @@ export function update3D(V: View) {
   for (const u of V.units) {
     const c = TRGB[u.team];
     if (u.alive) {
-      if (u.team !== 0 && V.fogOn && !V.isVis(u)) continue;
+      if (u.team !== NET.me && V.fogOn && !V.isVis(u)) continue;
       putU(u.x, u.y, unitH(u.x, u.y) + .9 + (u.drop > 0 ? u.drop * 14 : 0), c, 1);
       if (u.kind !== 'rifle' && u.kind !== 'sniper') emp(u.kind, u.x, u.y, c, u.hd);
     } else if (nb < 5000) {
-      if (u.team !== 0 && V.fogOn && !cellSeen(V.seen, u.x, u.y)) continue;
+      if (u.team !== NET.me && V.fogOn && !cellSeen(V.seen, u.x, u.y)) continue;
       bp[nb * 3] = u.x - W / 2; bp[nb * 3 + 1] = unitH(u.x, u.y) + .2; bp[nb * 3 + 2] = u.y - H / 2; bc[nb * 3] = c[0] * .45; bc[nb * 3 + 1] = c[1] * .45; bc[nb * 3 + 2] = c[2] * .45; nb++;
     }
   }
   if (plan) for (const s of S.squads) {
-    if (s.members || s.team !== 0) continue; const c = TRGB[0];
+    if (s.members || s.team !== NET.me) continue; const c = TRGB[NET.me];
     for (const p of s.pos) putU(p[0], p[1], unitH(p[0], p[1]) + .9, c, .75);
     if (s.kind !== 'rifles' && s.kind !== 'sniper' && s.kind !== 'garrison') emp(s.kind, s.pos[0][0], s.pos[0][1], c, Math.atan2(-(H / 2 - s.pos[0][1]), W / 2 - s.pos[0][0]));
   }
@@ -215,7 +216,7 @@ export function update3D(V: View) {
   for (const [p, c] of [[ptUnits, n], [ptBodies, nb], [ptGhosts, ng]] as [any, number][]) { p.geometry.setDrawRange(0, c); p.geometry.attributes.position.needsUpdate = true; p.geometry.attributes.color.needsUpdate = true; }
   // Each HQ: a bunker with a flag in the team colour. Enemy HQs show once your side has found them.
   for (const t of S.teams) {
-    if (t.id !== 0 && V.fogOn && !(S.hqKnown && S.hqKnown[0] && S.hqKnown[0].has(t.id))) continue;
+    if (t.id !== NET.me && V.fogOn && !(S.hqKnown && S.hqKnown[NET.me] && S.hqKnown[NET.me].has(t.id))) continue;
     const x = t.zone.x, y = t.zone.y, h = M.hAt(x, y), fc = TRGB[t.lost && t.hqBy >= 0 ? t.hqBy : t.id];
     setI(mModel.hq, nModel.hq++, x, y, h, 1, 1, 1, .3, [1, 1, 1]);
     setI(mModel.flag, nModel.flag++, x + 2.4 * Math.cos(.3) + 1.8 * Math.sin(.3), y - 2.4 * Math.sin(.3) + 1.8 * Math.cos(.3), h + 8.4, 1, 1, 1, .3, fc);
@@ -230,7 +231,7 @@ export function update3D(V: View) {
     lc[o] = c[0]; lc[o + 1] = c[1]; lc[o + 2] = c[2]; const d = c2 || c; lc[o + 3] = d[0]; lc[o + 4] = d[1]; lc[o + 5] = d[2]; L++;
   };
   for (const t of V.tracers) {
-    if (V.fogOn && t.team !== 0 && !cellSeen(V.vis, t.x0, t.y0) && !cellSeen(V.vis, t.x1, t.y1)) continue;
+    if (V.fogOn && t.team !== NET.me && !cellSeen(V.vis, t.x0, t.y0) && !cellSeen(V.vis, t.x1, t.y1)) continue;
     const c = TRGB[t.team]; seg(t.x0, t.y0, unitH(t.x0, t.y0) + 1.2, t.x1, t.y1, unitH(t.x1, t.y1) + 1, [c[0] * .6 + .4, c[1] * .6 + .4, c[2] * .6 + .4]);
   }
   const hp = ptHeads.geometry.attributes.position.array, hc = ptHeads.geometry.attributes.color.array; let nh = 0;
