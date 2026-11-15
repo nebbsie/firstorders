@@ -38,8 +38,10 @@ function openTools(g: string) {
   openGroup = openGroup === g ? '' : g; const panel = $('#toolpanel');
   document.querySelectorAll('.cmd').forEach((b: any) => b.classList.toggle('on', b.dataset.g === openGroup));
   if (!openGroup) { panel.hidden = true; setTool('select'); return; }
-  const grp = TOOLS.find(t => t.g === g);
-  panel.innerHTML = `<h3>${grp.g}</h3><div class="tiles">${grp.items.map(t => `<button class="btn tile" data-tool="${t[0]}" ><span>${t[1]}</span><em>${COST[t[0]] ? (t[2] === 'line' && t[0] !== 'air' && t[0] !== 'spy' ? COST[t[0]] + '/c' : COST[t[0]]) : ''}</em></button>`).join('')}</div>`;
+  // BUILD shows every group you can buy from, side by side; ORDERS shows the order tools.
+  const groups = g === 'BUILD' ? TOOLS.filter(t => t.g !== 'ORDERS') : TOOLS.filter(t => t.g === g);
+  const tile = (t: any) => `<button class="btn tile" data-tool="${t[0]}"><span>${t[1]}</span><em>${COST[t[0]] ? (t[2] === 'line' && t[0] !== 'air' && t[0] !== 'spy' ? COST[t[0]] + '/c' : COST[t[0]]) : ''}</em></button>`;
+  panel.innerHTML = `<div class="groups">${groups.map(grp => `<div><h3>${grp.g}</h3><div class="tiles">${grp.items.map(tile).join('')}</div></div>`).join('')}</div>`;
   const btn = document.querySelector(`.cmd[data-g="${g}"]`) as HTMLElement; panel.hidden = false; panel.style.left = Math.max(10, btn.getBoundingClientRect().left) + 'px';
   panel.querySelectorAll('.tile').forEach((b: any) => {
     b.onclick = () => setTool(S.tool === b.dataset.tool ? 'select' : b.dataset.tool);
@@ -48,15 +50,15 @@ function openTools(g: string) {
   setTool(S.tool);
 }
 export function closeTools() { if (openGroup) openTools(openGroup); }
-// Right-hand window while hovering a tool tile: what it is, where it works, what beats it.
+// Window beside the tool panel while hovering a tile: what it is and where it works.
 function showInfo(id: string, tile: HTMLElement) {
   const def = TOOLS.flatMap(g => g.items).find(t => t[0] === id), inf = INFO[id]; if (!def || !inf) return;
-  $('#info').innerHTML = `<div class="ph"><span>${def[1]}</span><span>${COST[id] ? COST[id] + (def[2] === 'line' && id !== 'air' && id !== 'spy' ? ' / CELL' : '') : ''}</span></div><div class="pb"><p class="hint">${inf[0]}</p>${inf[1] ? `<dl class="kv" style="margin-top:8px"><dt>Best</dt><dd>${inf[1]}</dd><dt>Beaten by</dt><dd>${inf[2]}</dd></dl>` : ''}<p class="note">${def[2] === 'line' ? 'Drag a line.' : def[2] === 'order' ? 'Select units first.' : ['spy', 'barrage', 'para', 'demo', 'air'].includes(id) ? 'Anywhere in the circle.' : 'On your own ground.'}</p></div>`;
+  $('#info').innerHTML = `<div class="ph"><span>${def[1]}</span><span>${COST[id] ? COST[id] + (def[2] === 'line' && id !== 'air' && id !== 'spy' ? ' / CELL' : '') : ''}</span></div><div class="pb"><p class="hint">${inf[0]}</p>${inf[1] ? `<dl class="kv" style="margin-top:8px"><dt>Best</dt><dd>${inf[1]}</dd></dl>` : ''}<p class="note">${def[2] === 'line' ? 'Drag a line.' : def[2] === 'order' ? 'Select units first.' : ['spy', 'barrage', 'para', 'demo', 'air'].includes(id) ? 'Anywhere in the circle.' : 'On your own ground.'}</p></div>`;
   // A fixed spot just right of the tool panel, its bottom level with the panel's bottom.
   const el = $('#info'); el.hidden = false; el.style.left = $('#toolpanel').getBoundingClientRect().right + 6 + 'px';
 }
 function buildCommands() {
-  $('#cmds').innerHTML = TOOLS.map(t => `<button class="btn cmd" data-g="${t.g}">${t.g}</button>`).join('');
+  $('#cmds').innerHTML = ['BUILD', 'ORDERS'].map(g => `<button class="btn cmd" data-g="${g}">${g}</button>`).join('');
   document.querySelectorAll('.cmd').forEach((b: any) => b.onclick = () => openTools(b.dataset.g));
 }
 

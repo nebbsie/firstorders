@@ -55,7 +55,7 @@ export const TOOLS: { g: string; items: [string, string, ToolMode, string][] }[]
     ['barrage', 'ARTILLERY', 'point', 'Click anywhere. Twelve shells land at the time you set.'],
     ['air', 'AIR STRIKE', 'line', 'Drag the bomb run anywhere.'],
     ['para', 'PARADROP', 'point', 'Click anywhere. Sixteen riflemen land and hold the ground.'],
-    ['demo', 'DEMOLISH', 'point', 'Click a bridge or a building on your ground. It blows at the time you set.']] },
+    ['demo', 'DEMOLISH', 'point', 'Click a bridge or a building anywhere. It blows at the time you set.']] },
   { g: 'ORDERS', items: [
     ['attack', 'ATTACK', 'order', 'With platoons, snipers or tanks selected, click the ground to take. Or drag from one of them.'],
     ['defend', 'DEFEND', 'order', 'With platoons, snipers or tanks selected, click the ground to hold. Infantry use trenches there.']] },
@@ -82,7 +82,7 @@ export const INFO: Record<string, [string, string, string]> = {
   barrage: ['Twelve shells into a circle at the time you set. Hits everyone, your troops too.', 'Enemy trenches, the HQ before an attack', 'Spread-out troops'],
   air: ['A bomb run along the line you draw.', 'Columns on roads, dense groups', 'Spread-out troops'],
   para: ['Sixteen riflemen land at a point and hold the ground there.', 'Behind the enemy, near their HQ', 'MG nests'],
-  demo: ['Blows up a bridge with one end on your ground, or a building on your ground, at the time you set.', 'Bridges that lead to you, buildings that block your guns', 'Other bridges'],
+  demo: ['Engineers blow up a bridge or a building at the time you set.', 'Bridges the enemy needs, buildings they hold', ''],
   attack: ['Selected units move to the ground you click and take it.', '', ''],
   defend: ['Selected units hold the ground you click. Infantry use trenches there.', '', ''],
 };
