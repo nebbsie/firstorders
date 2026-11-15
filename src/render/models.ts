@@ -56,7 +56,6 @@ export const MODELS: Record<string, THREE.BufferGeometry> = {
   hq: build([
     [box(2.4, .5, 2.4), CONC, [0, .25, 0]], [box(1.6, .5, 1.6), '#9a978d', [0, .75, 0]],
     [cyl(.12, .16, 12, 6), '#d8d6cf', [0, 6.5, 0]], [cyl(.28, .28, .28, 8), '#c9a13a', [0, 12.6, 0]],
-    ...sandRing(3.2, 14, .5),
   ]),
   flag: build([[box(3.6, 2.2, .1), '#ffffff', [1.8, 0, 0]], [box(.2, 2.2, .14), '#ffffff', [3.55, 0, 0]]]),
 };

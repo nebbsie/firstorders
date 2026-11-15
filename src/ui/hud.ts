@@ -19,6 +19,7 @@ export function tickHud(dt: number) {
   if (toastT > 0) { toastT -= dt; if (toastT <= 0) $('#toast').hidden = true; }
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) $('#banner').hidden = true; }
   quickBar();
+  const fx = $('#fpvExit'); fx.hidden = S.fpv == null; fx.onclick = () => { S.fpv = null; renderInspector(); };
 }
 // Quick orders: a small bar that floats above the selected platoons.
 function quickBar() {
@@ -120,7 +121,7 @@ export function renderInspector() {
     h = `<dl class="kv"><dt>Team</dt><dd style="color:${col}">${S.teams[it.team].name}</dd><dt>Grid</dt><dd>${c ? grid(c[0], c[1]) : '-'}</dd><dt>Strength</dt><dd>${alive} / ${it.pos.length}</dd><dt>Now</dt><dd>${doing}</dd>${S.phase === 'plan' && it.team === NET.me ? `<dt>Next phase</dt><dd>${next}</dd>` : ''}${it.members ? `<dt>Kills</dt><dd>${kills}</dd>` : `<dt>Cost</dt><dd>${itemCost(it)}</dd>`}</dl>`;
     if (HINT[it.kind]) h += `<p class="hint" style="margin-top:8px">${HINT[it.kind]}</p>`;
     const mover = MOVERS.includes(it.kind);
-    if (it.team === NET.me && it.members && MOVERS.includes(it.kind) && S.phase !== 'replay') h += `<div class="row"><button class="btn" id="iFpv">FIRST PERSON</button></div>`;
+    if (it.team === NET.me && it.members && MOVERS.includes(it.kind) && S.phase !== 'replay') h += `<div class="row"><button class="btn${S.fpv === it.id ? ' on' : ''}" id="iFpv">${S.fpv === it.id ? 'LEAVE FIRST PERSON' : 'FIRST PERSON'}</button></div>`;
     if (S.phase === 'plan' && it.team === NET.me) h += `<div class="row">${mover ? '<button class="btn" id="iAtk">ATTACK</button><button class="btn" id="iDef">DEFEND</button>' : ''}${it.kind === 'engineers' ? '<button class="btn" id="iDemo">DEMOLISH</button>' : ''}${it.order ? '<button class="btn" id="iClear">CLEAR ORDER</button>' : ''}${canRemove(it) ? '<button class="btn stop" id="iDel">REMOVE</button>' : ''}</div>`;
   } else if (it && it.building) {
     const bd = it.building, T = BTYPES[bd.btype || 'house'];
@@ -138,7 +139,7 @@ export function renderInspector() {
   body.innerHTML = h;
   const b = (id: string, f: () => void) => { const x = body.querySelector(id) as HTMLElement; if (x) x.onclick = f; };
   b('#iDel', () => { actRemove(it.id); setSel(null); });
-  b('#iFpv', () => { S.fpv = it.id; toast('First person. Right drag to look round. Esc or WASD to leave.'); });
+  b('#iFpv', () => { if (S.fpv === it.id) { S.fpv = null; renderInspector(); return; } S.fpv = it.id; toast('First person. Right drag to look round. Esc, WASD or the button to leave.'); renderInspector(); });
   b('#iClear', () => { actOrders(S.selMany.map((s: any) => ({ id: s.id, type: null }))); renderInspector(); });
   b('#iAtk', () => { closeTools(); setTool('attack'); toast('Click the ground to attack. Drag to set the way they face.'); });
   b('#iDemo', () => { setTool('demolish'); toast('Click the bridge or building the engineers should blow up.'); });
