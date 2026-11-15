@@ -10,6 +10,7 @@ import { initOverlay, resizeOverlay, draw2D } from './render/overlay';
 import { initInput, keyCam } from './ui/input';
 import { setTool, syncUI, banner, showResult, tickHud, hudPulse, bindStrip, refreshFogPaint, phaseCard, toast } from './ui/hud';
 import { makeTeams, initOwn } from './plan';
+import { exec } from './actions';
 import { NET } from './state';
 import { connected, sendMap, guestLoaded, closeNet, hostTick } from './net';
 import { menuStatus, type MapSpec } from './ui/menu';
@@ -73,4 +74,4 @@ function frame(now: number) {
 }
 (document.fonts ? Promise.all([document.fonts.load('11px Departure'), document.fonts.load('16px KenneyMono')]).catch(() => { }) : Promise.resolve()).then(() => requestAnimationFrame(frame));
 // Developer hook for checking state in the browser console (dev server only).
-if (import.meta.env.DEV) (window as any).__fo = { S, NET, VIS0, SEEN0, OWN };
+if (import.meta.env.DEV) (window as any).__fo = { S, NET, VIS0, SEEN0, OWN, renderer, exec };

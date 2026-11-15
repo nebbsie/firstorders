@@ -6,6 +6,7 @@ import { unitH } from '../world';
 import { camera, cam, FOV, view } from './camera';
 import { MODELS } from './models';
 import { BTYPES } from '../map/btypes';
+const MODEL_KINDS = new Set(['mg', 'mortar', 'tank', 'at', 'op']);
 
 // Colours are given in sRGB and used as they are, like the 2D interface.
 THREE.ColorManagement.enabled = false;
@@ -227,7 +228,7 @@ export function update3D(V: View) {
     if (u.alive) {
       if (u.team !== NET.me && V.fogOn && !V.isVis(u)) continue;
       putU(u.x, u.y, unitH(u.x, u.y) + .9 + (u.drop > 0 ? u.drop * 14 : 0), c, 1);
-      if (u.kind !== 'rifle' && u.kind !== 'sniper') emp(u.kind, u.x, u.y, c, u.hd);
+      if (MODEL_KINDS.has(u.kind)) emp(u.kind, u.x, u.y, c, u.hd);
     } else if (nb < 5000) {
       if (u.team !== NET.me && V.fogOn && !cellSeen(V.seen, u.x, u.y)) continue;
       bp[nb * 3] = u.x - W / 2; bp[nb * 3 + 1] = unitH(u.x, u.y) + .2; bp[nb * 3 + 2] = u.y - H / 2; bc[nb * 3] = c[0] * .45; bc[nb * 3 + 1] = c[1] * .45; bc[nb * 3 + 2] = c[2] * .45; nb++;
@@ -236,7 +237,7 @@ export function update3D(V: View) {
   if (plan) for (const s of S.squads) {
     if (s.members || s.team !== NET.me) continue; const c = TRGB[NET.me];
     for (const p of s.pos) putU(p[0], p[1], unitH(p[0], p[1]) + .9, c, .75);
-    if (s.kind !== 'rifles' && s.kind !== 'sniper' && s.kind !== 'garrison') emp(s.kind, s.pos[0][0], s.pos[0][1], c, Math.atan2(-(H / 2 - s.pos[0][1]), W / 2 - s.pos[0][0]));
+    if (MODEL_KINDS.has(s.kind)) emp(s.kind, s.pos[0][0], s.pos[0][1], c, Math.atan2(-(H / 2 - s.pos[0][1]), W / 2 - s.pos[0][0]));
   }
   // Last known enemy positions, shown faded.
   for (const g of V.ghosts) { if (ng >= 3000) break; const c = TRGB[g.team]; gp[ng * 3] = g.x - W / 2; gp[ng * 3 + 1] = unitH(g.x, g.y) + .9; gp[ng * 3 + 2] = g.y - H / 2; gc[ng * 3] = c[0]; gc[ng * 3 + 1] = c[1]; gc[ng * 3 + 2] = c[2]; ng++; }

@@ -12,24 +12,31 @@ export async function searchPlaces(q: string): Promise<Place[]> {
   return list.map((p: any) => ({ name: (p.name || p.display_name.split(',')[0]), full: p.display_name, lat: +p.lat, lon: +p.lon }));
 }
 
-const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+// One server: reads the answer as it streams in, so the menu can show how much has arrived.
+async function fetchFrom(url: string, q: string, signal: AbortSignal, onBytes: (n: number) => void) {
+  const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal });
+  if (!r.ok || !r.body) throw new Error(`${new URL(url).host} answered ${r.status}`);
+  const reader = r.body.getReader(), parts: Uint8Array[] = []; let n = 0;
+  for (; ;) { const { done, value } = await reader.read(); if (done) break; parts.push(value); n += value.length; onBytes(n); }
+  const all = new Uint8Array(n); let o = 0; for (const p of parts) { all.set(p, o); o += p.length; }
+  const json = JSON.parse(new TextDecoder().decode(all)); if (json.remark && !json.elements?.length) throw new Error(json.remark); return json;
+}
+// Ask two servers at once and keep whichever answers first; then the next two; then try again.
 async function overpass(q: string, progress: (s: string) => void) {
-  let wait = 2000, last = '';
-  for (let attempt = 0; attempt < 6; attempt++) {
-    const url = OVERPASS[attempt % OVERPASS.length];
+  let last = '';
+  for (let round = 0; round < 3; round++) for (let k = 0; k < OVERPASS.length; k += 2) {
+    const pair = OVERPASS.slice(k, k + 2), ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 75000);
+    progress(`Downloading map data (${pair.map(u => new URL(u).host).join(' or ')})`);
     try {
-      progress(`Downloading map data (${new URL(url).host})`);
-      // A busy server can hang; give up on it after 40 s and try the next one.
-      const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 40000);
-      const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ctl.signal }).finally(() => clearTimeout(timer));
-      if (r.ok) return await r.json();
-      last = `${new URL(url).host} answered ${r.status}`;
-    } catch (e) { last = `${new URL(url).host} did not answer`; }
-    progress(`Map server busy, retrying in ${wait / 1000} s`); await sleep(wait); wait = Math.min(wait * 2, 16000);
+      const res = await Promise.any(pair.map(u => fetchFrom(u, q, ctl.signal, n => progress(`Downloading map data: ${(n / 1e6).toFixed(1)} MB`))));
+      ctl.abort(); clearTimeout(timer); return res;
+    } catch (e: any) { clearTimeout(timer); last = e?.errors?.[0]?.message || e?.message || 'no answer'; }
+    progress('Map servers busy, trying others'); await sleep(1500);
   }
-  throw new Error(`Could not download map data: ${last}. The public map servers are busy; try again in a minute.`);
+  throw new Error(`Could not download map data (${last}). The public map servers are busy; try again shortly, or play the sample town.`);
 }
 
 // Terrarium elevation tiles: height in metres = R * 256 + G + B / 256 - 32768.
@@ -100,7 +107,8 @@ export async function importPlace(place: Place, progress: (s: string) => void): 
   const toUnits = (lat: number, lon: number) => [(lon - lon0) * kx / M_PER_UNIT + W / 2, (lat0 - lat) * ky / M_PER_UNIT + H / 2];
   const toLatLon = (x: number, y: number): [number, number] => [lat0 - (y - H / 2) * M_PER_UNIT / ky, lon0 + (x - W / 2) * M_PER_UNIT / kx];
   // Fetch the battle circle and a ring around it. Bigger battles fetch less of the grey ring to keep the download sane.
-  const reach = BATTLE_KM === 1 ? W / 2 + 20 : PLAY_R * (BATTLE_KM === 2 ? 1.25 : 1.12);
+  // The circle plus a ring of scenery. Less ring means a smaller, faster download.
+  const reach = PLAY_R * (BATTLE_KM === 1 ? 1.35 : BATTLE_KM === 2 ? 1.2 : 1.1);
   const [n, w] = toLatLon(CX - reach, CX - reach), [s, e] = toLatLon(CX + reach, CX + reach);
   const bb = `${s.toFixed(6)},${w.toFixed(6)},${n.toFixed(6)},${e.toFixed(6)}`;
   const key = `osm:${lat0.toFixed(4)},${lon0.toFixed(4)}:${BATTLE_KM}`;

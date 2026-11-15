@@ -1,4 +1,4 @@
-import { W, H, C, GW, GH, IW, IH, IC, DT, BUDGET, COST, T_GROUND, PHASES, PHASE_LEN, HQ_HOLD, K, COV, KIND_NAME, SPY_RADIUS, T_ROAD, T_BRIDGE, T_WOOD, T_BUILD, T_WATER, clamp, grid } from './config';
+import { W, H, C, GW, GH, IW, IH, IC, DT, BUDGET, COST, T_GROUND, PLATOONS, unitKind, PHASES, PHASE_LEN, HQ_HOLD, K, COV, KIND_NAME, SPY_RADIUS, T_ROAD, T_BRIDGE, T_WOOD, T_BUILD, T_WATER, clamp, grid } from './config';
 import { S, M, OWN, VIS0, SEEN0, NET, hooks } from './state';
 import { cellOf, unitH, passable, nudge, opRange } from './world';
 import { aliveMembers, spentNow, sqName, nextCall, rollPersonalities, initOwn } from './plan';
@@ -34,7 +34,7 @@ export function beginRound() {
   for (const s of S.structs) if (s.round === S.round) { for (const ci of s.cells) S.cover[ci] = COV[s.type]; s.placedAt = S.t; }
   for (const sq of S.squads) {
     if (!sq.members) { if (sq.round === S.round) spawnSquad(sq); }
-    else if (sq.order) { sq.state = sq.order.type; sq.tx = sq.order.x; sq.ty = sq.order.y; sq.dir = sq.order.dir; sq.arrived = -1; sq.contact = S.t; assignSlots(sq); }
+    else if (sq.order) { sq.state = sq.order.type; sq.tx = sq.order.x; sq.ty = sq.order.y; sq.dir = sq.order.dir ?? sq.dir; sq.dbridge = sq.order.bridge; sq.dbld = sq.order.bld; sq.planted = null; faceMembers(sq); sq.arrived = -1; sq.contact = S.t; assignSlots(sq); }
   }
   for (const sq of S.squads) if (sq.order) { if (sq.members && sq.order.type === 'attack') log(sq.team, `${sqName(sq)}: moving on ${grid(sq.order.x, sq.order.y)}`); sq.cur = sq.order; sq.order = null; }
   for (const su of S.supports) if (su.round === S.round) su.fired = false;
@@ -52,8 +52,32 @@ export function goLive(it: any) {
 }
 export function applyOrder(sq: any) {
   if (!sq.members || !sq.order) return; const o = sq.order;
-  sq.state = o.type; sq.tx = o.x; sq.ty = o.y; sq.dir = o.dir; sq.arrived = -1; sq.contact = S.t; assignSlots(sq); sq.cur = o; sq.order = null;
+  sq.state = o.type; sq.tx = o.x; sq.ty = o.y; sq.dir = o.dir ?? sq.dir; sq.dbridge = o.bridge; sq.dbld = o.bld; sq.planted = null; faceMembers(sq); sq.arrived = -1; sq.contact = S.t; assignSlots(sq); sq.cur = o; sq.order = null;
   if (o.type === 'attack') log(sq.team, `${sqName(sq)}: moving on ${grid(o.x, o.y)}`);
+}
+const INFANTRY = new Set(['rifle', 'assault', 'engineer', 'medic', 'sniper']);
+// Medics: a soldier within 18 of a living medic of his side survives a fatal wound one time in three.
+function saved(v: any) {
+  if (!INFANTRY.has(v.kind)) return false;
+  for (const m of S.units) if (m.alive && m.kind === 'medic' && m.team === v.team && m !== v && Math.abs(m.x - v.x) < 18 && Math.abs(m.y - v.y) < 18 && Math.hypot(m.x - v.x, m.y - v.y) < 18) { if (rnd() < .33) { v.hp = 1; return true; } return false; }
+  return false;
+}
+function faceMembers(sq: any) { if (sq.members && sq.dir != null) for (const i of sq.members) S.units[i].face = sq.dir; }
+// A unit with an arc (the sniper) sees and shoots only inside the cone it faces.
+export function inArc(u: any, x: number, y: number) {
+  const a = K[u.kind] && K[u.kind].arc; if (!a || u.face == null) return true;
+  let d = Math.atan2(y - u.y, x - u.x) - u.face; d = Math.atan2(Math.sin(d), Math.cos(d)); return Math.abs(d) <= a / 2;
+}
+// Engineers walk to the target, set charges, and the target blows 5 seconds later.
+function demolishStep(sq: any) {
+  const mem = aliveMembers(sq); if (!mem.length) return;
+  const near = mem.some((u: any) => Math.hypot(u.x - sq.tx, u.y - sq.ty) < 9);
+  if (!near) return;
+  if (sq.planted == null) { sq.planted = S.t; log(sq.team, `${sqName(sq)}: charges set at ${grid(sq.tx, sq.ty)}`); return; }
+  if (S.t - sq.planted < 5) return;
+  if (sq.dbridge != null) blowBridge(sq.dbridge, sq.team);
+  else if (sq.dbld != null && M.B[sq.dbld] && M.B[sq.dbld].down == null) { const b = M.B[sq.dbld]; for (let k = 0; k < 4; k++) explode(b.cx + (rnd() - .5) * 4, b.cy + (rnd() - .5) * 4, 6, .9, sq.team); collapse(sq.dbld, sq.team); }
+  sq.state = 'defend'; sq.planted = null; sq.dbridge = sq.dbld = undefined; assignSlots(sq);
 }
 function snapshotHistory() { S.history.push({ round: S.round, terr: S.terrCount.slice(), alive: S.teams.map((t: any) => S.units.filter((u: any) => u.alive && u.team === t.id).length) }); }
 function endRound() {
@@ -67,20 +91,20 @@ function endRound() {
 }
 
 function spawnSquad(sq: any, drop?: boolean) {
-  sq.members = []; const kind = sq.kind === 'rifles' || sq.kind === 'garrison' ? 'rifle' : sq.kind;
+  sq.members = []; const kind = unitKind(sq.kind);
   for (const p of sq.pos) {
     const k = K[kind];
     const u = { i: S.units.length, x: p[0], y: p[1], team: sq.team, sq: sq.id, kind, hp: k.hp, cd: rnd() * 1.2, scan: rnd() * .4, tgt: -1, sx: p[0], sy: p[1], alive: true, kills: 0, gar: sq.kind === 'garrison', hd: Math.atan2(-(H / 2 - p[1]), W / 2 - p[0]), drop: drop ? 1.2 + rnd() * .6 : 0 };
     sq.members.push(S.units.length); S.units.push(u); S.stats[sq.team].start++;
   }
-  const o = sq.order; sq.state = o ? o.type : 'hold'; sq.tx = o ? o.x : sq.x; sq.ty = o ? o.y : sq.y; sq.dir = o ? o.dir : undefined; sq.contact = S.t; sq.arrived = -1; assignSlots(sq);
+  const o = sq.order; sq.state = o ? o.type : 'hold'; sq.tx = o ? o.x : sq.x; sq.ty = o ? o.y : sq.y; sq.dir = o && o.dir != null ? o.dir : sq.face; sq.dbridge = o ? o.bridge : undefined; sq.dbld = o ? o.bld : undefined; sq.planted = null; faceMembers(sq); sq.contact = S.t; sq.arrived = -1; assignSlots(sq);
 }
 function assignSlots(sq: any) {
   const mem = aliveMembers(sq); if (!mem.length) return;
   // Facing: the order's direction, else the way from the unit to the target.
   const c0x = mem.reduce((a: number, u: any) => a + u.x, 0) / mem.length, c0y = mem.reduce((a: number, u: any) => a + u.y, 0) / mem.length;
   const face = sq.dir != null ? sq.dir : Math.atan2(sq.ty - c0y, sq.tx - c0x), fx = Math.cos(face), fy = Math.sin(face);
-  if (sq.state === 'attack') {
+  if (sq.state === 'attack' || sq.state === 'demolish') {
     // A line across the facing direction: eight wide, ranks behind.
     let i = 0; for (const u of mem) { const col = i % 8 - 3.5, row = Math.floor(i / 8); i++; const q = nudge(sq.tx - fy * col * 2.4 - fx * row * 2.6, sq.ty + fx * col * 2.4 - fy * row * 2.6) || [sq.tx, sq.ty]; u.sx = q[0]; u.sy = q[1]; u.hd = Math.atan2(-fy, fx); }
     return;
@@ -132,7 +156,7 @@ function findTarget(u: any, range: number) {
     const e = U[j]; if (!e.alive || e.team === u.team || e.drop > 0) continue; const isT = e.kind === 'tank';
     if (wantTank ? !isT : (!any && isT)) continue;
     const dx = e.x - u.x, dy = e.y - u.y; let d = dx * dx + dy * dy; const ce = cellOf(e.x, e.y); if (ce >= 0 && M.terr[ce] === T_WOOD && !isT) d *= 2.8;
-    if (d < bd && los(u.x, u.y, e.x, e.y)) { bd = d; best = j; }
+    if (d < bd && inArc(u, e.x, e.y) && los(u.x, u.y, e.x, e.y)) { bd = d; best = j; }
   }
   return best;
 }
@@ -140,9 +164,9 @@ function kill(v: any, team: number) {
   if (!v.alive) return; v.alive = false; S.stats[v.team].lost++; if (team !== v.team && team >= 0) S.stats[team].kills++;
   // Teams that see the unit fall learn it is gone; the others still think it is there.
   S.teams.forEach((t: any) => { if (S.vis[t.id] && S.vis[t.id][v.i] && S.known[t.id]) S.known[t.id].delete(v.i); });
-  if (v.kind !== 'rifle') log(v.team, `${S.teams[v.team].name} ${KIND_NAME[v.kind] || v.kind} lost at ${grid(v.x, v.y)}`);
+  if (['mg', 'mortar', 'tank', 'at', 'op', 'sniper'].includes(v.kind)) log(v.team, `${S.teams[v.team].name} ${KIND_NAME[v.kind] || v.kind} lost at ${grid(v.x, v.y)}`);
   const sq = S.squads.find((s: any) => s.id === v.sq);
-  if (sq && sq.kind === 'rifles') { const alive = aliveMembers(sq).length; if (!sq.halfLogged && alive <= sq.members.length / 2 && alive > 0) { sq.halfLogged = true; log(v.team, `${sqName(sq)}: taking heavy losses at ${grid(v.x, v.y)}`); } if (alive === 0) log(v.team, `${sqName(sq)}: no reply`); }
+  if (sq && PLATOONS.includes(sq.kind)) { const alive = aliveMembers(sq).length; if (!sq.halfLogged && alive <= sq.members.length / 2 && alive > 0) { sq.halfLogged = true; log(v.team, `${sqName(sq)}: taking heavy losses at ${grid(v.x, v.y)}`); } if (alive === 0) log(v.team, `${sqName(sq)}: no reply`); }
 }
 function contact(sq: any) { if (sq) sq.contact = S.t; }
 function tankFire(u: any, e: any, k: any) {
@@ -156,7 +180,7 @@ function shoot(u: any, e: any, k: any) {
   const tr = { x0: u.x, y0: u.y, x1: e.x + (rnd() - .5) * 2, y1: e.y + (rnd() - .5) * 2, life: .09, team: u.team, u: u.i };
   S.tracers.push(tr); if (S.rec.tracers.length < 150000) S.rec.tracers.push([S.t, tr.x0, tr.y0, tr.x1, tr.y1, u.team, u.i]);
   const d = Math.hypot(e.x - u.x, e.y - u.y), hb = clamp((unitH(u.x, u.y) - unitH(e.x, e.y)) * .02, 0, .15), p = (k.acc + hb) * (1 - coverAt(e)) * (1 - .5 * d / k.range);
-  if (rnd() < p) { e.hp -= u.kind === 'at' ? 4 : 1; if (e.hp <= 0) { kill(e, u.team); u.kills++; } }
+  if (rnd() < p) { e.hp -= u.kind === 'at' ? 4 : 1; if (e.hp <= 0 && !saved(e)) { kill(e, u.team); u.kills++; } }
   contact(S.squads.find((s: any) => s.id === u.sq));
 }
 // A building brought down: its cells become rubble (open ground with light cover), and anyone inside dies.
@@ -183,7 +207,7 @@ function explode(x: number, y: number, r: number, power: number, team: number) {
     if (!v.alive || v.drop > 0) continue; const d = Math.hypot(v.x - x, v.y - y); if (d > r) continue;
     if (v.kind === 'tank') { if (d < r * .5 && rnd() < power) { v.hp -= 3; if (v.hp <= 0) kill(v, team); } continue; }
     const ci = cellOf(v.x, v.y), cov = v.gar ? .5 : ci >= 0 && S.cover[ci] === 2 ? .55 : ci >= 0 && S.cover[ci] === 1 ? .3 : 0;
-    if (rnd() < power * (1 - d / r * .6) * (1 - cov)) { v.hp -= 2; if (v.hp <= 0) kill(v, team); }
+    if (rnd() < power * (1 - d / r * .6) * (1 - cov)) { v.hp -= 2; if (v.hp <= 0 && !saved(v)) kill(v, team); }
   }
 }
 function addShell(s: any) { S.shells.push(s); S.rec.shells.push([S.t - s.t, s.x0, s.y0, s.x1, s.y1, s.dur]); }
@@ -217,6 +241,7 @@ function moveUnit(u: any, k: any, sq: any) {
 }
 function updateSquads() {
   for (const sq of S.squads) {
+    if (sq.members && sq.state === 'demolish') demolishStep(sq);
     if (!sq.members || sq.state !== 'attack') continue; const mem = aliveMembers(sq); if (!mem.length) continue;
     const near = mem.filter((u: any) => Math.hypot(u.x - sq.tx, u.y - sq.ty) < 12).length;
     if (near >= mem.length * .5) { sq.state = 'defend'; sq.arrived = S.t; log(sq.team, `${sqName(sq)}: objective ${grid(sq.tx, sq.ty)} reached, digging in`); assignSlots(sq); }
@@ -274,7 +299,7 @@ export function updateVision() {
       for (const [p, sp] of spies) if (Math.hypot(e.x - sp[0], e.y - sp[1]) < SPY_RADIUS) { seen = true; p.seen.add(j); break; }
       if (!seen) {
         const ce = cellOf(e.x, e.y), hid = ce >= 0 && M.terr[ce] === T_WOOD && e.kind !== 'tank' ? .5 : 1;
-        for (const o of own) { const R = sightOf(o) * hid, dx = o.x - e.x, dy = o.y - e.y; if (Math.abs(dx) < R && Math.abs(dy) < R && dx * dx + dy * dy < R * R && los(o.x, o.y, e.x, e.y)) { seen = true; break; } }
+        for (const o of own) { const R = sightOf(o) * hid, dx = o.x - e.x, dy = o.y - e.y; if (Math.abs(dx) < R && Math.abs(dy) < R && dx * dx + dy * dy < R * R && inArc(o, e.x, e.y) && los(o.x, o.y, e.x, e.y)) { seen = true; break; } }
       }
       if (!seen) continue;
       vis[j] = 1;
@@ -302,13 +327,13 @@ export function updateVision() {
   for (let t = 0; t < N; t++) {
     const g = S.visG[t], seen = S.seenG[t]; g.fill(0);
     for (let i = 0; i < OWN.length; i++) if (OWN[i] === t) g[i] = 1;
-    const mark = (x: number, y: number, R: number) => {
+    const mark = (x: number, y: number, R: number, u?: any) => {
       const r = R / IC, cx = x / IC, cy = y / IC;
       for (let gy = Math.max(0, Math.floor(cy - r)); gy <= Math.min(IH - 1, Math.ceil(cy + r)); gy++)
         for (let gx = Math.max(0, Math.floor(cx - r)); gx <= Math.min(IW - 1, Math.ceil(cx + r)); gx++)
-          if ((gx + .5 - cx) ** 2 + (gy + .5 - cy) ** 2 <= r * r) g[gy * IW + gx] = 1;
+          if ((gx + .5 - cx) ** 2 + (gy + .5 - cy) ** 2 <= r * r && (!u || inArc(u, (gx + .5) * IC, (gy + .5) * IC) || (gx + .5 - cx) ** 2 + (gy + .5 - cy) ** 2 < 4)) g[gy * IW + gx] = 1;
     };
-    for (const u of U) if (u.alive && u.team === t && !(u.drop > 0)) mark(u.x, u.y, sightOf(u));
+    for (const u of U) if (u.alive && u.team === t && !(u.drop > 0)) mark(u.x, u.y, sightOf(u), u);
     for (const p of S.planes) { const sp = p.team === t && spyPos(p); if (sp) mark(sp[0], sp[1], SPY_RADIUS); }
     for (let i = 0; i < g.length; i++) if (g[i]) seen[i] = 1;
   }
@@ -356,7 +381,7 @@ export function countGround() { const cnt = S.teams.map(() => 0); for (let i = 0
 function captureGround(capture: boolean) {
   const N = S.teams.length, a = new Float32Array(IW * IH * N);
   for (const u of S.units) {
-    if (!u.alive || u.drop > 0) continue; const cx = u.x / IC, cy = u.y / IC, w = u.kind === 'rifle' ? 1 : u.kind === 'op' ? .5 : 2.5;
+    if (!u.alive || u.drop > 0) continue; const cx = u.x / IC, cy = u.y / IC, w = INFANTRY.has(u.kind) ? 1 : u.kind === 'op' ? .5 : 2.5;
     for (let y = Math.max(0, Math.floor(cy - 4)); y <= Math.min(IH - 1, Math.ceil(cy + 4)); y++) for (let x = Math.max(0, Math.floor(cx - 4)); x <= Math.min(IW - 1, Math.ceil(cx + 4)); x++) { const d = Math.hypot(x + .5 - cx, y + .5 - cy); if (d < 4.5) a[(y * IW + x) * N + u.team] += (1 - d / 4.5) * w; }
   }
   let changed = false;

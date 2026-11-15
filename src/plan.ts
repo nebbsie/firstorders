@@ -1,5 +1,5 @@
 import { NET } from './state';
-import { C, GW, GH, COST, KIND_NAME, TEAM_COLORS, TEAM_NAMES, CALLSIGNS, PERS, T_BRIDGE, T_BUILD, T_WATER, T_GROUND, T_PARK, T_ROAD, CX, CY, PLAY_R, mulberry32 } from './config';
+import { C, GW, GH, COST, PLATOON_SIZE, MOVERS, KIND_NAME, TEAM_COLORS, TEAM_NAMES, CALLSIGNS, PERS, T_BRIDGE, T_BUILD, T_WATER, T_GROUND, T_PARK, T_ROAD, CX, CY, PLAY_R, mulberry32 } from './config';
 import { S, M, OWN } from './state';
 import { cellOf, passTerr, nudge, canDeploy, cellPos } from './world';
 
@@ -39,7 +39,8 @@ export const sqName = (s: any) => s.call ? `${S.teams[s.team].name} ${s.call}` :
 
 function addGarrison(team: number, x: number, y: number) {
   let id = -1, bd = 1e9; const c0 = Math.floor(x / C), r0 = Math.floor(y / C);
-  for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) { const cx = c0 + dx, cy = r0 + dy; if (cx < 0 || cy < 0 || cx >= GW || cy >= GH) continue; const b = M.bldId[cy * GW + cx]; if (b >= 0 && dx * dx + dy * dy < bd) { bd = dx * dx + dy * dy; id = b; } }
+  // Only the building actually clicked (one cell of slack for edges).
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const cx = c0 + dx, cy = r0 + dy; if (cx < 0 || cy < 0 || cx >= GW || cy >= GH) continue; const b = M.bldId[cy * GW + cx]; if (b >= 0 && dx * dx + dy * dy < bd) { bd = dx * dx + dy * dy; id = b; } }
   if (id < 0 || S.squads.some((s: any) => s.kind === 'garrison' && s.bld === id && (!s.members || aliveMembers(s).length))) return null;
   const b = M.B[id]; if (!canDeploy(team, b.cx, b.cy)) return null;
   const cells: number[] = []; for (let ci = 0; ci < GW * GH; ci++) if (M.bldId[ci] === id) cells.push(ci);
@@ -49,14 +50,15 @@ function addGarrison(team: number, x: number, y: number) {
   const s = { id: S.nextId++, team, kind: 'garrison', x: b.cx, y: b.cy, pos, order: null, round: S.round, call: nextCall(team), bld: id };
   S.squads.push(s); return s;
 }
-export function addSquad(team: number, kind: string, x: number, y: number): any {
+// face: the way the unit watches (snipers), in radians.
+export function addSquad(team: number, kind: string, x: number, y: number, face?: number): any {
   if (kind === 'garrison') return addGarrison(team, x, y);
   const ok = (px: number, py: number) => canDeploy(team, px, py); const p = nudge(x, y, ok); if (!p) return null;
   const pos: number[][] = [];
-  if (kind === 'rifles') { const r = mulberry32((S.nextId * 7919) ^ team); for (let i = 0; i < 16; i++) { const gx = (i % 4 - 1.5) * 2.3 + (r() - .5) * .8, gy = (Math.floor(i / 4) - 1.5) * 2.3 + (r() - .5) * .8; const q = nudge(p[0] + gx, p[1] + gy, ok); if (q) pos.push([q[0] + (r() - .5) * .9, q[1] + (r() - .5) * .9]); } }
+  if (PLATOON_SIZE[kind]) { const r = mulberry32((S.nextId * 7919) ^ team); for (let i = 0; i < PLATOON_SIZE[kind]; i++) { const gx = (i % 4 - 1.5) * 2.3 + (r() - .5) * .8, gy = (Math.floor(i / 4) - 1.5) * 2.3 + (r() - .5) * .8; const q = nudge(p[0] + gx, p[1] + gy, ok); if (q) pos.push([q[0] + (r() - .5) * .9, q[1] + (r() - .5) * .9]); } }
   else pos.push(p);
   if (!pos.length) return null;
-  const s = { id: S.nextId++, team, kind, x: p[0], y: p[1], pos, order: null, round: S.round, call: kind === 'rifles' || kind === 'sniper' || kind === 'tank' ? nextCall(team) : null };
+  const s = { id: S.nextId++, team, kind, x: p[0], y: p[1], pos, order: null, round: S.round, face, call: MOVERS.includes(kind) ? nextCall(team) : null };
   S.squads.push(s); return s;
 }
 export function lineCells(team: number, a: any, b: any) {

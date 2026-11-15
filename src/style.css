@@ -8,7 +8,7 @@
   --edge: #4d525e; --edge-hi: #737a8a; --edge-soft: #2c2f37;
   --text: #e2e4e8; --soft: #babec8; --muted: #8b909c; --ink: #f6f4ef;
   --gold: #f0b43c; --good: #7fd6a0; --bad: #ff7a72; --info: #6aa8e8; --warn: #ffc457;
-  --on: #6b4a14; --go: #2c5a74; --side: #3b3f63; --stop: #7a2b2e;
+  --on: #6b4a14; --go: #2f7a45; --side: #3b3f63; --stop: #7a2b2e;
   --f-title: "KenneyMono", "Departure", ui-monospace, monospace;
   --f-ui: "Departure", ui-monospace, "Cascadia Mono", monospace;
   color-scheme: dark;
@@ -31,8 +31,8 @@ button:focus-visible { outline: 1px solid var(--gold); outline-offset: 1px; }
 .btn { background: var(--plate); border: 1px solid var(--edge); color: #fff; padding: 4px 7px; cursor: pointer; text-transform: uppercase; font-family: var(--f-ui); font-size: 11px; line-height: 1.2; border-radius: 0; }
 .btn:hover { background: var(--plate-hi); border-color: var(--edge-hi); }
 .btn.on { background: var(--on); border-color: var(--gold); }
-.btn.go { background: var(--go); border-color: #4f8db0; }
-.btn.go:hover { background: #366d8c; }
+.btn.go { background: var(--go); border-color: #55b06f; }
+.btn.go:hover { background: #379253; }
 .btn.side { background: var(--side); border-color: #5f6596; }
 .btn.stop { background: var(--stop); border-color: #a8494d; }
 .btn:disabled { background: var(--plate-off); border-color: var(--edge-soft); color: var(--muted); cursor: default; }
@@ -132,3 +132,9 @@ table.cat td:first-child { color: var(--ink); white-space: nowrap; }
 .radio p { margin: 0; padding: 2px 6px; background: rgba(18, 19, 22, .82); border-left: 2px solid var(--edge); color: var(--soft); width: fit-content; max-width: 100%; transition: opacity .6s; }
 .radio p b { font-weight: normal; color: var(--muted); margin-right: 6px; }
 .cursornote { pointer-events: none; padding: 2px 6px; background: rgba(18, 19, 22, .9); border: 1px solid var(--edge); color: var(--soft); white-space: nowrap; z-index: 3; }
+
+/* Phase progress, top middle. */
+.phasebar { top: 10px; left: 50%; transform: translateX(-50%); width: min(360px, 40vw); text-align: center; pointer-events: none; }
+.phasebar span { display: block; color: var(--gold); letter-spacing: .08em; margin-bottom: 4px; text-shadow: 0 1px 2px #000; }
+.phasebar .track { height: 6px; background: var(--track); border: 1px solid var(--edge); }
+.phasebar #pbFill { height: 100%; width: 0; background: var(--gold); }

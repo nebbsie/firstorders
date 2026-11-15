@@ -1,5 +1,5 @@
 import { NET } from '../state';
-import { PLAY_R, M_PER_UNIT, PHASE_LEN, COST, TOOLS, INFO, KIND_NAME, T_BUILD, T_WATER, T_BRIDGE, T_ROAD, T_WOOD, T_PARK, HS, grid, fmtT, clamp } from '../config';
+import { PLAY_R, M_PER_UNIT, MOVERS, PHASE_LEN, COST, TOOLS, INFO, KIND_NAME, T_BUILD, T_WATER, T_BRIDGE, T_ROAD, T_WOOD, T_PARK, HS, grid, fmtT, clamp } from '../config';
 import { S, M, VIS0, SEEN0 } from '../state';
 import { cellOf, bldNear } from '../world';
 import { aliveMembers, sqCenter, itemCost, left, canRemove, removeItem } from '../plan';
@@ -88,7 +88,7 @@ export function renderInspector() {
     title.textContent = `${many.length} units selected`;
     const total = many.reduce((a: number, s: any) => a + (s.members ? aliveMembers(s).length : s.pos.length), 0);
     h = `<dl class="kv"><dt>Soldiers</dt><dd>${total}</dd><dt>Units</dt><dd>${many.map((s: any) => s.call || KIND_NAME[s.kind]).join(', ')}</dd></dl>`;
-    if (S.phase === 'plan' || S.phase === 'battle') h += `<p class="hint" style="margin-top:8px">Pick ATTACK or DEFEND, then click the ground. Drag to set the way they face.</p><div class="row"><button class="btn" id="iAtk">ATTACK</button><button class="btn" id="iDef">DEFEND</button><button class="btn" id="iClear">CLEAR ORDERS</button></div>`;
+    if (S.phase === 'plan' || S.phase === 'battle') h += `<p class="hint" style="margin-top:8px">Pick ATTACK or DEFEND, then click the ground. Drag to set the way they face.</p><div class="row"><button class="btn" id="iAtk">ATTACK</button><button class="btn" id="iDef">DEFEND</button>${many.some((s: any) => s.kind === 'engineers') ? '<button class="btn" id="iDemo">DEMOLISH</button>' : ''}<button class="btn" id="iClear">CLEAR ORDERS</button></div>`;
   } else if (it && it.pos) {
     const col = S.teams[it.team].color;
     title.textContent = it.call ? `${it.call} · ${it.temp ? 'Paratroopers' : KIND_NAME[it.kind]}` : KIND_NAME[it.kind];
@@ -97,8 +97,8 @@ export function renderInspector() {
     const next = it.order ? `${it.order.type.toUpperCase()} ${grid(it.order.x, it.order.y)}` : (it.members ? 'CARRY ON' : (['mg', 'mortar', 'at', 'op', 'garrison'].includes(it.kind) ? 'FIXED' : 'HOLD'));
     h = `<dl class="kv"><dt>Team</dt><dd style="color:${col}">${S.teams[it.team].name}</dd><dt>Grid</dt><dd>${c ? grid(c[0], c[1]) : '-'}</dd><dt>Strength</dt><dd>${alive} / ${it.pos.length}</dd><dt>Now</dt><dd>${doing}</dd>${S.phase === 'plan' && it.team === NET.me ? `<dt>Next phase</dt><dd>${next}</dd>` : ''}${it.members ? `<dt>Kills</dt><dd>${kills}</dd>` : `<dt>Cost</dt><dd>${itemCost(it)}</dd>`}</dl>`;
     if (HINT[it.kind]) h += `<p class="hint" style="margin-top:8px">${HINT[it.kind]}</p>`;
-    const mover = ['rifles', 'sniper', 'tank'].includes(it.kind);
-    if ((S.phase === 'plan' || S.phase === 'battle') && it.team === NET.me) h += `<div class="row">${mover ? '<button class="btn" id="iAtk">ATTACK</button><button class="btn" id="iDef">DEFEND</button>' : ''}${it.order ? '<button class="btn" id="iClear">CLEAR ORDER</button>' : ''}${canRemove(it) ? '<button class="btn stop" id="iDel">REMOVE</button>' : ''}</div>`;
+    const mover = MOVERS.includes(it.kind);
+    if ((S.phase === 'plan' || S.phase === 'battle') && it.team === NET.me) h += `<div class="row">${mover ? '<button class="btn" id="iAtk">ATTACK</button><button class="btn" id="iDef">DEFEND</button>' : ''}${it.kind === 'engineers' ? '<button class="btn" id="iDemo">DEMOLISH</button>' : ''}${it.order ? '<button class="btn" id="iClear">CLEAR ORDER</button>' : ''}${canRemove(it) ? '<button class="btn stop" id="iDel">REMOVE</button>' : ''}</div>`;
   } else if (it && it.building) {
     const bd = it.building, T = BTYPES[bd.btype || 'house'];
     title.textContent = bd.name || T.label;
@@ -117,6 +117,7 @@ export function renderInspector() {
   b('#iDel', () => { actRemove(it.id); setSel(null); });
   b('#iClear', () => { actOrders(S.selMany.map((s: any) => ({ id: s.id, type: null }))); renderInspector(); });
   b('#iAtk', () => { closeTools(); setTool('attack'); toast('Click the ground to attack. Drag to set the way they face.'); });
+  b('#iDemo', () => { setTool('demolish'); toast('Click the bridge or building the engineers should blow up.'); });
   b('#iDef', () => { closeTools(); setTool('defend'); toast('Click the ground to hold. Drag to set the way they face.'); });
   b('#iEarly', () => { actTime(it.id, Math.max(0, it.t - 5)); renderInspector(); }); b('#iLate', () => { actTime(it.id, Math.min(PHASE_LEN - 5, it.t + 5)); renderInspector(); });
 }
@@ -143,7 +144,14 @@ function renderRadio() {
 }
 export function syncSpeed() { document.querySelectorAll('#speeds .btn').forEach((b: any) => { const v = +b.dataset.speed; b.classList.toggle('on', v === 0 ? S.paused : (!S.paused && v === S.speed)); }); }
 export function syncFollow() { $('#bFollow').classList.toggle('on', S.follow); }
+// Progress through the current phase, top middle, during a battle.
+function syncPhaseBar() {
+  const bar = $('#phasebar'); bar.hidden = S.phase !== 'battle'; if (bar.hidden) return;
+  const f = clamp((S.t - S.phaseStart) / PHASE_LEN, 0, 1); $('#pbFill').style.width = f * 100 + '%';
+  $('#pbLabel').textContent = `PHASE ${S.round} · ${Math.max(0, Math.ceil(PHASE_LEN - (S.t - S.phaseStart)))} S LEFT`;
+}
 function syncClock() {
+  syncPhaseBar();
   const ph = S.phase;
   if (ph === 'plan') { $('#phaseName').textContent = `PHASE ${S.round}`; $('#clock').textContent = S.round === 1 ? 'DEPLOY' : 'REINFORCE'; }
   else if (ph === 'battle') { $('#phaseName').textContent = `PHASE ${S.round}`; $('#clock').textContent = `T+${Math.floor(S.t - S.phaseStart)}`; }

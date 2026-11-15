@@ -1,5 +1,5 @@
 import { NET } from '../state';
-import { COST, TOOLDEF, segDist, clamp } from '../config';
+import { C, GW, COST, TOOLDEF, MOVERS, CX, CY, segDist, clamp } from '../config';
 import { S, M } from '../state';
 import { nudge, canDeploy, bridgeNear, bridgeTouches, cellOf } from '../world';
 import { sqCenter, left, addSquad, addStruct, addSupport, lineCells, canRemove, removeItem } from '../plan';
@@ -10,7 +10,6 @@ import { actSquad, actStruct, actSupport, actOrders, actRemove, actSpeed } from 
 // Left button selects and uses tools. Middle button pans. Right button turns the camera; a right click drops the tool.
 export const input: { ptr: any; hover: any; box: any } = { ptr: null, hover: null, box: null };
 const keys = new Set<string>();
-const MOVERS = ['rifles', 'sniper', 'tank'];
 
 const visibleNow = (u: any) => u.team === NET.me || !S.fog || (S.vis[NET.me] && S.vis[NET.me][u.i]);
 function hitTest(w: any, squadsOnly?: boolean) {
@@ -61,7 +60,7 @@ export function initInput(cv: HTMLCanvasElement) {
     if (!w) return;
     if (tool.mode === 'order') {
       // Press on the target for the selected units; drag from there to set the way they face.
-      const sel = (S.selMany || []).filter((s: any) => MOVERS.includes(s.kind));
+      const sel = (S.selMany || []).filter((s: any) => S.tool === 'demolish' ? s.kind === 'engineers' : MOVERS.includes(s.kind));
       if (sel.length) { input.ptr = { mode: 'orderGroup', w0: w, w }; return; }
       toast('Select your platoons, snipers or tanks first'); return;
     }
@@ -78,7 +77,8 @@ export function initInput(cv: HTMLCanvasElement) {
   cv.addEventListener('pointerup', () => {
     const p = input.ptr; if (!p) return; input.ptr = null;
     if (p.mode === 'pan') { hoverCursor(cv, input.hover); return; }
-    if (p.mode === 'rot') { if (!p.moved) { if (S.tool !== 'select') { closeTools(); setTool('select'); } else setSel(null); } return; }
+    // A right click drops the tool in hand; the build menu stays open.
+    if (p.mode === 'rot') { if (!p.moved) { if (S.tool !== 'select') setTool('select'); else setSel(null); } return; }
     if (p.mode === 'box') {
       const b = input.box; input.box = null;
       if (b) { const found = boxSelect(b); setSel(found.length === 1 ? found[0] : null, p.shift ? [...new Set([...(S.selMany || []), ...found])] : found); return; }
@@ -92,6 +92,23 @@ export function initInput(cv: HTMLCanvasElement) {
     if (S.phase !== 'plan' && S.phase !== 'battle') return; const w = p.w, t = S.tool;
     // During a battle, whatever is placed acts at once.
     const done = (it: any) => setSel(it);
+    if (p.mode === 'orderGroup' && t === 'demolish') {
+      // Engineers: the click picks the bridge or building to blow up.
+      const bi = bridgeNear(p.w0.x, p.w0.y), ci = cellOf(p.w0.x, p.w0.y), id = ci >= 0 ? M.bldId[ci] : -1;
+      let x: number, y: number, extra: any;
+      if (bi >= 0) { const br = M.bridges[bi]; const end = br.ends[0]; x = end != null ? (end % GW) * C + 1 : br.cx; y = end != null ? Math.floor(end / GW) * C + 1 : br.cy; extra = { bridge: bi }; }
+      else if (id >= 0) { const bd = M.B[id], q = nudge(bd.cx, bd.cy); x = q ? q[0] : bd.cx; y = q ? q[1] : bd.cy; extra = { bld: id }; }
+      else { toast('Click a bridge or a building'); return; }
+      const eng = S.selMany.filter((s: any) => s.kind === 'engineers');
+      actOrders(eng.map((s: any) => ({ id: s.id, type: 'demolish', x, y, ...extra }))); setTool('select'); toast('Engineers are on their way'); return;
+    }
+    if (p.mode === 'aim') {
+      // Sniper: where it stands, and the way it watches (towards the centre if not dragged).
+      const a = p.w0, dragged = Math.hypot(w.x - a.x, w.y - a.y) > 3, face = dragged ? Math.atan2(w.y - a.y, w.x - a.x) : Math.atan2(CY - a.y, CX - a.x);
+      if (left(NET.me) < COST[t]) { toast('Not enough supply'); return; }
+      if (!canDeploy(NET.me, a.x, a.y)) { toast('You can only build on your own ground'); return; }
+      done(actSquad(t, a.x, a.y, face)); return;
+    }
     if (p.mode === 'orderGroup') { const dragged = Math.hypot(w.x - p.w0.x, w.y - p.w0.y) > 4; orderGroup(S.selMany, t, p.w0, dragged ? Math.atan2(w.y - p.w0.y, w.x - p.w0.x) : undefined); setTool('select'); return; }
     if (p.mode === 'point') {
       if (left(NET.me) < COST[t]) { toast('Not enough supply'); return; }
@@ -131,8 +148,9 @@ export function initInput(cv: HTMLCanvasElement) {
   window.addEventListener('keydown', e => {
     if ((e.target as HTMLElement).closest && (e.target as HTMLElement).closest('input,textarea')) return; keys.add(e.key.toLowerCase());
     if (e.key === 'Home') { cam.userMoved = false; fit(); }
-    if (e.key === 'Escape') { if (S.tool !== 'select') { closeTools(); setTool('select'); } else setSel(null); }
+    if (e.key === 'Escape') { if (S.tool !== 'select') setTool('select'); else setSel(null); }
     if ((e.key === 'Delete' || e.key === 'Backspace') && S.sel && canRemove(S.sel)) { actRemove(S.sel.id); setSel(null); e.preventDefault(); }
+    if (e.key === ' ' && S.phase === 'plan') { (document.getElementById('bBegin') as HTMLButtonElement).click(); e.preventDefault(); }
     if (e.key === ' ' && (S.phase === 'battle' || S.phase === 'replay')) { if (S.phase === 'replay') S.paused = !S.paused; else actSpeed(0); syncSpeed(); e.preventDefault(); }
   });
   window.addEventListener('keyup', e => keys.delete(e.key.toLowerCase())); window.addEventListener('blur', () => keys.clear());

@@ -17,23 +17,32 @@ export const TEAM_NAMES = ['BLUE', 'RED', 'GOLD', 'GREEN', 'VIOLET', 'CYAN'];
 export const CALLSIGNS = ['ABLE', 'BAKER', 'CHARLIE', 'DOG', 'EASY', 'FOX', 'GEORGE', 'HOW', 'ITEM', 'JIG', 'KING', 'LOVE', 'MIKE', 'NAN', 'OBOE', 'PETER', 'QUEEN', 'ROGER', 'SUGAR', 'TARE'];
 export const TRGB = TEAM_COLORS.map(c => [parseInt(c.slice(1, 3), 16) / 255, parseInt(c.slice(3, 5), 16) / 255, parseInt(c.slice(5, 7), 16) / 255]);
 
-export const COST: Record<string, number> = { trench: 5, wire: 2, sandbag: 3, wall: 8, tanktrap: 6, rifles: 100, garrison: 110, mg: 80, mortar: 90, sniper: 60, at: 90, tank: 220, op: 70, air: 250, barrage: 120, para: 200, demo: 80, spy: 100 };
+export const COST: Record<string, number> = { trench: 5, wire: 2, sandbag: 3, wall: 8, tanktrap: 6, rifles: 100, assault: 130, engineers: 120, medics: 90, garrison: 110, mg: 80, mortar: 90, sniper: 60, at: 90, tank: 220, op: 70, air: 250, barrage: 120, para: 200, demo: 80, spy: 100 };
 export const T_GROUND = 0, T_ROAD = 1, T_PARK = 2, T_WATER = 3, T_BRIDGE = 4, T_BUILD = 5, T_WOOD = 6;
 export const COV: Record<string, number> = { sandbag: 1, trench: 2, wall: 3, wire: 4, tanktrap: 5 };
 
-export interface KindStats { hp: number; range: number; cd: number; acc?: number; speed: number; min?: number; veh?: boolean; sight: number }
+// arc: a unit with an arc (the sniper) sees and shoots only inside a cone that wide, in radians, round the way it faces.
+export interface KindStats { hp: number; range: number; cd: number; acc?: number; speed: number; min?: number; veh?: boolean; sight: number; arc?: number }
 export const K: Record<string, KindStats> = {
   rifle: { hp: 1, range: 48, cd: 1.2, acc: .2, speed: 5.5, sight: 60 },
   mg: { hp: 3, range: 74, cd: .13, acc: .085, speed: 0, sight: 70 },
   mortar: { hp: 2, range: 155, min: 26, cd: 4.6, speed: 0, sight: 35 },
-  sniper: { hp: 1, range: 118, cd: 2.8, acc: .7, speed: 5, sight: 120 },
+  sniper: { hp: 1, range: 118, cd: 2.8, acc: .7, speed: 5, sight: 120, arc: 1.22 },
+  assault: { hp: 1, range: 30, cd: .5, acc: .2, speed: 6.5, sight: 55 },
+  engineer: { hp: 1, range: 40, cd: 1.3, acc: .16, speed: 5, sight: 55 },
+  medic: { hp: 1, range: 30, cd: 1.6, acc: .1, speed: 5.5, sight: 55 },
   tank: { hp: 10, range: 70, cd: 3.2, acc: .55, speed: 4.5, veh: true, sight: 55 },
   at: { hp: 2, range: 85, cd: 3, acc: .5, speed: 0, sight: 60 },
   op: { hp: 1, range: 0, cd: 99, speed: 0, sight: 0 },
 };
 export const SPY_RADIUS = 55;
 
-export type ToolMode = 'line' | 'point' | 'order' | 'select';
+export type ToolMode = 'line' | 'point' | 'aim' | 'order' | 'select';
+// Platoons: the infantry squads that take orders. Each maps to the kind of soldier it holds.
+export const PLATOONS = ['rifles', 'assault', 'engineers', 'medics'];
+export const MOVERS = [...PLATOONS, 'sniper', 'tank'];
+export const PLATOON_SIZE: Record<string, number> = { rifles: 16, assault: 16, engineers: 12, medics: 8 };
+export const unitKind = (sq: string) => ({ rifles: 'rifle', garrison: 'rifle', assault: 'assault', engineers: 'engineer', medics: 'medic' } as Record<string, string>)[sq] || sq;
 export const TOOLS: { g: string; items: [string, string, ToolMode, string][] }[] = [
   { g: 'DEFENCES', items: [
     ['trench', 'TRENCH', 'line', 'Drag a line on your ground. Strong cover from bullets. Best in open ground.'],
@@ -42,11 +51,14 @@ export const TOOLS: { g: string; items: [string, string, ToolMode, string][] }[]
     ['wall', 'WALL', 'line', 'Drag a line on your ground. Blocks movement and sight.'],
     ['tanktrap', 'TANK TRAPS', 'line', 'Drag a line on your ground. Stops tanks. Infantry walk through. Put them across roads.']] },
   { g: 'UNITS', items: [
-    ['rifles', 'RIFLES', 'point', 'Click on your ground to place a platoon of 16. Takes orders.'],
-    ['garrison', 'GARRISON', 'point', 'Click a building on your ground. Ten riflemen hold it: 85% cover, they fire from the roof. They never move.'],
+    ['rifles', 'RIFLES', 'point', 'A platoon of 16 riflemen.'],
+    ['assault', 'ASSAULT', 'point', 'A platoon of 16 with sub-machine guns. Fast and deadly up close.'],
+    ['engineers', 'ENGINEERS', 'point', 'A platoon of 12 engineers. They can demolish bridges and buildings.'],
+    ['medics', 'MEDICS', 'point', 'A platoon of 8 medics. Troops near them often survive wounds.'],
+    ['garrison', 'GARRISON', 'point', 'Click a building on your ground. Ten riflemen hold it.'],
     ['mg', 'MG NEST', 'point', 'Click on your ground. Fast, long, inaccurate fire. Hidden in woods.'],
     ['mortar', 'MORTAR', 'point', 'Click on your ground. Fires at enemies your side can see.'],
-    ['sniper', 'SNIPER', 'point', 'Click on your ground. One sniper. Sees and shoots far. Takes orders.'],
+    ['sniper', 'SNIPER', 'aim', 'Press on your ground and drag the way it should watch.'],
     ['at', 'AT GUN', 'point', 'Click on your ground. Fires only at tanks. Range 85.'],
     ['tank', 'TANK', 'point', 'Click on your ground. Fast on roads, slow in woods, stopped by tank traps. Takes orders. Only AT guns, shells, bombs and tanks hurt it.'],
     ['op', 'OBS POST', 'point', 'Click on your ground, ideally high ground. Sees far, spots for mortars and makes artillery more accurate.']] },
@@ -54,8 +66,7 @@ export const TOOLS: { g: string; items: [string, string, ToolMode, string][] }[]
     ['spy', 'SPY PLANE', 'line', 'Drag the flight path anywhere. It sees everything within 55 of its path while it flies.'],
     ['barrage', 'ARTILLERY', 'point', 'Click anywhere. Twelve shells land at the time you set.'],
     ['air', 'AIR STRIKE', 'line', 'Drag the bomb run anywhere.'],
-    ['para', 'PARADROP', 'point', 'Click anywhere. Sixteen riflemen land and hold the ground.'],
-    ['demo', 'DEMOLISH', 'point', 'Click a bridge or a building anywhere. It blows at the time you set.']] },
+    ['para', 'PARADROP', 'point', 'Click anywhere. Sixteen riflemen land and hold the ground.']] },
   { g: 'ORDERS', items: [
     ['attack', 'ATTACK', 'order', 'With platoons, snipers or tanks selected, click the ground to take. Or drag from one of them.'],
     ['defend', 'DEFEND', 'order', 'With platoons, snipers or tanks selected, click the ground to hold. Infantry use trenches there.']] },
@@ -63,6 +74,7 @@ export const TOOLS: { g: string; items: [string, string, ToolMode, string][] }[]
 export const TOOLDEF: Record<string, { id: string; name: string; mode: ToolMode; tip: string }> = {};
 TOOLS.forEach(g => g.items.forEach(t => TOOLDEF[t[0]] = { id: t[0], name: t[1], mode: t[2], tip: t[3] }));
 TOOLDEF.select = { id: 'select', name: 'SELECT', mode: 'select', tip: '' };
+TOOLDEF.demolish = { id: 'demolish', name: 'DEMOLISH', mode: 'order', tip: '' };
 // Hover window text for each tool: what it is, where it works, what beats it.
 export const INFO: Record<string, [string, string, string]> = {
   trench: ['A dug line. Infantry inside get 70% cover from bullets and some from blasts. Slows movement.', 'Open ground', 'Mortars, artillery'],
@@ -71,10 +83,13 @@ export const INFO: Record<string, [string, string, string]> = {
   wall: ['A solid wall. Blocks movement and sight.', 'Gaps you want closed', 'Going round it'],
   tanktrap: ['Steel hedgehogs. Tanks cannot pass. Infantry walk through.', 'Across roads', 'Infantry'],
   rifles: ['A platoon of 16 riflemen. Takes ATTACK and DEFEND orders and takes ground.', 'Anywhere', 'MG nests, mortars'],
+  assault: ['16 soldiers with sub-machine guns: short range, very fast fire, quick on their feet.', 'Clearing towns and woods', 'MGs at range'],
+  engineers: ['12 engineers. Select them, press DEMOLISH, and click a bridge or building: they go there, set charges, and it blows 5 seconds later.', 'Cutting bridges, flattening strongpoints', 'Anything; they are weak fighters'],
+  medics: ['8 medics. Your troops within 45 m of a medic survive a fatal wound one time in three.', 'Behind an attack', 'Mortars, artillery'],
   garrison: ['Ten riflemen inside a building. 85% cover, fire from the roof and see over lower roofs. Never move.', 'Tall buildings in town', 'Artillery, tanks'],
   mg: ['Machine gun nest. Long, fast, inaccurate fire. Never moves.', 'Woods, covering a road', 'Mortars, snipers'],
   mortar: ['Fires shells at enemies 26 to 155 away that your side can see.', 'Behind your line', 'Artillery, rushes'],
-  sniper: ['One soldier. Sees and shoots twice as far as a rifleman. Takes orders.', 'High ground, roofs', 'Mortars, MGs'],
+  sniper: ['One soldier. Sees and shoots twice as far as a rifleman, but only in the 70 degree cone it faces.', 'High ground, covering a road', 'Mortars, MGs'],
   at: ['Anti-tank gun. Fires only at tanks, range 85.', 'Facing roads and open ground', 'Infantry, mortars'],
   tank: ['Heavy gun, armour. Small arms cannot hurt it. Takes orders.', 'Roads, open ground', 'AT guns, tank traps, shells'],
   op: ['Observation post. Sees far, spots for mortars and tightens artillery.', 'The highest ground you hold', 'Snipers, artillery'],
@@ -86,7 +101,7 @@ export const INFO: Record<string, [string, string, string]> = {
   attack: ['Selected units move to the ground you click and take it.', '', ''],
   defend: ['Selected units hold the ground you click. Infantry use trenches there.', '', ''],
 };
-export const KIND_NAME: Record<string, string> = { rifles: 'Platoon', garrison: 'Garrison', mg: 'MG nest', mortar: 'Mortar', sniper: 'Sniper', tank: 'Tank', at: 'AT gun', op: 'Obs post' };
+export const KIND_NAME: Record<string, string> = { rifles: 'Platoon', assault: 'Assault', engineers: 'Engineers', medics: 'Medics', garrison: 'Garrison', mg: 'MG nest', mortar: 'Mortar', sniper: 'Sniper', tank: 'Tank', at: 'AT gun', op: 'Obs post' };
 export const SUP_NAME: Record<string, string> = { barrage: 'ARTILLERY', air: 'AIR', para: 'PARA', demo: 'DEMOLISH', spy: 'SPY' };
 export const PERS = [
   { label: 'CAUTIOUS', aggr: .25, arty: .4 },

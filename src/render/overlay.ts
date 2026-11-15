@@ -1,5 +1,5 @@
 import { NET } from '../state';
-import { C, GW, K, M_PER_UNIT, COST, TOOLDEF, TEAM_COLORS, SUP_NAME, GRID_X0, GRID_Y0, grid } from '../config';
+import { C, GW, K, M_PER_UNIT, PLATOONS, MOVERS, unitKind, CX, CY, COST, TOOLDEF, TEAM_COLORS, SUP_NAME, GRID_X0, GRID_Y0, grid } from '../config';
 import { S, M } from '../state';
 import { canDeploy, opRange } from '../world';
 import { sqCenter, left, lineCells } from '../plan';
@@ -22,6 +22,23 @@ function groundLine(a: any, b: any, col: string, dash: boolean, head: boolean) {
   for (let i = 0; i <= n; i++) { const p = P(a.x + (b.x - a.x) * i / n, a.y + (b.y - a.y) * i / n, 1.5); if (p[0] < -500) continue; if (!last) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]); prev = last; last = p; }
   ctx.stroke(); ctx.setLineDash([]);
   if (head && last && prev) { const ang = Math.atan2(last[1] - prev[1], last[0] - prev[0]); ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.lineTo(last[0] - Math.cos(ang - .45) * 11, last[1] - Math.sin(ang - .45) * 11); ctx.lineTo(last[0] - Math.cos(ang + .45) * 11, last[1] - Math.sin(ang + .45) * 11); ctx.closePath(); ctx.fill(); }
+}
+// A cone: a sniper's field of fire (filled red edge) and sight (dashed), round the way it faces.
+function cone(x: number, y: number, face: number, arc: number, range: number, sight: number) {
+  const h0 = M.hAt(x, y) + .6;
+  for (const [R, col, dash] of [[sight, 'rgba(200,220,240,.7)', true], [range, 'rgba(255,122,114,.85)', false]] as [number, string, boolean][]) {
+    ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.setLineDash(dash ? [4, 3] : []); ctx.beginPath(); let s = Pa(x, y, h0); ctx.moveTo(s[0], s[1]);
+    for (let i = 0; i <= 20; i++) { const a = face - arc / 2 + arc * i / 20; s = Pa(x + Math.cos(a) * R, y + Math.sin(a) * R, h0); ctx.lineTo(s[0], s[1]); }
+    ctx.closePath(); ctx.stroke(); if (!dash) { ctx.fillStyle = 'rgba(255,122,114,.08)'; ctx.fill(); }
+  }
+  ctx.setLineDash([]);
+}
+function sightOfKind(s: any) { const k = K[unitKind(s.kind)]; return s.kind === 'op' ? opRange({ x: s.x, y: s.y }) : k.sight + (s.kind === 'garrison' ? 15 : 0); }
+function boxOutline(bd: any, col: string) {
+  const p = bd.p, top = bd.top + .05, bot = bd.base + .4; ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath();
+  for (const h of [top, bot]) { p.forEach((q: number[], i: number) => { const s = Pa(q[0], q[1], h); i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]); }); const s0 = Pa(p[0][0], p[0][1], h); ctx.lineTo(s0[0], s0[1]); }
+  for (const q of p) { const a = Pa(q[0], q[1], top), b = Pa(q[0], q[1], bot); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); }
+  ctx.stroke();
 }
 function ring(x: number, y: number, r: number, col: string, dash: boolean, w?: number) {
   ctx.strokeStyle = col; ctx.lineWidth = w || 1.5; ctx.setLineDash(dash ? [4, 3] : []); ctx.beginPath(); let first = true;
@@ -58,7 +75,7 @@ export function draw2D() {
   if (plan) for (const s of S.squads) { if (s.team !== NET.me || !s.call) continue; const c = sqCenter(s); if (!c) continue; const p = P(c[0], c[1], 5); ctx.fillStyle = '#f4f1e8'; ctx.font = '11px Departure, monospace'; ctx.textAlign = 'center'; ctx.fillText(s.call, p[0], p[1] - 6); }
   if (S.sel) {
     const it = S.sel; let c: number[] = null, r = 8;
-    if (it.pos) { c = sqCenter(it); r = it.kind === 'rifles' ? 9 : 4; }
+    if (it.pos) { c = sqCenter(it); r = PLATOONS.includes(it.kind) ? 9 : 4; }
     else if (it.cells) { c = [(it.a.x + it.b.x) / 2, (it.a.y + it.b.y) / 2]; r = Math.hypot(it.b.x - it.a.x, it.b.y - it.a.y) / 2 + 3; }
     else if (it.a) { c = it.b ? [(it.a.x + it.b.x) / 2, (it.a.y + it.b.y) / 2] : [it.a.x, it.a.y]; r = it.b ? Math.hypot(it.b.x - it.a.x, it.b.y - it.a.y) / 2 : 16; }
     if (it.building) {
@@ -71,12 +88,13 @@ export function draw2D() {
     }
     if (c && !it.pos) ring(c[0], c[1], r, '#e8c547', false, 2);
   }
-  for (const s of S.selMany || []) { const c = sqCenter(s); if (c) ring(c[0], c[1], s.kind === 'rifles' ? 9 : 4, '#e8c547', false, 2); }
+  for (const s of S.selMany || []) { const c = sqCenter(s); if (c) ring(c[0], c[1], PLATOONS.includes(s.kind) ? 9 : 4, '#e8c547', false, 2); }
   // One unit selected: its firing range (solid) and how far it sees (dashed).
   const one = S.sel && S.sel.pos ? S.sel : (S.selMany && S.selMany.length === 1 ? S.selMany[0] : null);
   if (one) {
-    const c = sqCenter(one), k = K[one.kind === 'rifles' || one.kind === 'garrison' ? 'rifle' : one.kind];
-    if (c && k) {
+    const c = sqCenter(one), k = K[unitKind(one.kind)];
+    if (c && k && k.arc) { const f = one.members ? (S.units[one.members[0]].face ?? one.face) : one.face; cone(c[0], c[1], f ?? 0, k.arc, k.range, sightOfKind(one)); }
+    else if (c && k) {
       const sight = one.kind === 'op' ? opRange({ x: c[0], y: c[1] }) : k.sight + (one.kind === 'garrison' ? 15 : 0);
       if (k.range) { ring(c[0], c[1], k.range, 'rgba(255,122,114,.85)', false, 1.5); const p = P(c[0] + k.range, c[1], 1); plate(p[0], p[1], `RANGE ${Math.round(k.range * M_PER_UNIT)} M`, '#ff7a72'); }
       if (k.min) ring(c[0], c[1], k.min, 'rgba(255,122,114,.5)', true, 1);
@@ -100,9 +118,21 @@ function drawGhost() {
     groundLine(ptr.w0, ptr.w, ok ? okC : badC, true, S.tool === 'air' || S.tool === 'spy'); const b = P(ptr.w.x, ptr.w.y, 3); plate(b[0], b[1] - 16, label, ok ? okC : badC); return;
   }
   // Dragging an order: an arrow for the way they will face, from the target point.
+  // Sniper being placed: the cone it will watch, towards the drag or the centre.
+  if (S.tool === 'sniper') {
+    const a = ptr && ptr.mode === 'aim' ? ptr.w0 : hover, w = ptr && ptr.mode === 'aim' ? ptr.w : null;
+    const f = w && Math.hypot(w.x - a.x, w.y - a.y) > 3 ? Math.atan2(w.y - a.y, w.x - a.x) : Math.atan2(CY - a.y, CX - a.x);
+    cone(a.x, a.y, f, K.sniper.arc, K.sniper.range, K.sniper.sight);
+    const ok = canDeploy(NET.me, a.x, a.y) && left(NET.me) >= COST.sniper, p = P(a.x, a.y, 4); plate(p[0], p[1] - 20, `SNIPER ${COST.sniper}${ptr ? '' : ' · DRAG TO AIM'}`, ok ? okC : badC); return;
+  }
+  // Engineers' demolish target: outline the building or mark the bridge under the cursor.
+  if (S.tool === 'demolish') {
+    const ci = Math.floor(hover.y / C) * GW + Math.floor(hover.x / C), id = ci >= 0 ? M.bldId[ci] : -1;
+    if (id >= 0) boxOutline(M.B[id], '#ff7a72'); const p = P(hover.x, hover.y, 4); plate(p[0], p[1] - 20, 'DEMOLISH', '#ff7a72'); return;
+  }
   if (ptr && ptr.mode === 'orderGroup') {
     const d = Math.hypot(ptr.w.x - ptr.w0.x, ptr.w.y - ptr.w0.y);
-    for (const s of S.selMany || []) { const c = sqCenter(s); if (c && ['rifles', 'sniper', 'tank'].includes(s.kind)) groundLine({ x: c[0], y: c[1] }, ptr.w0, 'rgba(232,197,71,.5)', S.tool === 'defend', false); }
+    for (const s of S.selMany || []) { const c = sqCenter(s); if (c && MOVERS.includes(s.kind)) groundLine({ x: c[0], y: c[1] }, ptr.w0, 'rgba(232,197,71,.5)', S.tool === 'defend', false); }
     if (d > 4) { const a = Math.atan2(ptr.w.y - ptr.w0.y, ptr.w.x - ptr.w0.x), px = -Math.sin(a), py = Math.cos(a), n = (S.selMany || []).length, half = Math.max(8, n * 6); groundLine({ x: ptr.w0.x - px * half, y: ptr.w0.y - py * half }, { x: ptr.w0.x + px * half, y: ptr.w0.y + py * half }, '#e8c547', false, false); groundLine(ptr.w0, { x: ptr.w0.x + Math.cos(a) * 14, y: ptr.w0.y + Math.sin(a) * 14 }, '#e8c547', false, true); }
     const p = P(ptr.w0.x, ptr.w0.y, 3); plate(p[0], p[1] - 16, `${S.tool.toUpperCase()} ${grid(ptr.w0.x, ptr.w0.y)}${d > 4 ? ' · FACING' : ''}`, '#e8c547'); return;
   }
@@ -110,7 +140,9 @@ function drawGhost() {
   if (ptr && ptr.mode === 'order') { const c = sqCenter(ptr.sq); if (!c) return; groundLine({ x: c[0], y: c[1] }, ptr.w, '#e8c547', S.tool === 'defend', true); const b = P(ptr.w.x, ptr.w.y, 3); plate(b[0], b[1] - 16, `${S.tool.toUpperCase()} ${grid(ptr.w.x, ptr.w.y)}`, '#e8c547'); return; }
   if (tool.mode === 'point') {
     // Placing a unit: show where it will shoot (solid red) and how far it will see (dashed).
-    const kk = S.tool === 'rifles' || S.tool === 'garrison' ? 'rifle' : S.tool, k = K[kk];
+    const k = K[unitKind(S.tool)];
+    // Garrison: outline the building under the cursor, red if it cannot be held.
+    if (S.tool === 'garrison') { const ci = Math.floor(hover.y / C) * GW + Math.floor(hover.x / C), id = ci >= 0 ? M.bldId[ci] : -1; if (id >= 0) boxOutline(M.B[id], canDeploy(NET.me, M.B[id].cx, M.B[id].cy) ? '#8fe3a6' : '#f08a7a'); }
     if (k) {
       const sight = S.tool === 'op' ? opRange(hover) : k.sight + (S.tool === 'garrison' ? 15 : 0);
       if (k.range) { ring(hover.x, hover.y, k.range, 'rgba(255,122,114,.8)', false, 1.5); const p = P(hover.x + k.range, hover.y, 1); plate(p[0], p[1], `RANGE ${Math.round(k.range * M_PER_UNIT)} M`, '#ff7a72'); }
@@ -118,7 +150,7 @@ function drawGhost() {
       if (sight) { ring(hover.x, hover.y, sight, 'rgba(200,220,240,.7)', true, 1.5); const p = P(hover.x - sight, hover.y, 1); plate(p[0], p[1], `SEES ${Math.round(sight * M_PER_UNIT)} M`, '#c8dcf0'); }
     }
     const sup = S.tool === 'barrage' || S.tool === 'para' || S.tool === 'demo', mine = canDeploy(NET.me, hover.x, hover.y), ok = (sup || mine) && left(NET.me) >= COST[S.tool];
-    ring(hover.x, hover.y, S.tool === 'barrage' ? 14 : S.tool === 'rifles' ? 6 : 3, ok ? okC : badC, false);
+    ring(hover.x, hover.y, S.tool === 'barrage' ? 14 : PLATOONS.includes(S.tool) ? 6 : 3, ok ? okC : badC, false);
     const c = P(hover.x, hover.y, 4); plate(c[0], c[1] - 20, `${tool.name} ${COST[S.tool]}${!ok && !sup && !mine ? ' · NOT YOUR GROUND' : ''}`, ok ? okC : badC);
   }
 }

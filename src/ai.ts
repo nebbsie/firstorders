@@ -1,4 +1,4 @@
-import { C, GW, GH, IW, IH, T_WOOD, T_ROAD, T_GROUND, clamp, clampPlay, inPlay, segDist } from './config';
+import { C, GW, GH, IW, IH, T_WOOD, T_ROAD, T_GROUND, PLATOONS, MOVERS, clamp, clampPlay, inPlay, segDist } from './config';
 import { S, M, OWN } from './state';
 import { cellOf, passable, nudge, ownerAt, canDeploy, cellPos, bldNear, waterBetween, bridgeTouches } from './world';
 import { left, addSquad, addStruct, addSupport, aliveMembers, sqCenter } from './plan';
@@ -83,7 +83,11 @@ export function aiPlan(team: number) {
   // A cautious side cuts the bridges that lead to it across water.
   if (pr.aggr < .5 && waterBetween(D.x, D.y, th.x, th.y)) M.bridges.forEach((br, i) => {
     if (br.blown != null || S.supports.some((s: any) => s.type === 'demo' && s.bridge === i) || left(team) - supReserve < 80) return;
-    if (bridgeTouches(i, team)) { const s = addSupport(team, 'demo', { x: br.cx, y: br.cy }, null, S.round === 1 ? 15 : 10); s.bridge = i; }
+    // Engineers go to our end of the bridge and blow it.
+    const end = br.ends.find(c => ownerAt((c % GW) * C + 1, Math.floor(c / GW) * C + 1) === team);
+    if (end != null && !S.squads.some((s: any) => s.team === team && s.kind === 'engineers' && s.order && s.order.bridge === i) && left(team) - supReserve >= 120) {
+      const ex = (end % GW) * C + 1, ey = Math.floor(end / GW) * C + 1, e = addSquad(team, 'engineers', D.x, D.y); if (e) e.order = { type: 'demolish', x: ex, y: ey, bridge: i };
+    }
   });
 
   // Attack objective: ground not ours, lightly held, ideally high and unclaimed.
@@ -98,14 +102,14 @@ export function aiPlan(team: number) {
   if (hqs.length && r() < .35 + pr.aggr * .4 + (S.round - 1) * .12) A = { x: hqs[0].zone.x, y: hqs[0].zone.y };
   const go = (s: any, tx: number, ty: number) => { const q = nudge(tx, ty); if (q) s.order = { type: 'attack', x: q[0], y: q[1] }; };
   // Always keep a guard on our own HQ.
-  const hq = T.zone, guarded = S.squads.some((s: any) => s.team === team && alive(s) && (s.kind === 'rifles' || s.kind === 'garrison') && (() => { const c = s.order && s.order.type === 'defend' ? [s.order.x, s.order.y] : sqCenter(s); return c && Math.hypot(c[0] - hq.x, c[1] - hq.y) < 14 && !(s.order && s.order.type === 'attack'); })());
+  const hq = T.zone, guarded = S.squads.some((s: any) => s.team === team && alive(s) && (PLATOONS.includes(s.kind) || s.kind === 'garrison') && (() => { const c = s.order && s.order.type === 'defend' ? [s.order.x, s.order.y] : sqCenter(s); return c && Math.hypot(c[0] - hq.x, c[1] - hq.y) < 14 && !(s.order && s.order.type === 'attack'); })());
   if (!guarded && left(team) >= 100) { const g = addSquad(team, 'rifles', hq.x, hq.y); if (g) g.order = { type: 'defend', x: hq.x, y: hq.y }; }
   let side = 0;
   if (A) for (const s of S.squads) {
-    if (s.team !== team || !s.members || (s.kind !== 'rifles' && s.kind !== 'sniper' && s.kind !== 'tank')) continue;
+    if (s.team !== team || !s.members || !MOVERS.includes(s.kind) || s.state === 'demolish') continue;
     const m = aliveMembers(s); if (!m.length) continue; const c = sqCenter(s);
     if (m.length < s.members.length * .35) { if (Math.hypot(c[0] - D.x, c[1] - D.y) > 15) s.order = { type: 'defend', x: D.x, y: D.y }; continue; }
-    if ((s.kind === 'rifles' || s.kind === 'tank') && r() < pr.aggr) { side++; go(s, A.x + px * (side % 2 ? 1 : -1) * side * 5, A.y + py * (side % 2 ? 1 : -1) * side * 5); }
+    if ((PLATOONS.includes(s.kind) || s.kind === 'tank') && s.kind !== 'medics' && r() < pr.aggr) { side++; go(s, A.x + px * (side % 2 ? 1 : -1) * side * 5, A.y + py * (side % 2 ? 1 : -1) * side * 5); }
   }
   // Open ground to the objective suits tanks.
   if (A && pr.aggr >= .45 && left(team) - supReserve >= 220) {
@@ -114,7 +118,9 @@ export function aiPlan(team: number) {
   }
   let n = 0;
   while (left(team) - supReserve >= 100 && n < 4) {
-    const s = addSquad(team, 'rifles', D.x - dx * 10 + px * (r() - .5) * 30, D.y - dy * 10 + py * (r() - .5) * 30); if (!s) break; n++;
+    // Assault platoons for fights in town; rifles elsewhere.
+    const kind = A && bldNear(A.x, A.y) >= 8 && r() < .6 && left(team) - supReserve >= 130 ? 'assault' : 'rifles';
+    const s = addSquad(team, kind, D.x - dx * 10 + px * (r() - .5) * 30, D.y - dy * 10 + py * (r() - .5) * 30); if (!s) break; n++;
     if (A && r() < pr.aggr + .15) { side++; go(s, A.x + px * (side % 2 ? 1 : -1) * side * 5, A.y + py * (side % 2 ? 1 : -1) * side * 5); } else s.order = { type: 'defend', x: D.x, y: D.y };
   }
   // Support, timed to land just before the assault arrives.
@@ -130,5 +136,6 @@ export function aiPlan(team: number) {
     if (tgt && bc >= 8) addSupport(team, 'air', { x: tgt.x + px * 40, y: tgt.y + py * 40 }, { x: tgt.x - px * 40, y: tgt.y - py * 40 }, Math.round(tA / 5) * 5 || 10);
   }
   if (left(team) >= 200 && pr.aggr > .65 && A && S.round > 1 && r() < .5) addSupport(team, 'para', clampPlay(A.x + dx * 18, A.y + dy * 18, 8), null, Math.round(tA / 5) * 5 || 10);
+  if (n >= 2 && left(team) >= 90 && r() < .4) { const m = addSquad(team, 'medics', D.x - dx * 12, D.y - dy * 12); if (m) m.order = { type: 'defend', x: D.x - dx * 6, y: D.y - dy * 6 }; }
   while (left(team) >= 100 && n < 7) { const s = addSquad(team, 'rifles', D.x - dx * 14 + px * (r() - .5) * 30, D.y - dy * 14 + py * (r() - .5) * 30); if (!s) break; n++; s.order = { type: 'defend', x: D.x + px * (r() - .5) * 20, y: D.y + py * (r() - .5) * 20 }; }
 }
