@@ -1,8 +1,8 @@
 import { NET } from '../state';
 import { KIND_NAME, C, GW, K, M_PER_UNIT, PLATOONS, MOVERS, unitKind, CX, CY, COST, TOOLDEF, TEAM_COLORS, SUP_NAME, GRID_X0, GRID_Y0, grid } from '../config';
 import { S, M } from '../state';
-import { canDeploy, opRange, canPlaceUnit, ENG_BUILD, ENG_R, FOB_R } from '../world';
-import { sqCenter, left, lineCells, spacingOk } from '../plan';
+import { canDeploy, opRange, canPlaceUnit, inWater, ENG_BUILD, ENG_R, FOB_R } from '../world';
+import { sqCenter, left, lineCells, placeSpot } from '../plan';
 import { route, moveFactor } from '../sim';
 import { PHASE_LEN } from '../config';
 import { cellOf } from '../world';
@@ -242,7 +242,7 @@ function drawGhost() {
       if (k.min) { ring(hover.x, hover.y, k.min, 'rgba(255,122,114,.5)', true, 1); const p = P(hover.x + k.min, hover.y, 1); plate(p[0], p[1], `MIN ${Math.round(k.min * M_PER_UNIT)} M`, '#ff7a72'); }
       if (sight) { ring(hover.x, hover.y, sight, 'rgba(200,220,240,.7)', true, 1.5); const p = P(hover.x - sight, hover.y, 1); plate(p[0], p[1], `SEES ${Math.round(sight * M_PER_UNIT)} M`, '#c8dcf0'); }
     }
-    const sup = S.tool === 'barrage' || S.tool === 'para' || S.tool === 'demo' || S.tool === 'smoke', placeOk = canPlaceUnit(NET.me, S.tool, hover.x, hover.y), apart = sup || spacingOk(NET.me, S.tool, hover.x, hover.y), mine = placeOk && apart, ok = (sup || mine) && left(NET.me) >= COST[S.tool];
+    const sup = S.tool === 'barrage' || S.tool === 'para' || S.tool === 'demo' || S.tool === 'smoke', placeOk = canPlaceUnit(NET.me, S.tool, hover.x, hover.y), apart = sup || !!placeSpot(NET.me, S.tool, hover.x, hover.y), mine = placeOk && apart, ok = (sup || mine) && left(NET.me) >= COST[S.tool];
     // Where new units can go: the start area, and for mortars, MG nests and posts, round your engineers too.
     if (!sup && S.tool !== 'garrison') {
       const z = S.teams[NET.me].zone; if (S.tool !== 'fob') ring(z.x, z.y, z.r, 'rgba(143,227,166,.75)', true, 1.5);
@@ -250,6 +250,6 @@ function drawGhost() {
       if (ENG_BUILD.includes(S.tool)) for (const s of S.squads) if (s.team === NET.me && s.kind === 'fob' && s.members && s.readyRound <= S.round) { const c = sqCenter(s); if (c) ring(c[0], c[1], FOB_R, 'rgba(143,227,166,.6)', true, 1.5); }
     }
     ring(hover.x, hover.y, S.tool === 'barrage' ? 14 : S.tool === 'smoke' ? 20 : PLATOONS.includes(S.tool) ? 6 : 3, ok ? okC : badC, false);
-    const c = P(hover.x, hover.y, 4); plate(c[0], c[1] - 20, `${tool.name} ${COST[S.tool]}${!ok && !sup && !mine ? (!apart && placeOk ? ' · TOO CLOSE' : S.tool === 'garrison' ? ' · NOT YOUR GROUND' : S.tool === 'fob' ? ' · NEAR YOUR ENGINEERS' : ENG_BUILD.includes(S.tool) ? ' · START AREA OR FOB' : ' · START AREA ONLY') : ''}`, ok ? okC : badC);
+    const c = P(hover.x, hover.y, 4); plate(c[0], c[1] - 20, `${tool.name} ${COST[S.tool]}${!ok && !sup && !mine ? (!apart && placeOk ? ' · NO ROOM' : S.tool !== 'garrison' && inWater(hover.x, hover.y) ? ' · NOT IN WATER' : S.tool === 'garrison' ? ' · NOT YOUR GROUND' : S.tool === 'fob' ? ' · NEAR YOUR ENGINEERS' : ENG_BUILD.includes(S.tool) ? ' · START AREA OR FOB' : ' · START AREA ONLY') : ''}`, ok ? okC : badC);
   }
 }

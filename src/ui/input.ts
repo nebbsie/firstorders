@@ -2,8 +2,8 @@ import { labelAt } from '../render/overlay';
 import { NET } from '../state';
 import { C, GW, COST, TOOLDEF, MOVERS, CX, CY, segDist, clamp } from '../config';
 import { S, M } from '../state';
-import { nudge, canDeploy, bridgeNear, bridgeTouches, cellOf, canPlaceUnit, ENG_BUILD, ENG_R, FOB_R } from '../world';
-import { SUPPORT_ROUND, spacingOk } from '../plan';
+import { nudge, canDeploy, bridgeNear, bridgeTouches, cellOf, canPlaceUnit, inWater, ENG_BUILD, ENG_R, FOB_R } from '../world';
+import { SUPPORT_ROUND, placeSpot } from '../plan';
 import { M_PER_UNIT as MPU } from '../config';
 import { sqCenter, left, addSquad, addStruct, addSupport, lineCells, canRemove, removeItem } from '../plan';
 import { cam, pick, panBy, P, fit, fpv } from '../render/camera';
@@ -112,9 +112,9 @@ export function initInput(cv: HTMLCanvasElement) {
       // Sniper: where it stands, and the way it watches (towards the centre if not dragged).
       const a = p.w0, dragged = Math.hypot(w.x - a.x, w.y - a.y) > 3, face = dragged ? Math.atan2(w.y - a.y, w.x - a.x) : Math.atan2(CY - a.y, CX - a.x);
       if (left(NET.me) < COST[t]) { toast('Not enough supply'); return; }
-      if (!canPlaceUnit(NET.me, t, a.x, a.y)) { toast('New units go in your start area'); return; }
-      if (!spacingOk(NET.me, t, a.x, a.y)) { toast('Too close to another unit. Spread them out.'); return; }
-      done(actSquad(t, a.x, a.y, face)); return;
+      if (!canPlaceUnit(NET.me, t, a.x, a.y)) { toast(inWater(a.x, a.y) ? 'Not in water' : 'New units go in your start area'); return; }
+      const q = placeSpot(NET.me, t, a.x, a.y); if (!q) { toast('No room there. Try a little further away.'); return; }
+      done(actSquad(t, q[0], q[1], face)); return;
     }
     // Shift-click first sets a waypoint (to go round a flank); the next click sets the goal.
     if (p.mode === 'orderGroup' && t === 'suppress') {
@@ -145,9 +145,9 @@ export function initInput(cv: HTMLCanvasElement) {
         const br = M.bridges[bi]; done(actSupport('demo', { x: br.cx, y: br.cy }, null, 20, bi)); return;
       }
       if (t === 'barrage' || t === 'para' || t === 'smoke') { done(actSupport(t, { x: w.x, y: w.y }, null, t === 'barrage' ? 15 : t === 'smoke' ? 5 : 30)); return; }
-      if (!canPlaceUnit(NET.me, t, w.x, w.y)) { toast(t === 'garrison' ? 'Pick a building on your own ground' : t === 'fob' ? `Engineers build FOBs: within ${Math.round(ENG_R * MPU)} m of your engineers` : ENG_BUILD.includes(t) ? `Start area, or within ${Math.round(FOB_R * MPU)} m of a finished FOB` : 'New units go in your start area'); return; }
-      if (!spacingOk(NET.me, t, w.x, w.y)) { toast('Too close to another unit. Spread them out.'); return; }
-      const s = actSquad(t, w.x, w.y); if (!s && NET.mode !== 'guest') { toast(t === 'garrison' ? 'Click a building on your ground that is not held yet' : 'No open ground there'); return; }
+      if (!canPlaceUnit(NET.me, t, w.x, w.y)) { toast(t !== 'garrison' && inWater(w.x, w.y) ? 'Not in water' : t === 'garrison' ? 'Pick a building on your own ground' : t === 'fob' ? `Engineers build FOBs: within ${Math.round(ENG_R * MPU)} m of your engineers` : ENG_BUILD.includes(t) ? `Start area, or within ${Math.round(FOB_R * MPU)} m of a finished FOB` : 'New units go in your start area'); return; }
+      const q = placeSpot(NET.me, t, w.x, w.y); if (!q) { toast('No room there. Try a little further away.'); return; }
+      const s = actSquad(t, q[0], q[1]); if (!s && NET.mode !== 'guest') { toast(t === 'garrison' ? 'Click a building on your ground that is not held yet' : 'No open ground there'); return; }
       done(s); return;
     }
     if (p.mode === 'line') {

@@ -9,8 +9,7 @@ import { MODELS, DEFENCES } from './models';
 import { BTYPES } from '../map/btypes';
 import { input } from '../ui/input';
 import { K, COST, TOOLDEF, MOVERS, PLATOON_SIZE, unitKind } from '../config';
-import { canPlaceUnit } from '../world';
-import { spacingOk, left } from '../plan';
+import { placeSpot, left } from '../plan';
 const WALLS = [[170, 108, 86], [216, 205, 180], [184, 176, 158], [228, 223, 210], [146, 98, 80], [198, 172, 140]];
 const ROOFS = [[94, 99, 106], [152, 88, 64], [114, 84, 66], [74, 78, 84], [130, 74, 58]];
 const FLAT = new Set(['castle', 'tower', 'industrial', 'office', 'station', 'hospital', 'police', 'fire']);
@@ -407,8 +406,9 @@ export function update3D(V: View) {
     };
     const toMid = Math.atan2(-(H / 2 - hv.y), W / 2 - hv.x);
     if ((tl.mode === 'point' || tl.mode === 'aim') && K[unitKind(S.tool)] && S.tool !== 'garrison') {
-      const ok = canPlaceUnit(NET.me, S.tool, hv.x, hv.y) && spacingOk(NET.me, S.tool, hv.x, hv.y) && left(NET.me) >= COST[S.tool];
-      ghost(S.tool, hv.x, hv.y, ok ? [.55, 1, .65] : [1, .4, .36], toMid);
+      // The preview stands where the unit will really go: moved aside if another unit is in the way.
+      const q = placeSpot(NET.me, S.tool, hv.x, hv.y), ok = !!q && left(NET.me) >= COST[S.tool];
+      ghost(S.tool, q ? q[0] : hv.x, q ? q[1] : hv.y, ok ? [.55, 1, .65] : [1, .4, .36], toMid);
     } else if (S.tool === 'move' || S.tool === 'attack' || S.tool === 'defend') {
       const sel = (S.selMany || []).filter((s: any) => s.team === NET.me && MOVERS.includes(s.kind)); let gx = 0, gy = 0, k = 0;
       for (const s of sel) { gx += s.x; gy += s.y; k++; }

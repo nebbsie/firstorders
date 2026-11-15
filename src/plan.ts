@@ -64,15 +64,25 @@ export function spacingOk(team: number, kind: string, x: number, y: number) {
   for (const o of S.squads) {
     // Deployed platoons and tanks move about; only units standing still need room.
     if (o.team !== team || o.kind === 'garrison' || (o.members && MOVERS.includes(o.kind))) continue; const c = sqCenter(o); if (!c) continue;
-    const gap = PLATOON_SIZE[kind] || PLATOON_SIZE[o.kind] ? 10 : 5; if (Math.hypot(c[0] - x, c[1] - y) < gap) return false;
+    const gap = PLATOON_SIZE[kind] || PLATOON_SIZE[o.kind] ? 6 : 3; if (Math.hypot(c[0] - x, c[1] - y) < gap) return false;
   }
   return true;
+}
+// Where a new unit goes for a click: the spot itself, or the nearest free spot round it when another unit
+// stands there, so a click a little off still places the unit. Null when there is no room close by.
+export function placeSpot(team: number, kind: string, x: number, y: number): [number, number] | null {
+  const ok = (px: number, py: number) => canPlaceUnit(team, kind, px, py) && spacingOk(team, kind, px, py) && (kind !== 'tank' || passable(cellOf(px, py), true));
+  if (kind === 'garrison') return canPlaceUnit(team, kind, x, y) ? [x, y] : null;
+  if (!canPlaceUnit(team, kind, x, y)) return null;
+  for (let r = 0; r <= 14; r += 1.5) for (let k = 0, n = r ? Math.ceil(r * 2) : 1; k < n; k++) { const a = k / n * Math.PI * 2, px = x + Math.cos(a) * r, py = y + Math.sin(a) * r; if (ok(px, py)) return [px, py]; }
+  return null;
 }
 // face: the way the unit watches (snipers), in radians.
 export function addSquad(team: number, kind: string, x: number, y: number, face?: number): any {
   if (left(team) < COST[kind] || !isAllowed(kind)) return null;
   if (kind === 'garrison') return addGarrison(team, x, y);
-  const ok = (px: number, py: number) => canPlaceUnit(team, kind, px, py) && (kind !== 'tank' || passable(cellOf(px, py), true)); if (!ok(x, y) || !spacingOk(team, kind, x, y)) return null; const p = nudge(x, y, ok); if (!p) return null;
+  const ok = (px: number, py: number) => canPlaceUnit(team, kind, px, py) && (kind !== 'tank' || passable(cellOf(px, py), true));
+  const spot = placeSpot(team, kind, x, y); if (!spot) return null; const p = nudge(spot[0], spot[1], ok); if (!p) return null;
   const pos: number[][] = [];
   if (PLATOON_SIZE[kind]) { const r = mulberry32((S.nextId * 7919) ^ team); for (let i = 0; i < PLATOON_SIZE[kind]; i++) { const gx = (i % 4 - 1.5) * 2.3 + (r() - .5) * .8, gy = (Math.floor(i / 4) - 1.5) * 2.3 + (r() - .5) * .8; const q = nudge(p[0] + gx, p[1] + gy, ok); if (q) pos.push([q[0] + (r() - .5) * .9, q[1] + (r() - .5) * .9]); } }
   else pos.push(p);

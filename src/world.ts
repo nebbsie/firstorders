@@ -40,7 +40,9 @@ export function nearFob(t: number, x: number, y: number) {
   for (const s of S.squads) if (s.team === t && s.kind === 'fob' && s.members && (s.readyRound || 0) <= S.round) { const u = S.units[s.members[0]]; if (u && u.alive && Math.hypot(u.x - x, u.y - y) <= FOB_R) return true; }
   return false;
 }
-export const canPlaceUnit = (t: number, kind: string, x: number, y: number) => kind === 'garrison' ? canDeploy(t, x, y) : kind === 'fob' ? inPlay(x, y, 2) && nearEngineers(t, x, y) : inSpawn(t, x, y) || (ENG_BUILD.includes(kind) && inPlay(x, y, 2) && nearFob(t, x, y));
+// Water and bridges: no unit is placed there.
+export const inWater = (x: number, y: number) => { const ci = cellOf(x, y); return ci >= 0 && (M.terr[ci] === T_WATER || M.terr[ci] === T_BRIDGE); };
+export const canPlaceUnit = (t: number, kind: string, x: number, y: number) => kind === 'garrison' ? canDeploy(t, x, y) : !inWater(x, y) && (kind === 'fob' ? inPlay(x, y, 2) && nearEngineers(t, x, y) : inSpawn(t, x, y) || (ENG_BUILD.includes(kind) && inPlay(x, y, 2) && nearFob(t, x, y)));
 export const cellPos = (i: number) => [(i % IW) * IC + 2, Math.floor(i / IW) * IC + 2];
 export function bldNear(x: number, y: number) { let n = 0; const c0 = Math.floor(x / C), r0 = Math.floor(y / C); for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) { const cx = c0 + dx, cy = r0 + dy; if (cx >= 0 && cy >= 0 && cx < GW && cy < GH && M.terr[cy * GW + cx] === T_BUILD) n++; } return n; }
 export function waterBetween(ax: number, ay: number, bx: number, by: number) { let n = 0; for (let k = 1; k < 40; k++) { const ci = cellOf(ax + (bx - ax) * k / 40, ay + (by - ay) * k / 40); if (ci >= 0 && (M.terr[ci] === T_WATER || M.terr[ci] === T_BRIDGE)) n++; } return n >= 2; }
