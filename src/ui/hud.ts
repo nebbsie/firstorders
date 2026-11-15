@@ -6,7 +6,7 @@ import { aliveMembers, sqCenter, itemCost, left, canRemove, removeItem } from '.
 import { newBattle } from '../sim';
 import { actRemove, actOrders, actTime, actReady, actSpeed } from '../actions';
 import { startReplay, seek, exitReplay, refreshReplayFog } from '../replay';
-import { fit, cam } from '../render/camera';
+import { fit, cam, P } from '../render/camera';
 import { paintFog, paintTerritory, viewOpts, applyViews } from '../render/scene';
 import { BTYPES } from '../map/btypes';
 
@@ -17,6 +17,25 @@ export function banner(big: string, small: string) { $('#bannerBig').textContent
 export function tickHud(dt: number) {
   if (toastT > 0) { toastT -= dt; if (toastT <= 0) $('#toast').hidden = true; }
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) $('#banner').hidden = true; }
+  quickBar();
+}
+// Quick orders: a small bar that floats above the selected platoons.
+function quickBar() {
+  const el = $('#qbar'), mine = (S.selMany || []).filter((s: any) => s.team === NET.me && (MOVERS.includes(s.kind) || s.kind === 'engineers') && (!s.members || aliveMembers(s).length));
+  if (!mine.length || S.phase !== 'plan') { el.hidden = true; return; }
+  let x = 0, y = 0, n = 0; for (const s of mine) { const c = sqCenter(s); if (c) { x += c[0]; y += c[1]; n++; } }
+  if (!n) { el.hidden = true; return; }
+  const [sx, sy] = P(x / n, y / n, 4); el.hidden = false; el.style.left = sx + 'px'; el.style.top = (sy - 30) + 'px';
+  const eng = mine.some((s: any) => s.kind === 'engineers'), key = eng + S.tool + mine.some((s: any) => s.order);
+  if (el.dataset.k === key) return; el.dataset.k = key;
+  el.querySelectorAll('.btn').forEach((b: any) => {
+    const q = b.dataset.q; b.hidden = q === 'demolish' ? !eng : q === 'stop' ? !mine.some((s: any) => s.order) : false; b.classList.toggle('on', S.tool === q);
+    b.onclick = () => {
+      if (q === 'stop') { actOrders(S.selMany.map((s: any) => ({ id: s.id, type: null }))); renderInspector(); return; }
+      if (S.tool === q) { setTool('select'); return; }
+      closeTools(); setTool(q); toast(q === 'demolish' ? 'Click the bridge or building to blow up.' : 'Click the ground. Drag to set the way they face.');
+    };
+  });
 }
 const fogOn = () => S.phase === 'replay' ? S.replayFog : S.fog && (S.phase === 'plan' || S.phase === 'battle');
 
@@ -88,17 +107,18 @@ export function renderInspector() {
     title.textContent = `${many.length} units selected`;
     const total = many.reduce((a: number, s: any) => a + (s.members ? aliveMembers(s).length : s.pos.length), 0);
     h = `<dl class="kv"><dt>Soldiers</dt><dd>${total}</dd><dt>Units</dt><dd>${many.map((s: any) => s.call || KIND_NAME[s.kind]).join(', ')}</dd></dl>`;
-    if (S.phase === 'plan' || S.phase === 'battle') h += `<p class="hint" style="margin-top:8px">Pick ATTACK or DEFEND, then click the ground. Drag to set the way they face.</p><div class="row"><button class="btn" id="iAtk">ATTACK</button><button class="btn" id="iDef">DEFEND</button>${many.some((s: any) => s.kind === 'engineers') ? '<button class="btn" id="iDemo">DEMOLISH</button>' : ''}<button class="btn" id="iClear">CLEAR ORDERS</button></div>`;
+    if (S.phase === 'plan') h += `<p class="hint" style="margin-top:8px">Pick ATTACK or DEFEND, then click the ground. Drag to set the way they face.</p><div class="row"><button class="btn" id="iAtk">ATTACK</button><button class="btn" id="iDef">DEFEND</button>${many.some((s: any) => s.kind === 'engineers') ? '<button class="btn" id="iDemo">DEMOLISH</button>' : ''}<button class="btn" id="iClear">CLEAR ORDERS</button></div>`;
   } else if (it && it.pos) {
     const col = S.teams[it.team].color;
     title.textContent = it.call ? `${it.call} · ${it.temp ? 'Paratroopers' : KIND_NAME[it.kind]}` : KIND_NAME[it.kind];
     const alive = it.members ? aliveMembers(it).length : it.pos.length, kills = it.members ? it.members.reduce((a: number, i: number) => a + S.units[i].kills, 0) : 0, c = sqCenter(it);
-    const doing = it.members ? (it.state || 'hold').toUpperCase() : 'NOT DEPLOYED';
+    const mu = it.kind === 'mortar' && it.members ? S.units[it.members[0]] : null;
+    const doing = mu && mu.alive && mu.reloading && mu.cd > 0 ? `RELOADING ${Math.ceil(mu.cd)} S` : it.members ? (it.state || 'hold').toUpperCase() : 'NOT DEPLOYED';
     const next = it.order ? `${it.order.type.toUpperCase()} ${grid(it.order.x, it.order.y)}` : (it.members ? 'CARRY ON' : (['mg', 'mortar', 'at', 'op', 'garrison'].includes(it.kind) ? 'FIXED' : 'HOLD'));
     h = `<dl class="kv"><dt>Team</dt><dd style="color:${col}">${S.teams[it.team].name}</dd><dt>Grid</dt><dd>${c ? grid(c[0], c[1]) : '-'}</dd><dt>Strength</dt><dd>${alive} / ${it.pos.length}</dd><dt>Now</dt><dd>${doing}</dd>${S.phase === 'plan' && it.team === NET.me ? `<dt>Next phase</dt><dd>${next}</dd>` : ''}${it.members ? `<dt>Kills</dt><dd>${kills}</dd>` : `<dt>Cost</dt><dd>${itemCost(it)}</dd>`}</dl>`;
     if (HINT[it.kind]) h += `<p class="hint" style="margin-top:8px">${HINT[it.kind]}</p>`;
     const mover = MOVERS.includes(it.kind);
-    if ((S.phase === 'plan' || S.phase === 'battle') && it.team === NET.me) h += `<div class="row">${mover ? '<button class="btn" id="iAtk">ATTACK</button><button class="btn" id="iDef">DEFEND</button>' : ''}${it.kind === 'engineers' ? '<button class="btn" id="iDemo">DEMOLISH</button>' : ''}${it.order ? '<button class="btn" id="iClear">CLEAR ORDER</button>' : ''}${canRemove(it) ? '<button class="btn stop" id="iDel">REMOVE</button>' : ''}</div>`;
+    if (S.phase === 'plan' && it.team === NET.me) h += `<div class="row">${mover ? '<button class="btn" id="iAtk">ATTACK</button><button class="btn" id="iDef">DEFEND</button>' : ''}${it.kind === 'engineers' ? '<button class="btn" id="iDemo">DEMOLISH</button>' : ''}${it.order ? '<button class="btn" id="iClear">CLEAR ORDER</button>' : ''}${canRemove(it) ? '<button class="btn stop" id="iDel">REMOVE</button>' : ''}</div>`;
   } else if (it && it.building) {
     const bd = it.building, T = BTYPES[bd.btype || 'house'];
     title.textContent = bd.name || T.label;
@@ -161,7 +181,8 @@ function syncClock() {
 }
 export function syncUI() {
   const ph = S.phase, plan = ph === 'plan', show = (id: string, v: boolean) => $(id).hidden = !v;
-  const live = plan || ph === 'battle';
+  // Plans lock when the phase begins: buying and orders only happen between phases.
+  const live = plan;
   if (!plan) S.waiting = false;
   show('#bBegin', plan); $('#bBegin').textContent = S.waiting ? 'WAITING FOR FRIEND' : NET.mode === 'solo' ? `BEGIN PHASE ${S.round}` : `READY · PHASE ${S.round}`; show('#cmds', live); show('#supplyPlate', live);
   show('#bReplay', ph === 'done'); show('#bNew', ph === 'done'); show('#bExit', ph === 'replay'); show('#bFollow', ph === 'replay'); show('#bFromStart', ph === 'replay');

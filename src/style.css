@@ -67,6 +67,9 @@ button:focus-visible { outline: 1px solid var(--gold); outline-offset: 1px; }
 .topleft { top: 8px; left: 8px; display: flex; gap: 4px; }
 .topleft .btn { font-family: var(--f-title); font-size: 16px; padding: 4px 10px; }
 .strip .btn { font-family: var(--f-title); font-size: 16px; padding: 5px 10px; white-space: nowrap; }
+.qbar { display: flex; gap: 2px; padding: 2px; background: var(--window); border: 1px solid var(--line); transform: translate(-50%, -100%); white-space: nowrap; }
+.qbar .btn { padding: 3px 7px; }
+.qbar .btn.on { border-color: var(--warn); color: var(--warn); }
 .toast { left: 50%; bottom: 108px; transform: translateX(-50%); padding: 6px 10px; background: var(--window); border: 1px solid var(--warn); color: var(--ink); pointer-events: none; white-space: nowrap; }
 .banner { left: 50%; top: 22%; transform: translateX(-50%); padding: 10px 22px; text-align: center; pointer-events: none; background: rgba(24, 25, 29, .95); }
 .banner b { display: block; font-family: var(--f-title); font-size: 32px; font-weight: normal; color: var(--good); line-height: 1; }

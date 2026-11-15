@@ -127,6 +127,11 @@ function assignSlots(sq: any) {
     else { const a = rnd() * 6.28, d = 2 + rnd() * 8; const q = nudge(sq.tx + Math.cos(a) * d, sq.ty + Math.sin(a) * d) || [u.x, u.y]; u.sx = q[0]; u.sy = q[1]; }
   });
 }
+function clearLine(ax: number, ay: number, bx: number, by: number, veh?: boolean) {
+  const n = Math.ceil(Math.hypot(bx - ax, by - ay) / .7);
+  for (let i = 1; i <= n; i++) if (!passable(cellOf(ax + (bx - ax) * i / n, ay + (by - ay) * i / n), veh)) return false;
+  return true;
+}
 // One shared path field per destination (and per vehicle class), reused by every unit going there.
 function flowFor(x: number, y: number, veh?: boolean) {
   const t = nudge(x, y); if (!t) return null; const tc = cellOf(t[0], t[1]), key = tc * 2 + (veh ? 1 : 0);
@@ -233,8 +238,9 @@ function moveUnit(u: any, k: any, sq: any) {
   const ci = cellOf(u.x, u.y), cov = ci >= 0 ? S.cover[ci] : 0, tt = ci >= 0 ? M.terr[ci] : 0;
   let sp = k.speed * (sq.pace || 1) * DT * (k.veh ? (tt === T_ROAD || tt === T_BRIDGE ? 1.5 : tt === T_WOOD ? .5 : cov === 2 ? .7 : 1) : (cov === 2 ? .6 : cov === 4 ? .33 : tt === T_WOOD ? .85 : 1));
   let tx = u.sx, ty = u.sy;
-  const f = ds > 10 ? flowFor(sq.tx, sq.ty, k.veh) : null;
-  if (f && ci >= 0 && f[ci] !== 65535 && f[ci] > 3) {
+  // Go straight when the way is clear; otherwise follow the path field round buildings and water.
+  const f = ds > 16 || !clearLine(u.x, u.y, u.sx, u.sy, k.veh) ? flowFor(sq.tx, sq.ty, k.veh) : null;
+  if (f && ci >= 0 && f[ci] !== 65535 && f[ci] > 0) {
     let best = f[ci], bc = -1; const cx = ci % GW, cy = (ci / GW) | 0;
     for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
       if (!ox && !oy) continue; const nx = cx + ox, ny = cy + oy; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
@@ -245,6 +251,9 @@ function moveUnit(u: any, k: any, sq: any) {
   const mx = tx - u.x, my = ty - u.y, ml = Math.hypot(mx, my) || 1; sp = Math.min(sp, ml);
   const nx = u.x + mx / ml * sp, ny = u.y + my / ml * sp;
   if (passable(cellOf(nx, ny), k.veh) || !passable(ci, k.veh)) { u.hd = Math.atan2(-(ny - u.y), nx - u.x); u.x = nx; u.y = ny; }
+  // Blocked: slide along the wall on one axis before a small random step.
+  else if (passable(cellOf(nx, u.y), k.veh)) u.x = nx;
+  else if (passable(cellOf(u.x, ny), k.veh)) u.y = ny;
   else { u.x += (rnd() - .5) * .4; u.y += (rnd() - .5) * .4; }
 }
 function updateSquads() {
@@ -363,7 +372,7 @@ export function step() {
     const k = K[u.kind]; u.cd -= DT; u.scan -= DT;
     if (u.kind === 'op') continue;
     if (u.kind === 'mortar') {
-      if (u.cd <= 0 && u.scan <= 0) { u.scan = .6; const t = mortarTarget(u); if (t >= 0) { const e = U[t], d = Math.hypot(e.x - u.x, e.y - u.y); addShell({ x0: u.x, y0: u.y, x1: e.x + gauss() * 5, y1: e.y + gauss() * 5, t: 0, dur: .8 + d / 60, team: u.team, r: 6.5, power: .8 }); u.cd = k.cd * (.85 + rnd() * .3); } }
+      if (u.cd <= 0 && u.scan <= 0) { u.scan = .6; const t = mortarTarget(u); if (t >= 0) { const e = U[t], d = Math.hypot(e.x - u.x, e.y - u.y); addShell({ x0: u.x, y0: u.y, x1: e.x + gauss() * 5, y1: e.y + gauss() * 5, t: 0, dur: .8 + d / 60, team: u.team, r: 6.5, power: .8 }); u.rounds = (u.rounds ?? k.salvo) - 1; if (u.rounds <= 0) { u.rounds = k.salvo; u.cd = k.reload * (.9 + rnd() * .2); u.reloading = true; } else { u.cd = k.cd * (.85 + rnd() * .3); u.reloading = false; } } }
       continue;
     }
     if (u.scan <= 0) { u.scan = .35 + rnd() * .25; u.tgt = findTarget(u, k.range); }

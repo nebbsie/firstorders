@@ -1,6 +1,6 @@
 import { NET } from '../state';
 import * as THREE from 'three';
-import { W, H, C, GW, GH, IW, IH, IC, TRGB, clamp, inPlay } from '../config';
+import { W, H, C, GW, GH, IW, IH, IC, TRGB, T_WATER, T_BRIDGE, clamp, inPlay } from '../config';
 import { S, M, OWN } from '../state';
 import { unitH } from '../world';
 import { camera, cam, FOV, view } from './camera';
@@ -90,7 +90,16 @@ export function buildMap3D() {
   edge(line(k => [k * C, 0])); edge(line(k => [W, k * C])); edge(line(k => [W - k * C, H])); edge(line(k => [0, H - k * C]));
   const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(skirt, 3)); sg.computeVertexNormals();
   mapGroup.add(new THREE.Mesh(sg, new THREE.MeshLambertMaterial({ color: '#3a3529', side: THREE.DoubleSide })));
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(W - .3, H - .3).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ color: '#3f6874', transparent: true, opacity: .8 })); water.renderOrder = 2; mapGroup.add(water);
+  // Water: a surface over the wet cells only, each at its own level.
+  const wp: number[] = [], isW = (c: number) => M.terr0[c] === T_WATER || M.terr0[c] === T_BRIDGE;
+  const vh = (i: number, j: number) => { let s = 0, k = 0; for (const [ci, cj] of [[i - 1, j - 1], [i, j - 1], [i - 1, j], [i, j]]) if (ci >= 0 && cj >= 0 && ci < GW && cj < GH && isW(cj * GW + ci)) { s += M.wl[cj * GW + ci]; k++; } return s / k; };
+  for (let c = 0; c < GW * GH; c++) {
+    if (!isW(c)) continue; const i = c % GW, j = (c / GW) | 0, x0 = i * C - W / 2, z0 = j * C - H / 2;
+    const a = [x0, vh(i, j), z0], b = [x0 + C, vh(i + 1, j), z0], d = [x0, vh(i, j + 1), z0 + C], e = [x0 + C, vh(i + 1, j + 1), z0 + C];
+    wp.push(...a, ...d, ...b, ...b, ...d, ...e);
+  }
+  const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3)); wg.computeVertexNormals();
+  const water = new THREE.Mesh(wg, new THREE.MeshLambertMaterial({ color: '#3f6874', transparent: true, opacity: .82 })); water.renderOrder = 2; mapGroup.add(water);
 
   // Buildings: one merged mesh of flat-shaded walls and roofs. Roofs are triangulated, so L-shapes work.
   const Pa: number[] = [], Na: number[] = [], Ca: number[] = [];
@@ -148,7 +157,7 @@ export function buildMap3D() {
     for (const side of [-1, 1]) { const rail = new THREE.Mesh(new THREE.BoxGeometry(.3, .6, len), deckM); rail.position.set(side * (sp.half - .15), .7, 0); deck.add(rail); }
     const n = Math.max(1, Math.floor((sp.s1 - sp.s0) / 9));
     for (let k = 1; k < n; k++) {
-      const f = k / n, x = ax0 + (ax1 - ax0) * f, y = ay0 + (ay1 - ay0) * f, top = sp.h0 + (sp.h1 - sp.h0) * f - .8, bottom = Math.min(-2.5, M.hAt(x, y));
+      const f = k / n, x = ax0 + (ax1 - ax0) * f, y = ay0 + (ay1 - ay0) * f, top = sp.h0 + (sp.h1 - sp.h0) * f - .8, bottom = M.hAt(x, y) - 1;
       const pier = new THREE.Mesh(new THREE.BoxGeometry(1.4, top - bottom, 1.4), pierM); pier.position.set(x - W / 2, (top + bottom) / 2, y - H / 2); grp.add(pier);
     }
     br.group = grp; mapGroup.add(grp);

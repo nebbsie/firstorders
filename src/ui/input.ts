@@ -42,7 +42,7 @@ function orderGroup(group: any[], type: string, w: any, face?: number) {
 }
 const stopFollow = () => { cam.userMoved = true; if (S.phase === 'replay' && S.follow) { S.follow = false; syncFollow(); } };
 function hoverCursor(cv: HTMLCanvasElement, w: any) {
-  if (S.tool !== 'select' && (S.phase === 'plan' || S.phase === 'battle')) { cv.style.cursor = 'crosshair'; return; }
+  if (S.tool !== 'select' && S.phase === 'plan') { cv.style.cursor = 'crosshair'; return; }
   cv.style.cursor = w && S.phase !== 'replay' && hitTest(w) ? 'pointer' : 'default';
 }
 
@@ -55,7 +55,7 @@ export function initInput(cv: HTMLCanvasElement) {
     if (e.button === 2) { input.ptr = { mode: 'rot', lx: sx, ly: sy, moved: false }; return; }
     if (S.phase === 'replay') return;
     const w = pick(sx, sy), tool = TOOLDEF[S.tool];
-    const live = S.phase === 'plan' || S.phase === 'battle';
+    const live = S.phase === 'plan';
     if (!live || tool.mode === 'select') { input.ptr = { mode: 'box', x0: sx, y0: sy, w, shift: e.shiftKey }; return; }
     if (!w) return;
     if (tool.mode === 'order') {

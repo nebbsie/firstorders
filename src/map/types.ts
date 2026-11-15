@@ -33,4 +33,5 @@ export interface MapData {
   bldTop: Float32Array; bldId: Int32Array; count: number;
   play: Uint8Array;           // 1 for cells inside the battle circle
   bldId0: Int32Array; bldTop0: Float32Array;
+  wl: Float32Array;           // water surface height per cell
 }

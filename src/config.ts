@@ -22,11 +22,11 @@ export const T_GROUND = 0, T_ROAD = 1, T_PARK = 2, T_WATER = 3, T_BRIDGE = 4, T_
 export const COV: Record<string, number> = { sandbag: 1, trench: 2, wall: 3, wire: 4, tanktrap: 5 };
 
 // arc: a unit with an arc (the sniper) sees and shoots only inside a cone that wide, in radians, round the way it faces.
-export interface KindStats { hp: number; range: number; cd: number; acc?: number; speed: number; min?: number; veh?: boolean; sight: number; arc?: number }
+export interface KindStats { hp: number; range: number; cd: number; acc?: number; speed: number; min?: number; veh?: boolean; sight: number; arc?: number; salvo?: number; reload?: number }
 export const K: Record<string, KindStats> = {
   rifle: { hp: 1, range: 48, cd: 1.2, acc: .16, speed: 4, sight: 60 },
   mg: { hp: 3, range: 74, cd: .13, acc: .07, speed: 0, sight: 70 },
-  mortar: { hp: 2, range: 155, min: 26, cd: 4.6, speed: 0, sight: 35 },
+  mortar: { hp: 2, range: 155, min: 26, cd: 3, salvo: 3, reload: 20, speed: 0, sight: 35 },
   sniper: { hp: 1, range: 118, cd: 2.8, acc: .6, speed: 3.8, sight: 120, arc: 1.22 },
   assault: { hp: 1, range: 30, cd: .5, acc: .16, speed: 4.8, sight: 55 },
   engineer: { hp: 1, range: 40, cd: 1.3, acc: .13, speed: 3.8, sight: 55 },
@@ -88,7 +88,7 @@ export const INFO: Record<string, [string, string, string]> = {
   medics: ['8 medics. Your troops within 45 m of a medic survive a fatal wound one time in three.', 'Behind an attack', 'Mortars, artillery'],
   garrison: ['Ten riflemen inside a building. 85% cover, fire from the roof and see over lower roofs. Never move.', 'Tall buildings in town', 'Artillery, tanks'],
   mg: ['Machine gun nest. Long, fast, inaccurate fire. Never moves.', 'Woods, covering a road', 'Mortars, snipers'],
-  mortar: ['Fires shells at enemies 26 to 155 away that your side can see.', 'Behind your line', 'Artillery, rushes'],
+  mortar: ['Fires salvos of 3 shells, then reloads for about 20 s. Hits enemies 26 to 155 away that your side can see.', 'Behind your line', 'Artillery, rushes'],
   sniper: ['One soldier. Sees and shoots twice as far as a rifleman, but only in the 70 degree cone it faces.', 'High ground, covering a road', 'Mortars, MGs'],
   at: ['Anti-tank gun. Fires only at tanks, range 85.', 'Facing roads and open ground', 'Infantry, mortars'],
   tank: ['Heavy gun, armour. Small arms cannot hurt it. Takes orders.', 'Roads, open ground', 'AT guns, tank traps, shells'],

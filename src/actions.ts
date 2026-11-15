@@ -9,6 +9,8 @@ const live = (it: any) => { if (it && S.phase === 'battle') goLive(it); return i
 const byId = (id: number) => S.squads.find((s: any) => s.id === id) || S.structs.find((s: any) => s.id === id) || S.supports.find((s: any) => s.id === id);
 
 export function exec(team: number, m: any): any {
+  // Plans are locked while a phase runs.
+  if (S.phase !== 'plan' && ['squad', 'struct', 'support', 'orders', 'remove', 'time'].includes(m.cmd)) return null;
   switch (m.cmd) {
     case 'squad': return live(addSquad(team, m.kind, m.x, m.y, m.face));
     case 'struct': return live(addStruct(team, m.type, m.a, m.b));

@@ -80,12 +80,22 @@ function greyOutside(cv: HTMLCanvasElement) {
 export function finishMap(raw: RawMap): MapData {
   const terr = raw.terr, VW = GW + 1, VH = GH + 1, wd = waterDistance(terr);
   const ss = (a: number, b: number, x: number) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+  // Water level: every lake, pond and river stretch sits just below its own banks, not at one height for
+  // the whole map. Each cell takes the bank height of the nearest shore, then the levels are smoothed.
+  const N = GW * GH, cb = new Float32Array(N), wl = new Float32Array(N).fill(NaN), q = new Int32Array(N);
+  for (let c = 0; c < N; c++) { const i = c % GW, j = (c / GW) | 0; cb[c] = (raw.baseH[j * VW + i] + raw.baseH[j * VW + i + 1] + raw.baseH[(j + 1) * VW + i] + raw.baseH[(j + 1) * VW + i + 1]) / 4; }
+  const nb4 = (c: number) => { const i = c % GW, j = (c / GW) | 0; return [i > 0 ? c - 1 : -1, i < GW - 1 ? c + 1 : -1, j > 0 ? c - GW : -1, j < GH - 1 ? c + GW : -1]; };
+  let qh = 0, qt = 0;
+  for (let c = 0; c < N; c++) { if (!isWet(terr[c])) continue; let lo = Infinity; for (const n of nb4(c)) if (n >= 0 && !isWet(terr[n])) lo = Math.min(lo, cb[n]); if (lo < Infinity) { wl[c] = lo - .5; q[qt++] = c; } }
+  while (qh < qt) { const c = q[qh++]; for (const n of nb4(c)) if (n >= 0 && isNaN(wl[n])) { wl[n] = wl[c]; q[qt++] = n; } }
+  for (let c = 0; c < N; c++) if (isNaN(wl[c])) wl[c] = -.5;
+  for (let pass = 0; pass < 3; pass++) { const src = wl.slice(); for (let c = 0; c < N; c++) { if (!isWet(terr[c])) continue; let s = 0, k = 0; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const i = c % GW + dx, j = ((c / GW) | 0) + dy; if (i < 0 || j < 0 || i >= GW || j >= GH) continue; const n = j * GW + i; if (isWet(terr[n])) { s += src[n]; k++; } } wl[c] = s / k; } }
   const TH = new Float32Array(VW * VH);
   for (let j = 0; j < VH; j++) for (let i = 0; i < VW; i++) {
-    let s = 0, n = 0;
-    for (const [ci, cj] of [[i - 1, j - 1], [i, j - 1], [i - 1, j], [i, j]]) if (ci >= 0 && cj >= 0 && ci < GW && cj < GH) { s += wd[cj * GW + ci]; n++; }
+    let s = 0, n = 0, lv = 0;
+    for (const [ci, cj] of [[i - 1, j - 1], [i, j - 1], [i - 1, j], [i, j]]) if (ci >= 0 && cj >= 0 && ci < GW && cj < GH) { s += wd[cj * GW + ci]; lv += wl[cj * GW + ci]; n++; }
     const w = s / n, t = ss(-9, 0, w), base = raw.baseH[j * VW + i];
-    TH[j * VW + i] = base * (1 - t) + (-1.2 - clamp(w, 0, 12) * .22) * t;
+    TH[j * VW + i] = base * (1 - t) + (Math.min(base, lv / n) - .7 - clamp(w, 0, 12) * .22) * t;
   }
   const hAt = (x: number, y: number) => {
     const fx = clamp(x, 0, W) / C, fy = clamp(y, 0, H) / C, i = Math.min(GW - 1, Math.floor(fx)), j = Math.min(GH - 1, Math.floor(fy)), u = fx - i, v = fy - j;
@@ -149,7 +159,7 @@ export function finishMap(raw: RawMap): MapData {
       if (dir < 0) sA = s; else sB = s;
     }
     const hA = hAt(cx + ax * (sA - C), cy + ay * (sA - C)), hB = hAt(cx + ax * (sB + C), cy + ay * (sB + C));
-    const deckAt = (c: number) => { const s = ((c % GW) * C + 1 - cx) * ax + (Math.floor(c / GW) * C + 1 - cy) * ay, f = clamp((s - sA) / Math.max(1, sB - sA), 0, 1); return Math.max(hA + (hB - hA) * f, isWet(terr[c]) ? 1.6 : -9) + .15; };
+    const deckAt = (c: number) => { const s = ((c % GW) * C + 1 - cx) * ax + (Math.floor(c / GW) * C + 1 - cy) * ay, f = clamp((s - sA) / Math.max(1, sB - sA), 0, 1); return Math.max(hA + (hB - hA) * f, isWet(terr[c]) ? wl[c] + 1.6 : -9) + .15; };
     for (const c of cells) deck[c] = deckAt(c);
     // Raise the banks under the ramps into an embankment that meets the deck.
     for (const c of ramp) {
@@ -167,5 +177,5 @@ export function finishMap(raw: RawMap): MapData {
     const x = (ci % GW) * C + 1, y = Math.floor(ci / GW) * C + 1;
     if (hashf(x, y, 3) < (t === T_WOOD ? .42 : .05)) trees.push([x + (hashf(x, y, 4) - .5) * 1.6, y + (hashf(x, y, 5) - .5) * 1.6, 3 + hashf(x, y, 6) * 4]);
   }
-  return { seed: raw.seed, name: raw.name, source: raw.source, credit: raw.credit, ground, terr, terr0: terr.slice(), TH, hAt, deck, deck0: deck.slice(), bridges, B, trees, bldTop, bldId, count: B.length, play, bldId0: bldId.slice(), bldTop0: bldTop.slice() };
+  return { seed: raw.seed, name: raw.name, source: raw.source, credit: raw.credit, ground, terr, terr0: terr.slice(), TH, hAt, deck, deck0: deck.slice(), bridges, B, trees, bldTop, bldId, count: B.length, play, bldId0: bldId.slice(), bldTop0: bldTop.slice(), wl };
 }
