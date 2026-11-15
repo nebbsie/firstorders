@@ -44,6 +44,7 @@ export function draw2D() {
   for (const s of S.squads) {
     if (s.team !== NET.me) continue; const o = plan ? s.order : s.cur; if (!o) continue; const c = sqCenter(s); if (!c) continue; const col = TEAM_COLORS[NET.me];
     if (o.type === 'defend') ring(o.x, o.y, 16, col, true);
+    if (o.dir != null) groundLine(o, { x: o.x + Math.cos(o.dir) * 10, y: o.y + Math.sin(o.dir) * 10 }, col, false, true);
     groundLine({ x: c[0], y: c[1] }, o, col, o.type === 'defend', true);
     if (plan && (S.selMany || []).includes(s)) { const m = P(o.x, o.y, 3); plate(m[0], m[1] - 14, `${s.call || ''} ${o.type.toUpperCase()} ${grid(o.x, o.y)}`.trim(), col); }
   }
@@ -98,8 +99,14 @@ function drawGhost() {
     }
     groundLine(ptr.w0, ptr.w, ok ? okC : badC, true, S.tool === 'air' || S.tool === 'spy'); const b = P(ptr.w.x, ptr.w.y, 3); plate(b[0], b[1] - 16, label, ok ? okC : badC); return;
   }
-  if (ptr && ptr.mode === 'orderGroup') return;
-  if (S.tool === 'attack' || S.tool === 'defend') { for (const s of S.selMany || []) { const c = sqCenter(s); if (c && ['rifles', 'sniper', 'tank'].includes(s.kind)) groundLine({ x: c[0], y: c[1] }, hover, 'rgba(232,197,71,.6)', S.tool === 'defend', true); } }
+  // Dragging an order: an arrow for the way they will face, from the target point.
+  if (ptr && ptr.mode === 'orderGroup') {
+    const d = Math.hypot(ptr.w.x - ptr.w0.x, ptr.w.y - ptr.w0.y);
+    for (const s of S.selMany || []) { const c = sqCenter(s); if (c && ['rifles', 'sniper', 'tank'].includes(s.kind)) groundLine({ x: c[0], y: c[1] }, ptr.w0, 'rgba(232,197,71,.5)', S.tool === 'defend', false); }
+    if (d > 4) { const a = Math.atan2(ptr.w.y - ptr.w0.y, ptr.w.x - ptr.w0.x), px = -Math.sin(a), py = Math.cos(a), n = (S.selMany || []).length, half = Math.max(8, n * 6); groundLine({ x: ptr.w0.x - px * half, y: ptr.w0.y - py * half }, { x: ptr.w0.x + px * half, y: ptr.w0.y + py * half }, '#e8c547', false, false); groundLine(ptr.w0, { x: ptr.w0.x + Math.cos(a) * 14, y: ptr.w0.y + Math.sin(a) * 14 }, '#e8c547', false, true); }
+    const p = P(ptr.w0.x, ptr.w0.y, 3); plate(p[0], p[1] - 16, `${S.tool.toUpperCase()} ${grid(ptr.w0.x, ptr.w0.y)}${d > 4 ? ' · FACING' : ''}`, '#e8c547'); return;
+  }
+  if ((S.tool === 'attack' || S.tool === 'defend') && !ptr) { for (const s of S.selMany || []) { const c = sqCenter(s); if (c && ['rifles', 'sniper', 'tank'].includes(s.kind)) groundLine({ x: c[0], y: c[1] }, hover, 'rgba(232,197,71,.6)', S.tool === 'defend', true); } }
   if (ptr && ptr.mode === 'order') { const c = sqCenter(ptr.sq); if (!c) return; groundLine({ x: c[0], y: c[1] }, ptr.w, '#e8c547', S.tool === 'defend', true); const b = P(ptr.w.x, ptr.w.y, 3); plate(b[0], b[1] - 16, `${S.tool.toUpperCase()} ${grid(ptr.w.x, ptr.w.y)}`, '#e8c547'); return; }
   if (tool.mode === 'point') {
     const sup = S.tool === 'barrage' || S.tool === 'para' || S.tool === 'demo', mine = canDeploy(NET.me, hover.x, hover.y), ok = (sup || mine) && left(NET.me) >= COST[S.tool];

@@ -34,7 +34,7 @@ export function beginRound() {
   for (const s of S.structs) if (s.round === S.round) { for (const ci of s.cells) S.cover[ci] = COV[s.type]; s.placedAt = S.t; }
   for (const sq of S.squads) {
     if (!sq.members) { if (sq.round === S.round) spawnSquad(sq); }
-    else if (sq.order) { sq.state = sq.order.type; sq.tx = sq.order.x; sq.ty = sq.order.y; sq.arrived = -1; sq.contact = S.t; assignSlots(sq); }
+    else if (sq.order) { sq.state = sq.order.type; sq.tx = sq.order.x; sq.ty = sq.order.y; sq.dir = sq.order.dir; sq.arrived = -1; sq.contact = S.t; assignSlots(sq); }
   }
   for (const sq of S.squads) if (sq.order) { if (sq.members && sq.order.type === 'attack') log(sq.team, `${sqName(sq)}: moving on ${grid(sq.order.x, sq.order.y)}`); sq.cur = sq.order; sq.order = null; }
   for (const su of S.supports) if (su.round === S.round) su.fired = false;
@@ -52,7 +52,7 @@ export function goLive(it: any) {
 }
 export function applyOrder(sq: any) {
   if (!sq.members || !sq.order) return; const o = sq.order;
-  sq.state = o.type; sq.tx = o.x; sq.ty = o.y; sq.arrived = -1; sq.contact = S.t; assignSlots(sq); sq.cur = o; sq.order = null;
+  sq.state = o.type; sq.tx = o.x; sq.ty = o.y; sq.dir = o.dir; sq.arrived = -1; sq.contact = S.t; assignSlots(sq); sq.cur = o; sq.order = null;
   if (o.type === 'attack') log(sq.team, `${sqName(sq)}: moving on ${grid(o.x, o.y)}`);
 }
 function snapshotHistory() { S.history.push({ round: S.round, terr: S.terrCount.slice(), alive: S.teams.map((t: any) => S.units.filter((u: any) => u.alive && u.team === t.id).length) }); }
@@ -73,13 +73,22 @@ function spawnSquad(sq: any, drop?: boolean) {
     const u = { i: S.units.length, x: p[0], y: p[1], team: sq.team, sq: sq.id, kind, hp: k.hp, cd: rnd() * 1.2, scan: rnd() * .4, tgt: -1, sx: p[0], sy: p[1], alive: true, kills: 0, gar: sq.kind === 'garrison', hd: Math.atan2(-(H / 2 - p[1]), W / 2 - p[0]), drop: drop ? 1.2 + rnd() * .6 : 0 };
     sq.members.push(S.units.length); S.units.push(u); S.stats[sq.team].start++;
   }
-  const o = sq.order; sq.state = o ? o.type : 'hold'; sq.tx = o ? o.x : sq.x; sq.ty = o ? o.y : sq.y; sq.contact = S.t; sq.arrived = -1; assignSlots(sq);
+  const o = sq.order; sq.state = o ? o.type : 'hold'; sq.tx = o ? o.x : sq.x; sq.ty = o ? o.y : sq.y; sq.dir = o ? o.dir : undefined; sq.contact = S.t; sq.arrived = -1; assignSlots(sq);
 }
 function assignSlots(sq: any) {
   const mem = aliveMembers(sq); if (!mem.length) return;
-  if (sq.state === 'attack') { let i = 0; for (const u of mem) { const ox = (i % 4 - 1.5) * 2.6, oy = (Math.floor(i / 4) - 1.5) * 2.6; i++; const q = nudge(sq.tx + ox, sq.ty + oy) || [sq.tx, sq.ty]; u.sx = q[0]; u.sy = q[1]; } return; }
+  // Facing: the order's direction, else the way from the unit to the target.
+  const c0x = mem.reduce((a: number, u: any) => a + u.x, 0) / mem.length, c0y = mem.reduce((a: number, u: any) => a + u.y, 0) / mem.length;
+  const face = sq.dir != null ? sq.dir : Math.atan2(sq.ty - c0y, sq.tx - c0x), fx = Math.cos(face), fy = Math.sin(face);
+  if (sq.state === 'attack') {
+    // A line across the facing direction: eight wide, ranks behind.
+    let i = 0; for (const u of mem) { const col = i % 8 - 3.5, row = Math.floor(i / 8); i++; const q = nudge(sq.tx - fy * col * 2.4 - fx * row * 2.6, sq.ty + fx * col * 2.4 - fy * row * 2.6) || [sq.tx, sq.ty]; u.sx = q[0]; u.sy = q[1]; u.hd = Math.atan2(-fy, fx); }
+    return;
+  }
   const cells: number[][] = [], r = 16, c0 = Math.floor(sq.tx / C), r0 = Math.floor(sq.ty / C), rc = Math.ceil(r / C);
   for (let dy = -rc; dy <= rc; dy++) for (let dx = -rc; dx <= rc; dx++) { const cx = c0 + dx, cy = r0 + dy; if (cx < 0 || cy < 0 || cx >= GW || cy >= GH) continue; const ci = cy * GW + cx, c = S.cover[ci]; if ((c === 1 || c === 2) && Math.hypot(dx, dy) * C <= r) cells.push([ci, Math.hypot(dx, dy)]); }
+  // Cover on the facing side comes first.
+  for (const c of cells) { const px = (c[0] % GW) * C + 1 - sq.tx, py = Math.floor(c[0] / GW) * C + 1 - sq.ty; c[1] -= (px * fx + py * fy) / C * .6; }
   cells.sort((a, b) => a[1] - b[1]);
   mem.forEach((u: any, i: number) => {
     if (i < cells.length) { const pick = cells[Math.floor(i * cells.length / mem.length)][0]; u.sx = (pick % GW) * C + 1 + (rnd() - .5) * .6; u.sy = Math.floor(pick / GW) * C + 1 + (rnd() - .5) * .6; }

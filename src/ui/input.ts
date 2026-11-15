@@ -29,12 +29,15 @@ function boxSelect(b: any) {
   return out;
 }
 // Orders for several units at once: spread them across the target, side by side.
-function orderGroup(group: any[], type: string, w: any) {
+// face: the way they face at the target, in radians; without it they face the way they walked.
+function orderGroup(group: any[], type: string, w: any, face?: number) {
   const movers = group.filter(s => MOVERS.includes(s.kind) && (!s.members || s.members.some((i: number) => S.units[i].alive)));
   if (!movers.length) { toast('Select platoons, snipers or tanks to give them orders'); return; }
   let gx = 0, gy = 0; const cs = movers.map(s => sqCenter(s)); cs.forEach(c => { gx += c[0]; gy += c[1]; }); gx /= cs.length; gy /= cs.length;
   let dx = w.x - gx, dy = w.y - gy; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
-  const list: any[] = []; movers.forEach((s, k) => { const off = (k - (movers.length - 1) / 2) * 11, q = nudge(w.x - dy * off, w.y + dx * off); if (q) list.push({ id: s.id, type, x: q[0], y: q[1] }); });
+  if (face != null) { dx = Math.cos(face); dy = Math.sin(face); }
+  const dir = Math.atan2(dy, dx);
+  const list: any[] = []; movers.forEach((s, k) => { const off = (k - (movers.length - 1) / 2) * 11, q = nudge(w.x - dy * off, w.y + dx * off); if (q) list.push({ id: s.id, type, x: q[0], y: q[1], dir }); });
   actOrders(list);
   setSel(movers.length === 1 ? movers[0] : null, movers);
 }
@@ -57,10 +60,9 @@ export function initInput(cv: HTMLCanvasElement) {
     if (!live || tool.mode === 'select') { input.ptr = { mode: 'box', x0: sx, y0: sy, w, shift: e.shiftKey }; return; }
     if (!w) return;
     if (tool.mode === 'order') {
-      const own = hitTest(w, true), sel = (S.selMany || []).filter((s: any) => MOVERS.includes(s.kind));
-      // Drag from one of your units to order just that unit; otherwise the click is the target for the selection.
-      if (own && MOVERS.includes(own.kind) && !sel.includes(own)) { input.ptr = { mode: 'order', sq: own, w0: w, w }; setSel(own); return; }
-      if (sel.length) { input.ptr = { mode: 'orderGroup', w }; return; }
+      // Press on the target for the selected units; drag from there to set the way they face.
+      const sel = (S.selMany || []).filter((s: any) => MOVERS.includes(s.kind));
+      if (sel.length) { input.ptr = { mode: 'orderGroup', w0: w, w }; return; }
       toast('Select your platoons, snipers or tanks first'); return;
     }
     input.ptr = { mode: tool.mode, w0: w, w };
@@ -90,11 +92,7 @@ export function initInput(cv: HTMLCanvasElement) {
     if (S.phase !== 'plan' && S.phase !== 'battle') return; const w = p.w, t = S.tool;
     // During a battle, whatever is placed acts at once.
     const done = (it: any) => setSel(it);
-    if (p.mode === 'orderGroup') { orderGroup(S.selMany, t, w); return; }
-    if (p.mode === 'order') {
-      const c = sqCenter(p.sq); if (c && Math.hypot(w.x - c[0], w.y - c[1]) < 5) { if (S.selMany.length > 1) orderGroup(S.selMany, t, w); return; }
-      orderGroup([p.sq], t, w); return;
-    }
+    if (p.mode === 'orderGroup') { const dragged = Math.hypot(w.x - p.w0.x, w.y - p.w0.y) > 4; orderGroup(S.selMany, t, p.w0, dragged ? Math.atan2(w.y - p.w0.y, w.x - p.w0.x) : undefined); setTool('select'); return; }
     if (p.mode === 'point') {
       if (left(NET.me) < COST[t]) { toast('Not enough supply'); return; }
       if (t === 'demo') {

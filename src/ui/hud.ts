@@ -58,7 +58,7 @@ function showInfo(id: string, tile: HTMLElement) {
   const el = $('#info'); el.hidden = false; el.style.left = $('#toolpanel').getBoundingClientRect().right + 6 + 'px';
 }
 function buildCommands() {
-  $('#cmds').innerHTML = ['BUILD', 'ORDERS'].map(g => `<button class="btn cmd" data-g="${g}">${g}</button>`).join('');
+  $('#cmds').innerHTML = ['BUILD'].map(g => `<button class="btn cmd" data-g="${g}">${g}</button>`).join('');
   document.querySelectorAll('.cmd').forEach((b: any) => b.onclick = () => openTools(b.dataset.g));
 }
 
@@ -88,7 +88,7 @@ export function renderInspector() {
     title.textContent = `${many.length} units selected`;
     const total = many.reduce((a: number, s: any) => a + (s.members ? aliveMembers(s).length : s.pos.length), 0);
     h = `<dl class="kv"><dt>Soldiers</dt><dd>${total}</dd><dt>Units</dt><dd>${many.map((s: any) => s.call || KIND_NAME[s.kind]).join(', ')}</dd></dl>`;
-    if (S.phase === 'plan') h += `<p class="hint" style="margin-top:8px">Pick ATTACK or DEFEND, then click the ground.</p><div class="row"><button class="btn" id="iAtk">ATTACK</button><button class="btn" id="iDef">DEFEND</button><button class="btn" id="iClear">CLEAR ORDERS</button></div>`;
+    if (S.phase === 'plan' || S.phase === 'battle') h += `<p class="hint" style="margin-top:8px">Pick ATTACK or DEFEND, then click the ground. Drag to set the way they face.</p><div class="row"><button class="btn" id="iAtk">ATTACK</button><button class="btn" id="iDef">DEFEND</button><button class="btn" id="iClear">CLEAR ORDERS</button></div>`;
   } else if (it && it.pos) {
     const col = S.teams[it.team].color;
     title.textContent = it.call ? `${it.call} · ${it.temp ? 'Paratroopers' : KIND_NAME[it.kind]}` : KIND_NAME[it.kind];
@@ -98,7 +98,7 @@ export function renderInspector() {
     h = `<dl class="kv"><dt>Team</dt><dd style="color:${col}">${S.teams[it.team].name}</dd><dt>Grid</dt><dd>${c ? grid(c[0], c[1]) : '-'}</dd><dt>Strength</dt><dd>${alive} / ${it.pos.length}</dd><dt>Now</dt><dd>${doing}</dd>${S.phase === 'plan' && it.team === NET.me ? `<dt>Next phase</dt><dd>${next}</dd>` : ''}${it.members ? `<dt>Kills</dt><dd>${kills}</dd>` : `<dt>Cost</dt><dd>${itemCost(it)}</dd>`}</dl>`;
     if (HINT[it.kind]) h += `<p class="hint" style="margin-top:8px">${HINT[it.kind]}</p>`;
     const mover = ['rifles', 'sniper', 'tank'].includes(it.kind);
-    if (S.phase === 'plan' && it.team === NET.me) h += `<div class="row">${mover ? '<button class="btn" id="iAtk">ATTACK</button><button class="btn" id="iDef">DEFEND</button>' : ''}${it.order ? '<button class="btn" id="iClear">CLEAR ORDER</button>' : ''}${canRemove(it) ? '<button class="btn stop" id="iDel">REMOVE</button>' : ''}</div>`;
+    if ((S.phase === 'plan' || S.phase === 'battle') && it.team === NET.me) h += `<div class="row">${mover ? '<button class="btn" id="iAtk">ATTACK</button><button class="btn" id="iDef">DEFEND</button>' : ''}${it.order ? '<button class="btn" id="iClear">CLEAR ORDER</button>' : ''}${canRemove(it) ? '<button class="btn stop" id="iDel">REMOVE</button>' : ''}</div>`;
   } else if (it && it.building) {
     const bd = it.building, T = BTYPES[bd.btype || 'house'];
     title.textContent = bd.name || T.label;
@@ -116,8 +116,8 @@ export function renderInspector() {
   const b = (id: string, f: () => void) => { const x = body.querySelector(id) as HTMLElement; if (x) x.onclick = f; };
   b('#iDel', () => { actRemove(it.id); setSel(null); });
   b('#iClear', () => { actOrders(S.selMany.map((s: any) => ({ id: s.id, type: null }))); renderInspector(); });
-  b('#iAtk', () => { if (openGroup !== 'ORDERS') openTools('ORDERS'); setTool('attack'); });
-  b('#iDef', () => { if (openGroup !== 'ORDERS') openTools('ORDERS'); setTool('defend'); });
+  b('#iAtk', () => { closeTools(); setTool('attack'); toast('Click the ground to attack. Drag to set the way they face.'); });
+  b('#iDef', () => { closeTools(); setTool('defend'); toast('Click the ground to hold. Drag to set the way they face.'); });
   b('#iEarly', () => { actTime(it.id, Math.max(0, it.t - 5)); renderInspector(); }); b('#iLate', () => { actTime(it.id, Math.min(PHASE_LEN - 5, it.t + 5)); renderInspector(); });
 }
 

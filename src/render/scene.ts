@@ -245,8 +245,10 @@ export function update3D(V: View) {
   for (const t of S.teams) {
     if (t.id !== NET.me && V.fogOn && !(S.hqKnown && S.hqKnown[NET.me] && S.hqKnown[NET.me].has(t.id))) continue;
     const x = t.zone.x, y = t.zone.y, h = M.hAt(x, y), fc = TRGB[t.lost && t.hqBy >= 0 ? t.hqBy : t.id];
-    setI(mModel.hq, nModel.hq++, x, y, h, 1, 1, 1, .3, [1, 1, 1]);
-    setI(mModel.flag, nModel.flag++, x + 2.4 * Math.cos(.3) + 1.8 * Math.sin(.3), y - 2.4 * Math.sin(.3) + 1.8 * Math.cos(.3), h + 8.4, 1, 1, 1, .3, fc);
+    // The flag streams out from the top of the pole and sways a little.
+    const sway = Math.sin(performance.now() / 700 + t.id) * .25;
+    setI(mModel.hq, nModel.hq++, x, y, h, 1, 1, 1, 0, [1, 1, 1]);
+    setI(mModel.flag, nModel.flag++, x, y, h + 11.4, 1, 1, 1, .4 + sway, fc);
   }
   for (const k in mModel) done(mModel[k], nModel[k]);
   const ppu = view.ch / 2 / (cam.dist * Math.tan(FOV / 2 * Math.PI / 180));

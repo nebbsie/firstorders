@@ -1,5 +1,5 @@
 import { NET } from './state';
-import { C, GW, GH, COST, KIND_NAME, TEAM_COLORS, TEAM_NAMES, CALLSIGNS, PERS, T_BRIDGE, CX, CY, PLAY_R, mulberry32 } from './config';
+import { C, GW, GH, COST, KIND_NAME, TEAM_COLORS, TEAM_NAMES, CALLSIGNS, PERS, T_BRIDGE, T_BUILD, T_WATER, T_GROUND, T_PARK, T_ROAD, CX, CY, PLAY_R, mulberry32 } from './config';
 import { S, M, OWN } from './state';
 import { cellOf, passTerr, nudge, canDeploy, cellPos } from './world';
 
@@ -15,6 +15,12 @@ export function makeTeams() {
       if (bad < all * .35) break;
       x += (CX - x) * .12; y += (CY - y) * .12;
     }
+    // The HQ flag stands on open ground near the start point: fields or grass first, a road if nothing else.
+    const open = (pref: number[]) => { for (let rr = 0; rr <= 40; rr++) for (let dy = -rr; dy <= rr; dy++) for (let dx = -rr; dx <= rr; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== rr) continue; const px = x + dx * C, py = y + dy * C, ci = cellOf(px, py); if (ci < 0 || !M.play[ci] || !pref.includes(M.terr[ci])) continue;
+      let clear = true; for (let ey = -2; ey <= 2 && clear; ey++) for (let ex = -2; ex <= 2; ex++) { const n = cellOf(px + ex * C, py + ey * C); if (n < 0 || M.terr[n] === T_BUILD || M.terr[n] === T_WATER || M.terr[n] === T_BRIDGE) { clear = false; break; } }
+      if (clear) return [Math.floor(px / C) * C + 1, Math.floor(py / C) * C + 1]; } return null; };
+    const spot = open([T_GROUND, T_PARK]) || open([T_ROAD]); if (spot) { x = spot[0]; y = spot[1]; }
     S.teams.push({ id: i, name: TEAM_NAMES[i], color: TEAM_COLORS[i], human: i === 0 || (NET.mode !== 'solo' && i === 1), zone: { x, y, r } });
   }
 }

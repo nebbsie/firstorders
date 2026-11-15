@@ -52,10 +52,11 @@ export const MODELS: Record<string, THREE.BufferGeometry> = {
     [box(1.9, .15, 1.9), CONC, [0, 3.8, 0]], [box(1.9, .5, .08), SAND, [0, 4.1, .95]], [box(1.9, .5, .08), SAND, [0, 4.1, -.95]], [box(.08, .5, 1.9), SAND, [.95, 4.1, 0]],
     [box(2.2, .12, 2.2), OLIVE, [0, 4.9, 0]], [box(.1, .7, .1), STEEL, [.9, 4.5, .9]], [box(.1, .7, .1), STEEL, [-.9, 4.5, -.9]],
   ]),
+  // HQ: a tall flagpole on a stone plinth, with a ring of sandbags round it.
   hq: build([
-    [box(6, 1.6, 5), CONC, [0, .8, 0]], [box(6.6, .35, 5.6), '#6f6c63', [0, 1.75, 0]], [box(.8, .9, 1.4), DARK, [3.05, .45, 0]],
-    ...sandRing(4.6, 18, .7),
-    [box(.2, 9, .2), '#d0cfc8', [2.4, 4.5, 1.8]],
+    [box(2.4, .5, 2.4), CONC, [0, .25, 0]], [box(1.6, .5, 1.6), '#9a978d', [0, .75, 0]],
+    [cyl(.12, .16, 12, 6), '#d8d6cf', [0, 6.5, 0]], [cyl(.28, .28, .28, 8), '#c9a13a', [0, 12.6, 0]],
+    ...sandRing(3.2, 14, .5),
   ]),
-  flag: build([[box(2.8, 1.7, .12), '#ffffff', [1.4, 0, 0]]]),
+  flag: build([[box(3.6, 2.2, .1), '#ffffff', [1.8, 0, 0]], [box(.2, 2.2, .14), '#ffffff', [3.55, 0, 0]]]),
 };
