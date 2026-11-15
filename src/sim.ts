@@ -14,7 +14,8 @@ function snd(k: string, x: number, y: number, size = 0) {
   if (!S.snd) S.snd = []; if (S.snd.length < 200) S.snd.push([k, x, y, size]);
   if (NET.mode === 'host') { if (!S.sndNet) S.sndNet = []; if (S.sndNet.length < 200) S.sndNet.push([k, Math.round(x), Math.round(y), size]); }
 }
-export function log(team: number, msg: string) { S.log.unshift({ t: S.t, team, msg }); if (S.log.length > 400) S.log.pop(); S.logDirty = true; }
+export function log(team: number, msg: string) {
+  S.teams.forEach((t: any) => { msg = msg.split(t.name).join(`{T${t.id}}`); }); S.log.unshift({ t: S.t, team, msg }); if (S.log.length > 400) S.log.pop(); S.logDirty = true; }
 export const income = (t: number) => S.teams[t].lost ? 0 : 200 + Math.round((S.terrCount[t] || 0) * 1.2);
 
 export function newBattle() {
@@ -337,6 +338,26 @@ function recFrame() {
 // Troops in woods are seen only at half range. A spy plane sees everything near its path.
 const sightOf = (u: any) => { if (u.kind === 'op') return opRange(u); let s = K[u.kind].sight; if (u.gar) { const b = M.B[M.bldId[cellOf(u.x, u.y)]]; s += 15 + ((b && BTYPES[b.btype || 'house'].sight) || 0); } return s; };
 function spyPos(p: any) { return p.kind === 'spy' && p.s > -10 && p.s < p.len + 10 ? [p.ax + p.ux * p.s, p.ay + p.uy * p.s] : null; }
+function viewshed(g: Uint8Array, u: any, R: number) {
+  const ha = unitH(u.x, u.y) + 1.6, c0 = cellOf(u.x, u.y), own = c0 >= 0 ? M.bldId[c0] : -1, rays = Math.min(120, Math.max(32, Math.ceil(R * 6.283 / IC)));
+  const mark = (x: number, y: number) => { const gx = Math.floor(x / IC), gy = Math.floor(y / IC); if (gx >= 0 && gy >= 0 && gx < IW && gy < IH) g[gy * IW + gx] = 1; };
+  mark(u.x, u.y);
+  for (let k = 0; k < rays; k++) {
+    const a = k / rays * 6.283, dx = Math.cos(a), dy = Math.sin(a); if (!inArc(u, u.x + dx * 10, u.y + dy * 10)) { for (let d = 1; d < 6; d += 1) mark(u.x + dx * d, u.y + dy * d); continue; }
+    let maxS = -1e9, wood = 0;
+    for (let d = 1; d <= R; d += 1) {
+      const x = u.x + dx * d, y = u.y + dy * d, ci = cellOf(x, y); if (ci < 0) break;
+      const gr = M.hAt(x, y), t = M.terr[ci];
+      if ((gr + 1.4 - ha) / d >= maxS) mark(x, y); else if (t !== T_BUILD) continue;
+      // What this spot hides behind it.
+      let top = gr;
+      if (t === T_BUILD) { const id = M.bldId[ci]; if (id >= 0 && id !== own) top = M.bldTop[ci]; }
+      else if (t === T_WOOD) { wood += 1; if (wood > 12) break; }
+      if (S.cover && S.cover[ci] === 3) top = Math.max(top, gr + 2.6);
+      maxS = Math.max(maxS, (top - ha) / d);
+    }
+  }
+}
 export function updateVision() {
   const U = S.units, N = S.teams.length, newContacts = S.teams.map(() => new Map<string, number>()), contactAt: string[] = S.teams.map(() => '');
   for (let t = 0; t < N; t++) {
@@ -383,7 +404,13 @@ export function updateVision() {
         for (let gx = Math.max(0, Math.floor(cx - r)); gx <= Math.min(IW - 1, Math.ceil(cx + r)); gx++)
           if ((gx + .5 - cx) ** 2 + (gy + .5 - cy) ** 2 <= r * r && (!u || inArc(u, (gx + .5) * IC, (gy + .5) * IC) || (gx + .5 - cx) ** 2 + (gy + .5 - cy) ** 2 < 4)) g[gy * IW + gx] = 1;
     };
-    for (const u of U) if (u.alive && u.team === t && !(u.drop > 0)) mark(u.x, u.y, sightOf(u), u);
+    // Troops clear the fog only where they can see: rays stop at buildings, rising ground and deep woods.
+    // Soldiers standing close together share one set of rays.
+    const done = new Set<number>();
+    for (const u of U) {
+      if (!u.alive || u.team !== t || u.drop > 0) continue; const R = sightOf(u), key = (Math.floor(u.y / 3) * 400 + Math.floor(u.x / 3)) * 64 + Math.round(R / 4) + (K[u.kind].arc ? 32 : 0);
+      if (done.has(key)) continue; done.add(key); viewshed(g, u, R);
+    }
     for (const p of S.planes) { const sp = p.team === t && spyPos(p); if (sp) mark(sp[0], sp[1], SPY_RADIUS); }
     for (let i = 0; i < g.length; i++) if (g[i]) seen[i] = 1;
   }

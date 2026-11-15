@@ -21,7 +21,8 @@ function pack(v: any): any {
 }
 function unpack(v: any): any {
   if (v == null || typeof v !== 'object') return v;
-  if (v.__t) return new TYPES[v.__t](v.b);
+  // The data channel can hand the bytes back as a Uint8Array view, not the ArrayBuffer itself: copy its bytes.
+  if (v.__t) { const b = v.b instanceof ArrayBuffer ? v.b : v.b.buffer.slice(v.b.byteOffset, v.b.byteOffset + v.b.byteLength); return new TYPES[v.__t](b); }
   if (Array.isArray(v)) return v.map(unpack);
   const o: any = {}; for (const k in v) o[k] = unpack(v[k]); return o;
 }
@@ -104,6 +105,7 @@ function onGuestData(m: any) {
 }
 export function guestLoaded() { send({ t: 'loaded' }); }
 function applySnap(m: any) {
+  S.lastSnap = performance.now();
   const was = S.phase, wasRound = S.round, wasLost = S.teams.map((t: any) => t.lost);
   Object.assign(S, { phase: m.phase, round: m.round, t: m.time, phaseStart: m.phaseStart, speed: m.speed, paused: m.paused, bank: m.bank, ready: m.ready, speedReq: m.speedReq });
   m.teams.forEach((t: any, i: number) => { const T = S.teams[i]; if (!T) return; T.lost = t.lost; T.hqBy = t.hqBy; T.hqHold = t.hqHold; T.human = t.human; T.per = { label: t.label }; });

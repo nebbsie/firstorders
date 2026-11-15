@@ -23,7 +23,7 @@ export function makeTeams() {
       let clear = true; for (let ey = -2; ey <= 2 && clear; ey++) for (let ex = -2; ex <= 2; ex++) { const n = cellOf(px + ex * C, py + ey * C); if (n < 0 || M.terr[n] === T_BUILD || M.terr[n] === T_WATER || M.terr[n] === T_BRIDGE) { clear = false; break; } }
       if (clear) return [Math.floor(px / C) * C + 1, Math.floor(py / C) * C + 1]; } return null; };
     const spot = open([T_GROUND, T_PARK, T_ROAD]); if (spot) { x = spot[0]; y = spot[1]; }
-    S.teams.push({ id: i, name: TEAM_NAMES[i], color: TEAM_COLORS[i], human: i === 0 || (NET.mode !== 'solo' && i === 1), zone: { x, y, r } });
+    const c = i === NET.me ? 0 : i === 0 ? NET.me : i; S.teams.push({ id: i, name: TEAM_NAMES[c], color: TEAM_COLORS[c], human: i === 0 || (NET.mode !== 'solo' && i === 1), zone: { x, y, r } });
   }
 }
 export function rollPersonalities() { for (const t of S.teams) { t.rng = mulberry32((Math.random() * 1e9) | 0); t.per = t.human ? PERS[1] : PERS[Math.floor(Math.random() * PERS.length)]; } }
@@ -52,10 +52,19 @@ function addGarrison(team: number, x: number, y: number) {
   const s = { id: S.nextId++, team, kind: 'garrison', x: b.cx, y: b.cy, pos, order: null, round: S.round, call: nextCall(team), bld: id };
   S.squads.push(s); return s;
 }
+// Units must stand apart when placed: platoons need more room than single guns.
+export function spacingOk(team: number, kind: string, x: number, y: number) {
+  if (kind === 'garrison') return true;
+  for (const o of S.squads) {
+    if (o.team !== team || o.kind === 'garrison') continue; const c = sqCenter(o); if (!c) continue;
+    const gap = PLATOON_SIZE[kind] || PLATOON_SIZE[o.kind] ? 10 : 5; if (Math.hypot(c[0] - x, c[1] - y) < gap) return false;
+  }
+  return true;
+}
 // face: the way the unit watches (snipers), in radians.
 export function addSquad(team: number, kind: string, x: number, y: number, face?: number): any {
   if (kind === 'garrison') return addGarrison(team, x, y);
-  const ok = (px: number, py: number) => canPlaceUnit(team, kind, px, py); if (!ok(x, y)) return null; const p = nudge(x, y, ok); if (!p) return null;
+  const ok = (px: number, py: number) => canPlaceUnit(team, kind, px, py); if (!ok(x, y) || !spacingOk(team, kind, x, y)) return null; const p = nudge(x, y, ok); if (!p) return null;
   const pos: number[][] = [];
   if (PLATOON_SIZE[kind]) { const r = mulberry32((S.nextId * 7919) ^ team); for (let i = 0; i < PLATOON_SIZE[kind]; i++) { const gx = (i % 4 - 1.5) * 2.3 + (r() - .5) * .8, gy = (Math.floor(i / 4) - 1.5) * 2.3 + (r() - .5) * .8; const q = nudge(p[0] + gx, p[1] + gy, ok); if (q) pos.push([q[0] + (r() - .5) * .9, q[1] + (r() - .5) * .9]); } }
   else pos.push(p);

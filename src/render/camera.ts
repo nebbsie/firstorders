@@ -7,7 +7,14 @@ export const camera = new THREE.PerspectiveCamera(FOV, 1, 1, 3000);
 export const cam = { tx: W / 2, ty: H / 2, dist: 330, yaw: 0, pitch: .95, userMoved: false };
 export const view = { cw: 1, ch: 1, dpr: 1 };
 
+// First person: the camera rides with one soldier or tank, looking the way it moves. Right drag looks round.
+export const fpv = { on: false, x: 0, y: 0, h: 0, dir: 0, look: 0, pitch: -.08 };
 export function applyCam() {
+  const fov = fpv.on ? 70 : FOV; if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
+  if (fpv.on) {
+    const a = fpv.dir + fpv.look, x = fpv.x - W / 2, z = fpv.y - H / 2;
+    camera.position.set(x, fpv.h, z); camera.lookAt(x + Math.cos(a) * 10, fpv.h + Math.sin(fpv.pitch) * 10, z + Math.sin(a) * 10); return;
+  }
   const tx = cam.tx - W / 2, tz = cam.ty - H / 2, th = 8, cp = Math.cos(cam.pitch);
   camera.position.set(tx + Math.sin(cam.yaw) * cp * cam.dist, th + Math.sin(cam.pitch) * cam.dist, tz + Math.cos(cam.yaw) * cp * cam.dist);
   camera.lookAt(tx, th, tz);

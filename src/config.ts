@@ -31,7 +31,7 @@ export const K: Record<string, KindStats> = {
   assault: { hp: 1, range: 30, cd: .5, acc: .16, speed: 4.8, sight: 55 },
   engineer: { hp: 1, range: 40, cd: 1.3, acc: .13, speed: 3.8, sight: 55 },
   medic: { hp: 1, range: 30, cd: 1.6, acc: .08, speed: 4, sight: 55 },
-  tank: { hp: 10, range: 70, cd: 3.2, acc: .5, speed: 3.6, veh: true, sight: 55 },
+  tank: { hp: 10, range: 70, cd: 3.2, acc: .5, speed: 3.6, veh: true, sight: 42 },
   at: { hp: 2, range: 85, cd: 3, acc: .5, speed: 0, sight: 60 },
   op: { hp: 1, range: 0, cd: 99, speed: 0, sight: 0 },
 };

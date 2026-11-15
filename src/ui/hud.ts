@@ -1,6 +1,6 @@
 import { NET } from '../state';
 import { PLAY_R, M_PER_UNIT, MOVERS, PHASE_LEN, COST, TOOLS, INFO, KIND_NAME, T_BUILD, T_WATER, T_BRIDGE, T_ROAD, T_WOOD, T_PARK, HS, grid, fmtT, clamp } from '../config';
-import { S, M, VIS0, SEEN0 } from '../state';
+import { S, M, VIS0, SEEN0, logText } from '../state';
 import { cellOf, bldNear, ENG_BUILD } from '../world';
 import { aliveMembers, sqCenter, itemCost, left, canRemove, removeItem, SUPPORT_ROUND } from '../plan';
 import { newBattle } from '../sim';
@@ -120,6 +120,7 @@ export function renderInspector() {
     h = `<dl class="kv"><dt>Team</dt><dd style="color:${col}">${S.teams[it.team].name}</dd><dt>Grid</dt><dd>${c ? grid(c[0], c[1]) : '-'}</dd><dt>Strength</dt><dd>${alive} / ${it.pos.length}</dd><dt>Now</dt><dd>${doing}</dd>${S.phase === 'plan' && it.team === NET.me ? `<dt>Next phase</dt><dd>${next}</dd>` : ''}${it.members ? `<dt>Kills</dt><dd>${kills}</dd>` : `<dt>Cost</dt><dd>${itemCost(it)}</dd>`}</dl>`;
     if (HINT[it.kind]) h += `<p class="hint" style="margin-top:8px">${HINT[it.kind]}</p>`;
     const mover = MOVERS.includes(it.kind);
+    if (it.team === NET.me && it.members && MOVERS.includes(it.kind) && S.phase !== 'replay') h += `<div class="row"><button class="btn" id="iFpv">FIRST PERSON</button></div>`;
     if (S.phase === 'plan' && it.team === NET.me) h += `<div class="row">${mover ? '<button class="btn" id="iAtk">ATTACK</button><button class="btn" id="iDef">DEFEND</button>' : ''}${it.kind === 'engineers' ? '<button class="btn" id="iDemo">DEMOLISH</button>' : ''}${it.order ? '<button class="btn" id="iClear">CLEAR ORDER</button>' : ''}${canRemove(it) ? '<button class="btn stop" id="iDel">REMOVE</button>' : ''}</div>`;
   } else if (it && it.building) {
     const bd = it.building, T = BTYPES[bd.btype || 'house'];
@@ -137,6 +138,7 @@ export function renderInspector() {
   body.innerHTML = h;
   const b = (id: string, f: () => void) => { const x = body.querySelector(id) as HTMLElement; if (x) x.onclick = f; };
   b('#iDel', () => { actRemove(it.id); setSel(null); });
+  b('#iFpv', () => { S.fpv = it.id; toast('First person. Right drag to look round. Esc or WASD to leave.'); });
   b('#iClear', () => { actOrders(S.selMany.map((s: any) => ({ id: s.id, type: null }))); renderInspector(); });
   b('#iAtk', () => { closeTools(); setTool('attack'); toast('Click the ground to attack. Drag to set the way they face.'); });
   b('#iDemo', () => { setTool('demolish'); toast('Click the bridge or building the engineers should blow up.'); });
@@ -162,7 +164,7 @@ function renderRadio() {
   const el = $('#radio'); if (S.phase !== 'battle' && S.phase !== 'replay') { el.innerHTML = ''; return; }
   const now = S.phase === 'replay' ? S.rt : S.t;
   const items = S.log.filter((l: any) => logVisible(l) && l.t <= now && now - l.t < 12).slice(0, 5).reverse();
-  el.innerHTML = items.map((l: any) => `<p style="border-left-color:${l.team >= 0 ? S.teams[l.team].color : 'var(--gold)'};opacity:${now - l.t > 9 ? .4 : 1}"><b>${fmtT(l.t)}</b>${l.msg}</p>`).join('');
+  el.innerHTML = items.map((l: any) => `<p style="border-left-color:${l.team >= 0 ? S.teams[l.team].color : 'var(--gold)'};opacity:${now - l.t > 9 ? .4 : 1}"><b>${fmtT(l.t)}</b>${logText(l.msg)}</p>`).join('');
 }
 export function syncSpeed() { document.querySelectorAll('#speeds .btn').forEach((b: any) => { const v = +b.dataset.speed; b.classList.toggle('on', v === 0 ? S.paused : (!S.paused && v === S.speed)); }); }
 export function syncFollow() { $('#bFollow').classList.toggle('on', S.follow); }
@@ -245,6 +247,7 @@ export function hudPulse() {
 // Two players: a speed or pause change waits until both ask for it. The bar shows what the other asked for.
 const speedName = (v: number) => v === 0 ? 'PAUSE' : v === -1 ? 'PLAY' : v + 'X';
 function syncSpeedReq() {
+  if (NET.mode === 'guest' && (S.phase === 'battle' || S.phase === 'plan') && S.lastSnap && performance.now() - S.lastSnap > 2500) toast('Waiting for the host. Their game may be paused or slow.');
   const el = $('#speedReq'), req = S.speedReq || {}, live = S.phase === 'battle' && NET.mode !== 'solo';
   const other = Object.keys(req).map(Number).find(t => t !== NET.me), mine = req[NET.me];
   if (!live || (other == null && mine == null)) { el.hidden = true; return; }

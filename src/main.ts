@@ -4,7 +4,8 @@ import { S, M, hooks, setMap, VIS0, SEEN0, OWN } from './state';
 import { finishMap } from './map/finish';
 import { newBattle, step } from './sim';
 import { liveView, replayView, followCam, replayRate } from './replay';
-import { camera, cam, view, applyCam, fit } from './render/camera';
+import { camera, cam, view, applyCam, fit, fpv } from './render/camera';
+import { unitH } from './world';
 import { initRenderer, renderer, buildMap3D, update3D, render } from './render/scene';
 import { initOverlay, resizeOverlay, draw2D } from './render/overlay';
 import { initInput, keyCam } from './ui/input';
@@ -55,12 +56,21 @@ function toMenu() { closeNet(); S.phase = 'menu'; showMenu(true); syncUI(); }
 bindStrip(toMenu);
 initMenu(startMap, startGuest, () => { if (pending) { const p = pending; pending = null; p(); } }, () => { toast(NET.mode === 'guest' ? 'The host left the game' : 'Your friend left. The AI takes their side.'); if (NET.mode === 'guest') toMenu(); });
 
-let last = performance.now(), acc = 0, pulse = 0;
+let last = performance.now(), acc = 0, pulse = 0, lastSim = performance.now();
+// The battle and the network run here, from a worker timer as well as from each frame:
+// browsers slow the frame loop of a hidden tab, and the host's friend must not freeze when the host looks away.
+function tickSim(now: number) {
+  const dt = Math.min(.25, (now - lastSim) / 1000); lastSim = now;
+  if (S.phase === 'menu' || !S.teams.length) return;
+  hostTick(now);
+  if (S.phase === 'battle' && !S.paused && NET.mode !== 'guest') { acc += dt * S.speed; let n = 0; while (acc >= DT && n < 80 && S.phase === 'battle') { step(); acc -= DT; n++; } if (n >= 80) acc = 0; } else acc = 0;
+}
+const simTimer = new Worker(URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 50)'], { type: 'text/javascript' })));
+simTimer.onmessage = () => tickSim(performance.now());
 function frame(now: number) {
   const dt = Math.min(.1, (now - last) / 1000); last = now;
   if (S.phase !== 'menu' && S.teams.length) {
-    hostTick(now);
-    if (S.phase === 'battle' && !S.paused && NET.mode !== 'guest') { acc += dt * S.speed; let n = 0; while (acc >= DT && n < 60 && S.phase === 'battle') { step(); acc -= DT; n++; } if (n >= 60) acc = 0; } else acc = 0;
+    tickSim(now);
     let V = liveView();
     if (S.phase === 'replay') {
       if (!S.paused) { S.rt += dt * S.speed * replayRate(); if (S.rt >= S.rec.end) { S.rt = S.rec.end; S.paused = true; banner('THE END', 'Exit the replay for the report'); } }
@@ -69,6 +79,16 @@ function frame(now: number) {
     }
     // The view keeps fitting the battle circle until the player moves the camera.
     if (!cam.userMoved) fit();
+    // First person: ride with the first living member of the chosen unit.
+    const fq = S.fpv != null && S.phase !== 'replay' ? S.squads.find((s: any) => s.id === S.fpv) : null, fu = fq && fq.members ? fq.members.map((i: number) => S.units[i]).find((u: any) => u && u.alive) : null;
+    if (fu) {
+      const tank = fu.kind === 'tank', want = -(fu.hd || 0), k = Math.min(1, dt * 4);
+      if (!fpv.on) { fpv.dir = want; fpv.look = 0; fpv.x = fu.x; fpv.y = fu.y; }
+      let d = want - fpv.dir; d = Math.atan2(Math.sin(d), Math.cos(d)); fpv.dir += d * k;
+      // A tank's camera sits at the front of the hull so the hull does not fill the view.
+      const ahead = tank ? 2.2 : .4, ex = fu.x + Math.cos(fpv.dir) * ahead, ey = fu.y + Math.sin(fpv.dir) * ahead;
+      fpv.x += (ex - fpv.x) * Math.min(1, dt * 8); fpv.y += (ey - fpv.y) * Math.min(1, dt * 8); fpv.h = unitH(fpv.x, fpv.y) + (tank ? 2.9 : 1.5); fpv.on = true;
+    } else { if (fpv.on) { cam.tx = fpv.x; cam.ty = fpv.y; cam.dist = Math.min(cam.dist, 120); } fpv.on = false; S.fpv = null; }
     keyCam(dt); applyCam(); update3D(V); render(); draw2D();
     tickAudio(dt); tickHud(dt); pulse -= dt; if (pulse <= 0) { pulse = .25; hudPulse(); }
   }

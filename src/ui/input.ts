@@ -2,10 +2,10 @@ import { NET } from '../state';
 import { C, GW, COST, TOOLDEF, MOVERS, CX, CY, segDist, clamp } from '../config';
 import { S, M } from '../state';
 import { nudge, canDeploy, bridgeNear, bridgeTouches, cellOf, canPlaceUnit, ENG_BUILD, ENG_R } from '../world';
-import { SUPPORT_ROUND } from '../plan';
+import { SUPPORT_ROUND, spacingOk } from '../plan';
 import { M_PER_UNIT as MPU } from '../config';
 import { sqCenter, left, addSquad, addStruct, addSupport, lineCells, canRemove, removeItem } from '../plan';
-import { cam, pick, panBy, P, fit } from '../render/camera';
+import { cam, pick, panBy, P, fit, fpv } from '../render/camera';
 import { setSel, setTool, toast, cursorNote, syncSpeed, syncFollow, closeTools } from './hud';
 import { actSquad, actStruct, actSupport, actOrders, actRemove, actSpeed } from '../actions';
 
@@ -70,7 +70,7 @@ export function initInput(cv: HTMLCanvasElement) {
   });
   cv.addEventListener('pointermove', e => {
     if (!M || S.phase === 'menu') return; const [sx, sy] = local(e), ptr = input.ptr;
-    if (ptr && ptr.mode === 'rot') { const dx = sx - ptr.lx, dy = sy - ptr.ly; ptr.lx = sx; ptr.ly = sy; if (Math.abs(dx) + Math.abs(dy) > 0) { ptr.moved = true; cam.yaw -= dx * .006; cam.pitch = clamp(cam.pitch + dy * .005, .3, 1.45); stopFollow(); } return; }
+    if (ptr && ptr.mode === 'rot') { const dx = sx - ptr.lx, dy = sy - ptr.ly; ptr.lx = sx; ptr.ly = sy; if (fpv.on && Math.abs(dx) + Math.abs(dy) > 0) { ptr.moved = true; fpv.look += dx * .005; fpv.pitch = clamp(fpv.pitch - dy * .004, -.9, .6); return; } if (Math.abs(dx) + Math.abs(dy) > 0) { ptr.moved = true; cam.yaw -= dx * .006; cam.pitch = clamp(cam.pitch + dy * .005, .3, 1.45); stopFollow(); } return; }
     if (ptr && ptr.mode === 'pan') { const dx = sx - ptr.lx, dy = sy - ptr.ly; ptr.lx = sx; ptr.ly = sy; if (dx || dy) { panBy(dx, dy); stopFollow(); } return; }
     if (ptr && ptr.mode === 'box') { if (Math.abs(sx - ptr.x0) + Math.abs(sy - ptr.y0) > 5) input.box = { x0: ptr.x0, y0: ptr.y0, x1: sx, y1: sy }; return; }
     const w = pick(sx, sy); input.hover = w; if (ptr && w) ptr.w = w;
@@ -109,6 +109,7 @@ export function initInput(cv: HTMLCanvasElement) {
       const a = p.w0, dragged = Math.hypot(w.x - a.x, w.y - a.y) > 3, face = dragged ? Math.atan2(w.y - a.y, w.x - a.x) : Math.atan2(CY - a.y, CX - a.x);
       if (left(NET.me) < COST[t]) { toast('Not enough supply'); return; }
       if (!canPlaceUnit(NET.me, t, a.x, a.y)) { toast('New units go in your start area'); return; }
+      if (!spacingOk(NET.me, t, a.x, a.y)) { toast('Too close to another unit. Spread them out.'); return; }
       done(actSquad(t, a.x, a.y, face)); return;
     }
     if (p.mode === 'orderGroup') { const dragged = Math.hypot(w.x - p.w0.x, w.y - p.w0.y) > 4; orderGroup(S.selMany, t, p.w0, dragged ? Math.atan2(w.y - p.w0.y, w.x - p.w0.x) : undefined); setTool('select'); return; }
@@ -130,6 +131,7 @@ export function initInput(cv: HTMLCanvasElement) {
       }
       if (t === 'barrage' || t === 'para') { done(actSupport(t, { x: w.x, y: w.y }, null, t === 'barrage' ? 15 : 30)); return; }
       if (!canPlaceUnit(NET.me, t, w.x, w.y)) { toast(t === 'garrison' ? 'Pick a building on your own ground' : ENG_BUILD.includes(t) ? `Start area, or within ${Math.round(ENG_R * MPU)} m of your engineers` : 'New units go in your start area'); return; }
+      if (!spacingOk(NET.me, t, w.x, w.y)) { toast('Too close to another unit. Spread them out.'); return; }
       const s = actSquad(t, w.x, w.y); if (!s && NET.mode !== 'guest') { toast(t === 'garrison' ? 'Click a building on your ground that is not held yet' : 'No open ground there'); return; }
       done(s); return;
     }
@@ -152,6 +154,7 @@ export function initInput(cv: HTMLCanvasElement) {
   window.addEventListener('keydown', e => {
     if ((e.target as HTMLElement).closest && (e.target as HTMLElement).closest('input,textarea')) return; keys.add(e.key.toLowerCase());
     if (e.key === 'Home') { cam.userMoved = false; fit(); }
+    if (e.key === 'Escape' && S.fpv != null) { S.fpv = null; return; }
     if (e.key === 'Escape') { if (S.tool !== 'select') setTool('select'); else setSel(null); }
     if ((e.key === 'Delete' || e.key === 'Backspace') && S.sel && canRemove(S.sel)) { actRemove(S.sel.id); setSel(null); e.preventDefault(); }
     if (e.key === ' ' && S.phase === 'plan') { (document.getElementById('bBegin') as HTMLButtonElement).click(); e.preventDefault(); }
@@ -162,6 +165,6 @@ export function initInput(cv: HTMLCanvasElement) {
 export function keyCam(dt: number) {
   if (S.phase === 'menu') return; let dx = 0, dy = 0;
   if (keys.has('a')) dx += 1; if (keys.has('d')) dx -= 1; if (keys.has('w')) dy += 1; if (keys.has('s')) dy -= 1;
-  if (dx || dy) { panBy(dx * 600 * dt, dy * 600 * dt); stopFollow(); }
+  if (dx || dy) { S.fpv = null; panBy(dx * 600 * dt, dy * 600 * dt); stopFollow(); }
   if (keys.has('q')) { cam.yaw += dt * 1.2; stopFollow(); } if (keys.has('e')) { cam.yaw -= dt * 1.2; stopFollow(); }
 }

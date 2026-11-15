@@ -20,6 +20,10 @@ export const OWN = new Int8Array(IW * IH);
 // What the player's side sees now (VIS0) and has ever seen (SEEN0), per ground cell.
 export const VIS0 = new Uint8Array(IW * IH), SEEN0 = new Uint8Array(IW * IH);
 // The simulation tells the interface about changes through these.
+// Colours are seen from each player's side: you are always blue (slot 0), and the first team takes your slot.
+export const sw = (t: number) => t === NET.me ? 0 : t === 0 ? NET.me : (t ?? 0);
+// Log lines are stored with team tokens ({T1}) so each player reads them in their own team names.
+export const logText = (m: string) => m.replace(/\{T(\d+)\}/g, (_, n) => S.teams[+n] ? S.teams[+n].name : '');
 export const hooks = {
   banner: (_big: string, _small: string) => { },
   sync: () => { },

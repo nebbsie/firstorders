@@ -1,4 +1,4 @@
-import { NET } from '../state';
+import { NET, sw } from '../state';
 import * as THREE from 'three';
 import { W, H, C, GW, GH, IW, IH, IC, TRGB, T_WATER, T_BRIDGE, clamp, inPlay } from '../config';
 import { S, M, OWN } from '../state';
@@ -64,7 +64,7 @@ export function paintTerritory(seen: Uint8Array | null) {
   const img = ictx.createImageData(IW, IH), px = img.data;
   for (let i = 0; i < IW * IH; i++) {
     const o = OWN[i]; if (o < 0 || (seen && o !== NET.me && !seen[i])) continue;
-    const c = TRGB[o]; px[i * 4] = c[0] * 255; px[i * 4 + 1] = c[1] * 255; px[i * 4 + 2] = c[2] * 255; px[i * 4 + 3] = viewOpts.area ? 175 : o === NET.me ? 92 : 80;
+    const c = TRGB[sw(o)]; px[i * 4] = c[0] * 255; px[i * 4 + 1] = c[1] * 255; px[i * 4 + 2] = c[2] * 255; px[i * 4 + 3] = viewOpts.area ? 175 : o === NET.me ? 52 : 64;
   }
   ictx.putImageData(img, 0, 0); terrTex.needsUpdate = true;
 }
@@ -270,7 +270,7 @@ export function update3D(V: View) {
     setI(m, nModel[kind]++, x, y, unitH(x, y), 1.6, 1.6, 1.6, hd || 0, [.62 + c[0] * .5, .62 + c[1] * .5, .62 + c[2] * .5]);
   };
   for (const u of V.units) {
-    const c = TRGB[u.team];
+    const c = TRGB[sw(u.team)];
     if (u.alive) {
       if (u.team !== NET.me && V.fogOn && !V.isVis(u)) continue;
       putU(u.x, u.y, unitH(u.x, u.y) + .9 + (u.drop > 0 ? u.drop * 14 : 0), c, 1);
@@ -281,17 +281,17 @@ export function update3D(V: View) {
     }
   }
   if (plan) for (const s of S.squads) {
-    if (s.members || s.team !== NET.me) continue; const c = TRGB[NET.me];
+    if (s.members || s.team !== NET.me) continue; const c = TRGB[0];
     for (const p of s.pos) putU(p[0], p[1], unitH(p[0], p[1]) + .9, c, .75);
     if (MODEL_KINDS.has(s.kind)) emp(s.kind, s.pos[0][0], s.pos[0][1], c, Math.atan2(-(H / 2 - s.pos[0][1]), W / 2 - s.pos[0][0]));
   }
   // Last known enemy positions, shown faded.
-  for (const g of V.ghosts) { if (ng >= 3000) break; const c = TRGB[g.team]; gp[ng * 3] = g.x - W / 2; gp[ng * 3 + 1] = unitH(g.x, g.y) + .9; gp[ng * 3 + 2] = g.y - H / 2; gc[ng * 3] = c[0]; gc[ng * 3 + 1] = c[1]; gc[ng * 3 + 2] = c[2]; ng++; }
+  for (const g of V.ghosts) { if (ng >= 3000) break; const c = TRGB[sw(g.team)]; gp[ng * 3] = g.x - W / 2; gp[ng * 3 + 1] = unitH(g.x, g.y) + .9; gp[ng * 3 + 2] = g.y - H / 2; gc[ng * 3] = c[0]; gc[ng * 3 + 1] = c[1]; gc[ng * 3 + 2] = c[2]; ng++; }
   for (const [p, c] of [[ptUnits, n], [ptBodies, nb], [ptGhosts, ng]] as [any, number][]) { p.geometry.setDrawRange(0, c); p.geometry.attributes.position.needsUpdate = true; p.geometry.attributes.color.needsUpdate = true; }
   // Each HQ: a bunker with a flag in the team colour. Enemy HQs show once your side has found them.
   for (const t of S.teams) {
     if (t.id !== NET.me && V.fogOn && !(S.hqKnown && S.hqKnown[NET.me] && S.hqKnown[NET.me].has(t.id))) continue;
-    const x = t.zone.x, y = t.zone.y, h = M.hAt(x, y), fc = TRGB[t.lost && t.hqBy >= 0 ? t.hqBy : t.id];
+    const x = t.zone.x, y = t.zone.y, h = M.hAt(x, y), fc = TRGB[sw(t.lost && t.hqBy >= 0 ? t.hqBy : t.id)];
     // The flag streams out from the top of the pole and sways a little.
     const sway = Math.sin(performance.now() / 700 + t.id) * .25;
     setI(mModel.hq, nModel.hq++, x, y, h, 1, 1, 1, 0, [1, 1, 1]);
@@ -308,7 +308,7 @@ export function update3D(V: View) {
   };
   for (const t of V.tracers) {
     if (V.fogOn && t.team !== NET.me && !cellSeen(V.vis, t.x0, t.y0) && !cellSeen(V.vis, t.x1, t.y1)) continue;
-    const c = TRGB[t.team]; seg(t.x0, t.y0, unitH(t.x0, t.y0) + 1.2, t.x1, t.y1, unitH(t.x1, t.y1) + 1, [c[0] * .6 + .4, c[1] * .6 + .4, c[2] * .6 + .4]);
+    const c = TRGB[sw(t.team)]; seg(t.x0, t.y0, unitH(t.x0, t.y0) + 1.2, t.x1, t.y1, unitH(t.x1, t.y1) + 1, [c[0] * .6 + .4, c[1] * .6 + .4, c[2] * .6 + .4]);
   }
   const hp = ptHeads.geometry.attributes.position.array, hc = ptHeads.geometry.attributes.color.array; let nh = 0;
   for (const s of V.shells) {

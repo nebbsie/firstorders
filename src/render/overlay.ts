@@ -2,9 +2,9 @@ import { NET } from '../state';
 import { C, GW, K, M_PER_UNIT, PLATOONS, MOVERS, unitKind, CX, CY, COST, TOOLDEF, TEAM_COLORS, SUP_NAME, GRID_X0, GRID_Y0, grid } from '../config';
 import { S, M } from '../state';
 import { canDeploy, opRange, canPlaceUnit, ENG_BUILD, ENG_R } from '../world';
-import { sqCenter, left, lineCells } from '../plan';
+import { sqCenter, left, lineCells, spacingOk } from '../plan';
 import { route } from '../sim';
-import { P, Pa, view } from './camera';
+import { P, Pa, view, fpv } from './camera';
 import { input } from '../ui/input';
 
 let ctx: CanvasRenderingContext2D, cv: HTMLCanvasElement;
@@ -16,6 +16,17 @@ function plate(x: number, y: number, text: string, col: string) {
   const w = Math.round(ctx.measureText(text).width + 10); x = Math.round(x); y = Math.round(y);
   ctx.fillStyle = 'rgba(20,21,25,.94)'; ctx.fillRect(x - (w >> 1), y - 8, w, 16); ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.strokeRect(x - (w >> 1) + .5, y - 7.5, w - 1, 15);
   ctx.fillStyle = '#f4f1e8'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, x, y + 1);
+}
+// Small map symbols for each kind of unit, 14 by 10, in the style of military map marks.
+function unitIcon(kind: string, x: number, y: number, col: string) {
+  ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1.2; ctx.strokeRect(x + .5, y + .5, 14, 10); ctx.beginPath();
+  if (kind === 'rifles' || kind === 'assault') { ctx.moveTo(x + 1, y + 1); ctx.lineTo(x + 14, y + 10); ctx.moveTo(x + 14, y + 1); ctx.lineTo(x + 1, y + 10); }
+  if (kind === 'assault') { ctx.moveTo(x + 4, y + 3); ctx.lineTo(x + 7.5, y + 1); ctx.lineTo(x + 11, y + 3); }
+  if (kind === 'engineers') { ctx.moveTo(x + 3, y + 8); ctx.lineTo(x + 3, y + 3.5); ctx.lineTo(x + 12, y + 3.5); ctx.lineTo(x + 12, y + 8); ctx.moveTo(x + 7.5, y + 3.5); ctx.lineTo(x + 7.5, y + 8); }
+  if (kind === 'medics') { ctx.moveTo(x + 7.5, y + 2); ctx.lineTo(x + 7.5, y + 9); ctx.moveTo(x + 4, y + 5.5); ctx.lineTo(x + 11, y + 5.5); }
+  if (kind === 'tank') { ctx.ellipse(x + 7.5, y + 5.5, 5, 2.6, 0, 0, Math.PI * 2); }
+  if (kind === 'sniper') { ctx.arc(x + 7.5, y + 5.5, 2.6, 0, Math.PI * 2); ctx.moveTo(x + 2, y + 5.5); ctx.lineTo(x + 13, y + 5.5); }
+  ctx.stroke();
 }
 // A line along the way the units will walk.
 function routeLine(s: any, a: any, b: any, col: string, dash: boolean, head: boolean) {
@@ -69,6 +80,7 @@ function ring(x: number, y: number, r: number, col: string, dash: boolean, w?: n
 
 export function draw2D() {
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  if (fpv.on) return; // first person: the view only
   const plan = S.phase === 'plan';
   ctx.font = '11px Departure, ui-monospace, monospace'; ctx.fillStyle = 'rgba(232,197,71,.8)'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   for (let i = 0; i < 10; i++) { const p = P(GRID_X0 + i * 40 + 20, GRID_Y0 - 8, 0); if (p[0] > -500) ctx.fillText('ABCDEFGHJK'[i], p[0], p[1]); }
@@ -78,7 +90,7 @@ export function draw2D() {
   if (plan) for (const t of S.teams) { if (t.id !== NET.me && S.fog && !(S.hqKnown && S.hqKnown[NET.me].has(t.id))) continue; const c = P(t.zone.x, t.zone.y, 14); plate(c[0], c[1], t.id === NET.me ? 'YOUR HQ' : t.lost ? `${t.name} HQ · TAKEN` : `${t.name} HQ`, t.color); }
   ctx.globalAlpha = plan ? 1 : .4;
   for (const s of S.squads) {
-    if (s.team !== NET.me) continue; const o = plan ? s.order : s.cur; if (!o) continue; const c = sqCenter(s); if (!c) continue; const col = TEAM_COLORS[NET.me];
+    if (s.team !== NET.me) continue; const o = plan ? s.order : s.cur; if (!o) continue; const c = sqCenter(s); if (!c) continue; const col = TEAM_COLORS[0];
     if (o.type === 'defend') ring(o.x, o.y, 16, col, true);
     if (o.dir != null) groundLine(o, { x: o.x + Math.cos(o.dir) * 10, y: o.y + Math.sin(o.dir) * 10 }, col, false, true);
     routeLine(s, { x: c[0], y: c[1] }, o, col, o.type === 'defend', true);
@@ -91,7 +103,19 @@ export function draw2D() {
     else { ring(s.a.x, s.a.y, s.type === 'barrage' ? 14 : 9, col, false); const p = P(s.a.x, s.a.y, 6); if (plan) plate(p[0], p[1] - 12, lab, col); }
   }
   ctx.globalAlpha = 1;
-  if (plan) for (const s of S.squads) { if (s.team !== NET.me || !s.call) continue; const c = sqCenter(s); if (!c) continue; const p = P(c[0], c[1], 5); ctx.fillStyle = '#f4f1e8'; ctx.font = '11px Departure, monospace'; ctx.textAlign = 'center'; ctx.fillText(s.call, p[0], p[1] - 6); }
+  // Name tags: a map symbol for the unit type, the call sign, and its order (or NO ORDERS while planning).
+  // Hovering a unit shows its route and target brightly.
+  const hv = input.hover && !input.ptr ? S.squads.find((s: any) => s.team === NET.me && s.call && (() => { const c = sqCenter(s); return c && Math.hypot(c[0] - input.hover.x, c[1] - input.hover.y) < 7; })()) : null;
+  if (hv) { const o = plan ? hv.order : hv.cur, c = sqCenter(hv); if (o && c) { routeLine(hv, { x: c[0], y: c[1] }, o, '#ffffff', o.type === 'defend', true); const m = P(o.x, o.y, 3); plate(m[0], m[1] - 14, `${hv.call} ${o.type.toUpperCase()} ${grid(o.x, o.y)}`, '#ffffff'); } }
+  for (const s of S.squads) {
+    if (s.team !== NET.me || !s.call) continue; const c = sqCenter(s); if (!c) continue; const p = P(c[0], c[1], 5); if (p[0] < -500) continue;
+    const o = plan ? s.order : s.cur, tag = o ? `${o.type.toUpperCase()} ${grid(o.x, o.y)}` : plan && MOVERS.includes(s.kind) ? 'NO ORDERS' : '';
+    ctx.font = '11px Departure, monospace'; const wn = ctx.measureText(s.call).width, wt = tag ? ctx.measureText(tag).width + 8 : 0, w = 20 + wn + wt + 6, x0 = Math.round(p[0] - w / 2), y0 = Math.round(p[1] - 22);
+    ctx.fillStyle = s === hv ? 'rgba(40,44,52,.95)' : 'rgba(20,21,25,.8)'; ctx.fillRect(x0, y0, w, 14);
+    unitIcon(s.kind, x0 + 3, y0 + 2, TEAM_COLORS[0]);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#f4f1e8'; ctx.fillText(s.call, x0 + 20, y0 + 7.5);
+    if (tag) { ctx.fillStyle = o ? '#e8c547' : '#8a8a80'; ctx.fillText(tag, x0 + 20 + wn + 8, y0 + 7.5); }
+  }
   if (S.sel) {
     const it = S.sel; let c: number[] = null, r = 8;
     if (it.pos) { c = sqCenter(it); r = PLATOONS.includes(it.kind) ? 9 : 4; }
@@ -168,13 +192,13 @@ function drawGhost() {
       if (k.min) { ring(hover.x, hover.y, k.min, 'rgba(255,122,114,.5)', true, 1); const p = P(hover.x + k.min, hover.y, 1); plate(p[0], p[1], `MIN ${Math.round(k.min * M_PER_UNIT)} M`, '#ff7a72'); }
       if (sight) { ring(hover.x, hover.y, sight, 'rgba(200,220,240,.7)', true, 1.5); const p = P(hover.x - sight, hover.y, 1); plate(p[0], p[1], `SEES ${Math.round(sight * M_PER_UNIT)} M`, '#c8dcf0'); }
     }
-    const sup = S.tool === 'barrage' || S.tool === 'para' || S.tool === 'demo', mine = canPlaceUnit(NET.me, S.tool, hover.x, hover.y), ok = (sup || mine) && left(NET.me) >= COST[S.tool];
+    const sup = S.tool === 'barrage' || S.tool === 'para' || S.tool === 'demo', placeOk = canPlaceUnit(NET.me, S.tool, hover.x, hover.y), apart = sup || spacingOk(NET.me, S.tool, hover.x, hover.y), mine = placeOk && apart, ok = (sup || mine) && left(NET.me) >= COST[S.tool];
     // Where new units can go: the start area, and for mortars, MG nests and posts, round your engineers too.
     if (!sup && S.tool !== 'garrison') {
       const z = S.teams[NET.me].zone; ring(z.x, z.y, z.r, 'rgba(143,227,166,.75)', true, 1.5);
       if (ENG_BUILD.includes(S.tool)) for (const s of S.squads) if (s.team === NET.me && s.kind === 'engineers' && s.members) { const c = sqCenter(s); if (c) ring(c[0], c[1], ENG_R, 'rgba(143,227,166,.55)', true, 1); }
     }
     ring(hover.x, hover.y, S.tool === 'barrage' ? 14 : PLATOONS.includes(S.tool) ? 6 : 3, ok ? okC : badC, false);
-    const c = P(hover.x, hover.y, 4); plate(c[0], c[1] - 20, `${tool.name} ${COST[S.tool]}${!ok && !sup && !mine ? (S.tool === 'garrison' ? ' · NOT YOUR GROUND' : ENG_BUILD.includes(S.tool) ? ' · START AREA OR ENGINEERS' : ' · START AREA ONLY') : ''}`, ok ? okC : badC);
+    const c = P(hover.x, hover.y, 4); plate(c[0], c[1] - 20, `${tool.name} ${COST[S.tool]}${!ok && !sup && !mine ? (!apart && placeOk ? ' · TOO CLOSE' : S.tool === 'garrison' ? ' · NOT YOUR GROUND' : ENG_BUILD.includes(S.tool) ? ' · START AREA OR ENGINEERS' : ' · START AREA ONLY') : ''}`, ok ? okC : badC);
   }
 }

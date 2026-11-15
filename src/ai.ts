@@ -25,7 +25,7 @@ export function aiPlan(team: number) {
   const T = S.teams[team], pr = T.per, r = T.rng; if (T.lost || left(team) < 60) return;
   // New units arrive in the start area (mortars, MGs and posts may also go near engineers):
   // when the wanted spot is not allowed, use the edge of the start area on the way to it.
-  const place = (kind: string, x: number, y: number) => addSquad(team, kind, x, y) || (() => { const z = T.zone, ddx = x - z.x, ddy = y - z.y, k = Math.min(1, z.r * .75 / (Math.hypot(ddx, ddy) || 1)); return addSquad(team, kind, z.x + ddx * k, z.y + ddy * k) || addSquad(team, kind, z.x, z.y); })();
+  const place = (kind: string, x: number, y: number) => addSquad(team, kind, x, y) || (() => { const z = T.zone, ddx = x - z.x, ddy = y - z.y, k = Math.min(1, z.r * .75 / (Math.hypot(ddx, ddy) || 1)); let s = addSquad(team, kind, z.x + ddx * k, z.y + ddy * k); for (let i = 0; i < 16 && !s; i++) { const a = r() * 6.283, d = r() * z.r * .85; s = addSquad(team, kind, z.x + Math.cos(a) * d, z.y + Math.sin(a) * d); } return s; })();
   const own: number[] = []; for (let i = 0; i < OWN.length; i++) if (OWN[i] === team) own.push(i); if (!own.length) return;
   let ox = 0, oy = 0; for (const c of own) { const p = cellPos(c); ox += p[0]; oy += p[1]; } ox /= own.length; oy /= own.length;
   const foes = knownFoes(team);
