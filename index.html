@@ -114,13 +114,17 @@
         <tr><td>TOWN</td><td>Garrison buildings: 85% cover, fire from roofs. Tank traps across streets.</td></tr>
         <tr><td>OPEN</td><td>Trenches, wire and MG nests. Tanks cross it fast.</td></tr>
         <tr><td>WOODS</td><td>Hidden, 35% cover. Tanks cannot enter.</td></tr>
+        <tr><td>HEDGES</td><td>Real hedgerows from the map. Block sight for men behind them; troops in the hedge see out, are hard to spot and get 30% cover. Slow to push through. Gates are gaps.</td></tr>
+        <tr><td>WALLS</td><td>Field and garden walls. Nothing walks through them: go round, or through a gate or a road. Men behind a wall get 50% cover and can see over it. DEFEND puts men behind walls and in hedges.</td></tr>
+        <tr><td>CASTLES</td><td>Keeps, towers and castle or town walls. Tall and very hard to knock down. A garrison on the wall sees far and is very hard to hit.</td></tr>
         <tr><td>WATER</td><td>Only bridges cross it. Demolish a bridge to cut a route.</td></tr>
         <tr><td>ROADS</td><td>Tanks are faster. AT guns and tank traps stop them.</td></tr>
         <tr><td>HILLS</td><td>Block sight. Firing downhill is more accurate. Obs posts see further.</td></tr>
       </tbody></table>
       <h3>CONTROLS</h3>
       <p>Click or drag a box to select your units. Pick ATTACK or DEFEND, then click the ground. Middle-drag pans, right-drag turns, scroll zooms. WASD pans, Q and E turn, Home resets the view. Right-click or Esc drops the tool. Space pauses. Delete removes what you placed this phase.</p>
-      <p class="note">Map data (c) OpenStreetMap contributors. Elevation: AWS Terrain Tiles.</p>
+      <h3>MAP CREDITS</h3>
+      <p class="note">Map data: (c) OpenStreetMap contributors and Overture Maps Foundation, under the Open Database License (openstreetmap.org/copyright, docs.overturemaps.org/attribution). Buildings also from Microsoft Global ML Building Footprints (ODbL), Google Open Buildings and Esri Community Maps contributors (CC BY 4.0); roads also from TomTom. Land cover: ESA WorldCover 2021 (CC BY 4.0), contains modified Copernicus Sentinel data. Elevation: Mapterhorn (mapterhorn.com/attribution) and AWS Terrain Tiles. Fallback map tiles: OpenFreeMap.</p>
     </div>
   </div>
 
@@ -159,12 +163,14 @@
         <div class="hint" id="sNote"></div>
       </div>
       <button class="btn mback" id="mBack" hidden>&lt; BACK</button>
-      <p class="note">Map data (c) OpenStreetMap contributors. Elevation: AWS Terrain Tiles.</p>
+      <p class="note">Map data: Overture Maps Foundation, (c) OpenStreetMap contributors (ODbL). Elevation: Mapterhorn, AWS Terrain Tiles. Full credits in HELP.</p>
     </div>
     <div id="mapPick" hidden>
       <div class="searchrow"><input id="mQuery" class="input" placeholder="Town, street or postcode" autocomplete="off"><button class="btn" id="mSearch">SEARCH</button></div>
       <div class="results" id="mResults"></div>
-      <div class="hint" id="mStatus">Search for a real place, or play a sample town. Each place downloads once.</div>
+      <div class="hint" id="mStatus">Search for a real place, pick a famous battlefield, or play a sample town. Each place downloads once.</div>
+      <h3>BATTLEFIELDS</h3>
+      <div class="battles" id="mBattles"></div>
       <h3>BATTLE SIZE</h3>
       <div class="row" id="mSize" style="margin-top:0"><button class="btn" data-km="1" title="Close fighting, fast battles">1 KM</button><button class="btn" data-km="2" title="Room to manoeuvre">2 KM</button><button class="btn" data-km="3" title="A whole town; larger download">3 KM</button></div>
       <h3>PHASES</h3>

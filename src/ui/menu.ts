@@ -2,6 +2,7 @@ import { S, NET } from '../state';
 import { setBattleSize, BATTLE_KM } from '../config';
 import { searchPlaces, importPlace, type Place } from '../map/osm';
 import { sampleTown } from '../map/procgen';
+import { BATTLEFIELDS } from '../map/battlefields';
 import { host, join, closeNet } from '../net';
 import type { RawMap } from '../map/types';
 import { MISSIONS, progress, useMission } from '../campaign';
@@ -32,7 +33,15 @@ export function initMenu(start: (raw: RawMap, spec: MapSpec) => void, guestMap: 
   const render = () => {
     $('#mResults').innerHTML = places.map((p, i) => `<button class="btn place${chosen === p ? ' on' : ''}" data-i="${i}"><b>${esc(p.name)}</b><span>${esc(p.full)}</span></button>`).join('');
     document.querySelectorAll('#mResults .place').forEach((b: any) => b.onclick = () => { chosen = places[+b.dataset.i]; render(); ($('#mImport') as HTMLButtonElement).disabled = false; });
+    // Famous battlefields: one click picks the place. The tooltip and the status line tell what happened there.
+    $('#mBattles').innerHTML = BATTLEFIELDS.map((p, i) => `<button class="btn place${chosen === p ? ' on' : ''}" data-i="${i}" title="${esc(p.full)}. ${esc(p.note)}"><b>${esc(p.name)}</b><span>${p.year}</span></button>`).join('');
+    document.querySelectorAll('#mBattles .place').forEach((b: any) => b.onclick = () => {
+      const p = BATTLEFIELDS[+b.dataset.i]; chosen = p; render(); ($('#mImport') as HTMLButtonElement).disabled = false;
+      menuStatus(`${p.name.toUpperCase()}, ${p.year}. ${p.note} The map shows the place as it is today.`);
+      (document.querySelector('#mBattles .place.on') as HTMLElement | null)?.scrollIntoView({ block: 'nearest' });
+    });
   };
+  render();
   const search = async () => {
     const q = ($('#mQuery') as HTMLInputElement).value.trim(); if (!q) return;
     menuStatus('Searching'); chosen = null; ($('#mImport') as HTMLButtonElement).disabled = true;
