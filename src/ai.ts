@@ -1,3 +1,4 @@
+import { F_HEDGE } from './map/types';
 import { C, GW, GH, IW, IH, T_WOOD, T_ROAD, T_GROUND, PLATOONS, MOVERS, clamp, clampPlay, inPlay, segDist } from './config';
 import { S, M, OWN } from './state';
 import { cellOf, passable, nudge, ownerAt, canDeploy, cellPos, bldNear, waterBetween, bridgeTouches } from './world';
@@ -71,7 +72,7 @@ export function aiPlan(team: number) {
   if (!urban && pr.aggr < .7 && left(team) - supReserve > 200) { const c = { x: D.x + dx * 7, y: D.y + dy * 7 }; dig('wire', { x: c.x - px * 14, y: c.y - py * 14 }, { x: c.x + px * 14, y: c.y + py * 14 }); }
   if (!haveNear('mg', 25) && count('mg') < 2 && left(team) - supReserve >= 80) {
     let mx = D.x - dx * 3, my = D.y - dy * 3;
-    for (let k = 0; k < 30; k++) { const x = D.x + (r() - .5) * 30, y = D.y + (r() - .5) * 30, ci = cellOf(x, y); if (ci >= 0 && M.terr[ci] === T_WOOD && canDeploy(team, x, y)) { mx = x; my = y; break; } }
+    for (let k = 0; k < 30; k++) { const x = D.x + (r() - .5) * 30, y = D.y + (r() - .5) * 30, ci = cellOf(x, y); if (ci >= 0 && (M.terr[ci] === T_WOOD || M.feat[ci] === F_HEDGE) && canDeploy(team, x, y)) { mx = x; my = y; break; } }
     place('mg', mx, my);
   }
   // Tanks can come over open ground and roads: answer with AT guns and tank traps.

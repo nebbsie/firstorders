@@ -7,6 +7,8 @@ type Part = [THREE.BufferGeometry, string, number[], number[]?];
 const box = (x: number, y: number, z: number) => new THREE.BoxGeometry(x, y, z);
 const cyl = (r0: number, r1: number, h: number, s = 7) => new THREE.CylinderGeometry(r0, r1, h, s);
 const cone = (r: number, h: number, s = 6) => new THREE.ConeGeometry(r, h, s);
+// A rough round clump (bushes, hedges): a low-poly ball stretched to the given half sizes.
+const blob = (x: number, y: number, z: number) => new THREE.IcosahedronGeometry(1, 0).scale(x, y, z);
 const OLIVE = '#7d7f5c', OLIVE2 = '#6c6f4d', RUBBER = '#2a2b26', DARK = '#3b3c33', STEEL = '#5d6066', SAND = '#b8a57c', CONC = '#8a877c';
 
 function build(parts: Part[]) {
@@ -39,6 +41,21 @@ function rod(a: number[], b: number[], t: number, col: string): Part {
   g.applyMatrix4(new THREE.Matrix4().compose(va.add(vb).multiplyScalar(.5), q, new THREE.Vector3(1, 1, 1))); return [g, col, [0, 0, 0]];
 }
 const crate = (x: number, y: number, z: number, s = .7, yaw = 0): Part[] => [[box(s, s * .7, s), WOOD, [x, y + s * .35, z], [0, yaw, 0]], [box(s * 1.04, s * .1, s * 1.04), WOOD2, [x, y + s * .35, z], [0, yaw, 0]]];
+// A man lying face down along x, head at +x. Dead men have their arms out and the rifle on the ground beside them.
+function lying(dead: boolean): Part[] {
+  const g = (c: string) => dead ? '#' + [1, 3, 5].map(i => { const v = parseInt(c.slice(i, i + 2), 16), l = Math.round(v * .25 + 118 * .75); return l.toString(16).padStart(2, '0'); }).join('') : c;
+  const T = g('#ececec'), L = g('#4d4e44'), A = g('#dcdcdc');
+  const out: Part[] = [
+    [box(.42, .2, .34), T, [.22, .12, 0]], [box(.08, .21, .36), g('#5c4c34'), [.0, .12, 0]], [box(.26, .12, .24), g('#8c8a78'), [.18, .27, 0]],
+    [box(.5, .13, .14), L, [-.26, .08, .09], [0, .08, 0]], [box(.5, .13, .14), L, [-.26, .08, -.09], [0, -.08, 0]],
+    [box(.08, .17, .13), g('#2a2723'), [-.53, .1, .12]], [box(.08, .17, .13), g('#2a2723'), [-.53, .1, -.12]],
+    [box(.16, .16, .16), g('#d6b08e'), [.52, .15, 0]], [cyl(.12, .15, .08, 9), g('#b8b8b8'), [.54, .26, 0]], [cyl(.19, .19, .025, 9), g('#a8a8a8'), [.54, .23, 0]],
+  ];
+  if (dead) out.push(rod([.38, .14, .2], [.5, .05, .52], .09, A), rod([.38, .14, -.2], [.2, .05, -.5], .09, A), [box(.72, .045, .05), g('#2e2a25'), [.15, .03, .78], [0, .5, 0]]);
+  else out.push(rod([.38, .16, .2], [.6, .06, .18], .09, A), rod([.6, .06, .18], [.72, .13, .04], .08, A), rod([.38, .16, -.2], [.56, .06, -.14], .09, A), rod([.56, .06, -.14], [.66, .13, -.02], .08, A),
+    [box(.75, .045, .05), '#2e2a25', [.86, .15, .03]], [box(.2, .07, .055), '#5a4632', [.5, .15, .03]]);
+  return out;
+}
 THREE.ColorManagement.enabled = false;
 export const MODELS: Record<string, THREE.BufferGeometry> = {
   // Mortar pit: base plate, tube on a bipod, shells in an open crate, a low ring of bags.
@@ -87,26 +104,40 @@ export const MODELS: Record<string, THREE.BufferGeometry> = {
     [cyl(.085, .1, 2.3, 7), DARK, [2.2, 1.58, 0], [0, 0, -Math.PI / 2]], [cyl(.14, .14, .26, 7), DARK, [3.3, 1.58, 0], [0, 0, -Math.PI / 2]],
     [box(.04, 1.1, .04), DARK, [-.8, 2.3, -.45]],
   ]),
-  // A soldier: two legs with boots, a pale tunic and helmet that take the team colour, a belt and pack,
-  // arms forward to a rifle held at the ready. Faces +x.
+  // A soldier, in parts so the legs can move. The body: a pale tunic and helmet that take the team colour,
+  // a belt and pack, arms forward to a rifle held at the ready. Faces +x; the hips are at y = 0.52.
   soldier: build([
-    [box(.15, .46, .13), '#4d4e44', [0, .29, .085]], [box(.15, .46, .13), '#4d4e44', [0, .29, -.085]],
-    [box(.21, .08, .14), '#2a2723', [.03, .04, .085]], [box(.21, .08, .14), '#2a2723', [.03, .04, -.085]],
+    [box(.24, .14, .27), '#4d4e44', [0, .5, 0]],
     [box(.2, .4, .34), '#ececec', [0, .72, 0]], [box(.22, .06, .36), '#5c4c34', [0, .54, 0]],
-    [box(.13, .26, .26), '#8c8a78', [-.16, .76, 0]],
+    [box(.13, .26, .26), '#8c8a78', [-.16, .76, 0]], [box(.06, .1, .1), '#5c4c34', [.1, .58, .13]],
     rod([0, .88, .2], [.2, .7, .16], .09, '#dcdcdc'), rod([.2, .7, .16], [.32, .78, .04], .08, '#dcdcdc'),
     rod([0, .88, -.2], [.16, .74, -.12], .09, '#dcdcdc'), rod([.16, .74, -.12], [.26, .8, -.02], .08, '#dcdcdc'),
     [box(.16, .16, .16), '#d6b08e', [.01, 1.02, 0]],
     [cyl(.12, .15, .08, 9), '#b8b8b8', [0, 1.13, 0]], [cyl(.19, .19, .025, 9), '#a8a8a8', [0, 1.09, 0]],
     [box(.72, .045, .05), '#2e2a25', [.28, .8, .02], [0, 0, .12]], [box(.2, .07, .055), '#5a4632', [-.02, .76, .02], [0, 0, .12]],
   ]),
-  // The dead: the same figure lying down, all grey.
-  body: build([
-    [box(.5, .2, .34), '#6e6e6a', [-.35, .1, 0]], [box(.46, .22, .42), '#7c7c78', [.12, .11, 0]], [cyl(.17, .2, .11, 8), '#666662', [.5, .12, 0], [0, 0, -Math.PI / 2]],
-  ]),
+  // A thigh: the hip is at y = 0, the knee at y = -0.25.
+  thigh: build([[box(.15, .27, .13), '#4d4e44', [0, -.12, 0]]]),
+  // A shin and boot: the knee is at y = 0, the sole at y = -0.27.
+  shin: build([[box(.14, .22, .12), '#46473e', [0, -.11, 0]], [box(.22, .08, .14), '#2a2723', [.03, -.23, 0]]]),
+  // Lying flat, rifle to the front: a man pinned down or taking cover.
+  prone: build(lying(false)),
+  // The dead: lying still, arms out, the rifle dropped beside him. All grey.
+  body: build(lying(true)),
   // Trees: a trunk and two tiers of leaves. One unit tall, standing on y = 0. The grey one is for outside the battle circle.
   tree: build([[cyl(.07, .09, .3, 5), '#5a4632', [0, .15, 0]], [cone(.5, .55, 6), '#3f5c33', [0, .5, 0]], [cone(.36, .46, 6), '#4a6b3a', [0, .78, 0]]]),
   treeGrey: build([[cyl(.07, .09, .3, 5), '#4a4844', [0, .15, 0]], [cone(.5, .55, 6), '#4b4f4b', [0, .5, 0]], [cone(.36, .46, 6), '#565a56', [0, .78, 0]]]),
+  // Field boundaries from the map data, one unit long along x, standing on y = 0. The 3D map lays them end to end.
+  // Hedge: a dense green bank with uneven lumps on top.
+  hedge: build([
+    [box(1.06, .5, .78), '#2f4a27', [0, .25, 0]],
+    [blob(.5, .62, .44), '#3a5a2f', [-.26, .62, .04]], [blob(.48, .58, .42), '#41632f', [.24, .66, -.05]],
+    [blob(.36, .4, .34), '#4a6d36', [-.05, .98, .02]], [blob(.3, .34, .3), '#3d5e31', [.36, .92, .06]], [blob(.28, .3, .28), '#456834', [-.38, .9, -.05]],
+  ]),
+  // Field wall: dry stone with a darker cap.
+  fieldWall: build([[box(1.02, .52, .34), '#8d877a', [0, .26, 0]], [box(1.04, .1, .4), '#6f6a60', [0, .57, 0]]]),
+  // Fence: a post and two rails.
+  fence: build([[box(.07, .62, .07), '#5d4b36', [-.46, .31, 0]], [box(1.0, .05, .035), '#6b5840', [0, .24, 0]], [box(1.0, .05, .035), '#6b5840', [0, .5, 0]]]),
   // Aircraft: fuselage, wings, tail.
   plane: build([[box(3.2, .42, .42), '#8a8f86', [0, 0, 0]], [box(.9, .08, 3.6), '#7b8078', [.3, .05, 0]], [box(.5, .06, 1.3), '#7b8078', [-1.4, .08, 0]], [box(.5, .6, .06), '#7b8078', [-1.4, .32, 0]], [cyl(.24, .2, .3, 7), '#3b3c33', [1.7, 0, 0], [0, 0, -Math.PI / 2]]]),
   // Observation tower: timber legs with cross braces, a railed platform with a roof, and a ladder.
@@ -145,11 +176,16 @@ const torus = (r: number) => new THREE.TorusGeometry(r, .02, 4, 9);
 export const DEFENCES: Record<string, THREE.BufferGeometry> = {
   // Sandbag wall: three layers, the middle one staggered.
   sandbag: build([...[-.68, 0, .68].flatMap(x => bag(x, .14, 0, 0, BAG, .62)), ...[-.34, .34].flatMap(x => bag(x, .42, 0, 0, '#b3a077', .62)), ...[-.68, 0, .68].flatMap(x => bag(x, .7, 0, 0, BAG, .62))]),
-  // Trench: a dark cut with duckboards, and an earth bank on each side.
+  // Trench floor: one cell of mud with duckboards across it. The 3D map cuts the ground away above it.
   trench: build([
-    [box(2.02, .06, 1.1), '#2e2318', [0, .04, 0]], ...[-.75, -.25, .25, .75].map(x => [box(.36, .04, .8), '#6a573c', [x, .09, 0]] as Part),
-    [box(2.04, .34, .42), '#6b583e', [0, .17, .76], [.35, 0, 0]], [box(2.04, .34, .42), '#6b583e', [0, .17, -.76], [-.35, 0, 0]],
-    [box(2.04, .12, .3), '#7a6648', [0, .36, .9]], [box(2.04, .12, .3), '#7a6648', [0, .36, -.9]],
+    [box(2, .06, 2), '#2b2117', [0, .03, 0]],
+    ...[-.7, -.23, .23, .7].map(x => [box(.32, .05, 1.7), '#6a573c', [x, .09, 0]] as Part), [box(1.8, .05, .12), '#55452f', [0, .08, .55]], [box(1.8, .05, .12), '#55452f', [0, .08, -.55]],
+  ]),
+  // Trench bank: the dug earth thrown up along one side of the trench, with a row of sandbags on top. Two units long
+  // along x; the trench is on the -z side.
+  trenchBank: build([
+    [box(2.1, .34, .7), '#5e4c35', [0, .1, .1], [-.25, 0, 0]], [box(2.1, .2, .5), '#6b583e', [0, .26, .18]],
+    ...[-.68, 0, .68].flatMap(x => bag(x, .44, -.02, 0, BAG, .64)),
   ]),
   // Wire: posts with coils of concertina wire between them.
   wire: build([

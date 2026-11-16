@@ -1,4 +1,5 @@
 import { NET } from '../state';
+import { BTYPES } from '../map/btypes';
 import { KIND_NAME, C, GW, K, M_PER_UNIT, PLATOONS, MOVERS, unitKind, CX, CY, COST, TOOLDEF, TEAM_COLORS, SUP_NAME, GRID_X0, GRID_Y0, grid } from '../config';
 import { S, M } from '../state';
 import { canDeploy, opRange, canPlaceUnit, inWater, ENG_BUILD, ENG_R, FOB_R } from '../world';
@@ -175,7 +176,11 @@ export function draw2D() {
   // One unit selected: its firing range (solid) and how far it sees (dashed).
   const one = S.sel && S.sel.pos ? S.sel : (S.selMany && S.selMany.length === 1 ? S.selMany[0] : null);
   if (one) {
-    const c = sqCenter(one), k = K[unitKind(one.kind)];
+    // While an order is being given, the rings show at the place the unit will go, not where it stands now.
+    const giving = ['move', 'attack', 'defend'].includes(S.tool) && MOVERS.includes(one.kind), to = input.ptr && input.ptr.mode === 'order' ? input.ptr.w : input.hover;
+    // A unit with an order shows them at the order's place too: that is where it will fight.
+    const ord = MOVERS.includes(one.kind) && S.phase === 'plan' && one.team === NET.me && one.order && ['move', 'attack', 'defend'].includes(one.order.type) ? one.order : null;
+    const c = giving ? (to ? [to.x, to.y] : null) : ord ? [ord.x, ord.y] : sqCenter(one), k = K[unitKind(one.kind)];
     if (c && k && k.arc) { const f = one.members ? (S.units[one.members[0]].face ?? one.face) : one.face; cone(c[0], c[1], f ?? 0, k.arc, k.range, sightOfKind(one)); }
     else if (c && k) {
       const sight = one.kind === 'op' ? opRange({ x: c[0], y: c[1] }) : k.sight + (one.kind === 'garrison' ? 15 : 0);
@@ -235,7 +240,7 @@ function drawGhost() {
     // Placing a unit: show where it will shoot (solid red) and how far it will see (dashed).
     const k = K[unitKind(S.tool)];
     // Garrison: outline the building under the cursor, red if it cannot be held.
-    if (S.tool === 'garrison') { const ci = Math.floor(hover.y / C) * GW + Math.floor(hover.x / C), id = ci >= 0 ? M.bldId[ci] : -1; if (id >= 0) boxOutline(M.B[id], canDeploy(NET.me, M.B[id].cx, M.B[id].cy) ? '#8fe3a6' : '#f08a7a'); }
+    if (S.tool === 'garrison') { const ci = Math.floor(hover.y / C) * GW + Math.floor(hover.x / C), id = ci >= 0 ? M.bldId[ci] : -1; if (id >= 0) boxOutline(M.B[id], canDeploy(NET.me, M.B[id].cx, M.B[id].cy) && !BTYPES[M.B[id].btype || 'house'].noGarrison ? '#8fe3a6' : '#f08a7a'); }
     if (k) {
       const sight = S.tool === 'op' ? opRange(hover) : k.sight + (S.tool === 'garrison' ? 15 : 0);
       if (k.range) { ring(hover.x, hover.y, k.range, 'rgba(255,122,114,.8)', false, 1.5); const p = P(hover.x + k.range, hover.y, 1); plate(p[0], p[1], `RANGE ${Math.round(k.range * M_PER_UNIT)} M`, '#ff7a72'); }

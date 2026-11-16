@@ -3,6 +3,8 @@ import { W, H, CX, CY, PLAY_R, clamp } from '../config';
 import { unitH } from '../world';
 
 export const FOV = 38;
+// The lowest the view may tilt (radians above the horizon). Lower, the view shows the edge of the map and the sky.
+export const PITCH_MIN = .55;
 export const camera = new THREE.PerspectiveCamera(FOV, 1, 1, 3000);
 export const cam = { tx: W / 2, ty: H / 2, dist: 330, yaw: 0, pitch: .95, userMoved: false };
 export const view = { cw: 1, ch: 1, dpr: 1 };

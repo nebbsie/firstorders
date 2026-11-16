@@ -1,18 +1,19 @@
 import { NET, sw } from '../state';
 import * as THREE from 'three';
-import { W, H, C, GW, GH, IW, IH, IC, TRGB, T_WATER, T_BRIDGE, M_PER_UNIT, clamp, inPlay } from '../config';
+import { W, H, C, GW, GH, IW, IH, IC, TRGB, T_WATER, T_BRIDGE, T_BUILD, M_PER_UNIT, clamp, inPlay } from '../config';
 import { S, M, OWN } from '../state';
-import { smokeR } from '../sim';
-import { unitH } from '../world';
+import { smokeR, orderSpots } from '../sim';
+import { unitH, cellOf, nudge } from '../world';
 import { camera, cam, FOV, view, fpv } from './camera';
 import { MODELS, DEFENCES } from './models';
 import { BTYPES } from '../map/btypes';
+import { F_HEDGE, F_WALL, F_FENCE } from '../map/types';
 import { input } from '../ui/input';
 import { K, COST, TOOLDEF, MOVERS, PLATOON_SIZE, unitKind } from '../config';
-import { placeSpot, left } from '../plan';
+import { placeSpot, left, squadLayout } from '../plan';
 const WALLS = [[170, 108, 86], [216, 205, 180], [184, 176, 158], [228, 223, 210], [146, 98, 80], [198, 172, 140]];
 const ROOFS = [[94, 99, 106], [152, 88, 64], [114, 84, 66], [74, 78, 84], [130, 74, 58]];
-const FLAT = new Set(['castle', 'tower', 'industrial', 'office', 'station', 'hospital', 'police', 'fire']);
+const FLAT = new Set(['castle', 'rampart', 'wall', 'tower', 'industrial', 'office', 'station', 'hospital', 'police', 'fire']);
 // The smallest rectangle round a footprint, lined up with one of its edges. l is the long way, s the short way.
 function obb(p: number[][]) {
   let best: any = null;
@@ -24,7 +25,7 @@ function obb(p: number[][]) {
   }
   return best;
 }
-const MODEL_KINDS = new Set(['mg', 'mortar', 'tank', 'at', 'op', 'fob']);
+const MODEL_KINDS = new Set(['mg', 'mortar', 'tank', 'at', 'op', 'fob']), MAN_PARTS = new Set(['soldier', 'thigh', 'shin', 'prone', 'body']);
 
 // Colours are given in sRGB and used as they are, like the 2D interface.
 THREE.ColorManagement.enabled = false;
@@ -56,6 +57,10 @@ function greyUnseen<T extends THREE.Material>(m: T, fx: boolean | 'sway' | 'wate
     sh.uniforms.unseenMap = { value: unseenTex }; sh.uniforms.winScale = winScale; sh.uniforms.foTime = timeU; sh.uniforms.foNight = nightU;
     sh.vertexShader = `varying vec3 vFoW;
 uniform float foTime;
+#ifdef FO_WIN
+attribute float foWin;
+varying float vFoWin;
+#endif
 ` + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
       #ifdef FO_SWAY
         // Trees lean in the wind: the top moves, the foot stays. Each tree has its own beat.
@@ -70,12 +75,18 @@ uniform float foTime;
       #ifdef USE_INSTANCING
         fowP = instanceMatrix * fowP;
       #endif
-      vFoW = (modelMatrix * fowP).xyz;`);
+      vFoW = (modelMatrix * fowP).xyz;
+      #ifdef FO_WIN
+        vFoWin = foWin;
+      #endif`);
     sh.fragmentShader = `uniform sampler2D unseenMap;
 uniform float winScale;
 uniform float foTime;
 uniform float foNight;
 varying vec3 vFoW;
+#ifdef FO_WIN
+varying float vFoWin;
+#endif
 ` + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
       float foGlow = 0.;
       #ifdef FO_WATER
@@ -89,7 +100,8 @@ varying vec3 vFoW;
         if (abs(fowN.y) < .3) {
           vec2 fowH = normalize(vec2(-fowN.z, fowN.x) + 1e-5);
           vec2 fowG = vec2(fract(dot(vFoW.xz, fowH) * winScale), fract(vFoW.y * winScale * 1.3));
-          float fowW = step(.3, fowG.x) * step(fowG.x, .7) * step(.28, fowG.y) * step(fowG.y, .74);
+          // Walls and castles (vFoWin = 0) have no rows of windows.
+          float fowW = step(.3, fowG.x) * step(fowG.x, .7) * step(.28, fowG.y) * step(fowG.y, .74) * vFoWin;
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.16, .18, .22), fowW * .45);
           // At night about one window in three is lit. Each window has its own fixed chance and warmth.
           vec2 fowId = vec2(floor(dot(vFoW.xz, fowH) * winScale), floor(vFoW.y * winScale * 1.3));
@@ -201,6 +213,7 @@ export function buildMap3D() {
   for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) { vtx(i, j); vtx(i, j + 1); vtx(i + 1, j); vtx(i + 1, j); vtx(i, j + 1); vtx(i + 1, j + 1); }
   const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.BufferAttribute(pos, 3)); tg.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); tg.computeVertexNormals();
   const gt = new THREE.CanvasTexture(M.ground); gt.anisotropy = renderer.capabilities.getMaxAnisotropy(); gt.colorSpace = THREE.NoColorSpace;
+  terrGeo = tg; terrY0 = new Float32Array(GW * GH * 6); for (let i = 0; i < terrY0.length; i++) terrY0[i] = pos[i * 3 + 1]; dug.fill(0); dugKey = '';
   const terrain = new THREE.Mesh(tg, greyUnseen(new THREE.MeshLambertMaterial({ map: gt }))); terrain.receiveShadow = true; mapGroup.add(terrain);
   const over = new THREE.Mesh(tg, new THREE.MeshBasicMaterial({ map: terrTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })); over.renderOrder = 1; mapGroup.add(over);
   // Square, solid map edge: a wall from the ground line down to a flat base on all four sides.
@@ -227,7 +240,7 @@ export function buildMap3D() {
   const water = new THREE.Mesh(wg, greyUnseen(new THREE.MeshPhongMaterial({ color: '#35606c', specular: '#22333a', shininess: 30, transparent: true, opacity: .9 }), 'water')); water.renderOrder = 2; mapGroup.add(water);
 
   // Buildings: one merged mesh of flat-shaded walls and roofs. Roofs are triangulated, so L-shapes work.
-  const Pa: number[] = [], Na: number[] = [], Ca: number[] = [];
+  const Pa: number[] = [], Na: number[] = [], Ca: number[] = [], Wa: number[] = [];
   const va = new THREE.Vector3(), vb = new THREE.Vector3(), vc = new THREE.Vector3(), e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), nn = new THREE.Vector3(), out = new THREE.Vector3();
   const tri = (a: number[], b: number[], c: number[], col: number[], o: THREE.Vector3) => {
     va.fromArray(a); vb.fromArray(b); vc.fromArray(c); nn.crossVectors(e1.subVectors(vb, va), e2.subVectors(vc, va));
@@ -251,12 +264,13 @@ export function buildMap3D() {
     // Churches and town halls get a pointed tower roof; castles get battlements along the walls.
     for (const f of faces) tri(T[f[0]], T[f[1]], T[f[2]], roof, _up);
     // A pitched (hip) roof for buildings that are close to a rectangle and not tall blocks.
+    b.hip = undefined;
     const ob = b.parent == null && !FLAT.has(b.btype || 'house') && b.h * M_PER_UNIT < 19 ? obb(p) : null;
     if (ob && Math.abs(area) / 2 > ob.area * .84 && ob.s1 - ob.s0 > 1.6 && ob.s1 - ob.s0 < 18) {
       const hs = (ob.s1 - ob.s0) / 2, sm = (ob.s0 + ob.s1) / 2, inset = Math.min(hs * .8, (ob.l1 - ob.l0) * .45), rh = clamp(hs * .6, .5, 3), e = .12;
       const at = (l: number, s: number, y: number) => [l * ob.lx + s * ob.sx - W / 2, y, l * ob.ly + s * ob.sy - H / 2];
       const a0 = at(ob.l0 - e, ob.s0 - e, b.top), a1 = at(ob.l1 + e, ob.s0 - e, b.top), b0 = at(ob.l0 - e, ob.s1 + e, b.top), b1 = at(ob.l1 + e, ob.s1 + e, b.top), r0 = at(ob.l0 + inset, sm, b.top + rh), r1 = at(ob.l1 - inset, sm, b.top + rh);
-      const dark = roof.map(v => v * .88);
+      const dark = roof.map(v => v * .88); b.hip = { lx: ob.lx, ly: ob.ly, sx: ob.sx, sy: ob.sy, l0: ob.l0, l1: ob.l1, sm, hs, inset, rh };
       tri(a0, a1, r1, roof, _up); tri(a0, r1, r0, roof, _up); tri(b0, b1, r1, dark, _up); tri(b0, r1, r0, dark, _up); tri(a0, b0, r0, dark, _up); tri(a1, b1, r1, roof, _up);
     }
     // Churches and town halls: a square tower with a pointed spire rising from the middle of the roof.
@@ -282,8 +296,9 @@ export function buildMap3D() {
       tri(Bt[i], Bt[n], T[n], wall, out); tri(Bt[i], T[n], T[i], wall, out);
     }
     b.vr = [vStart, Pa.length / 3 - vStart];
+    const win = BT.plain ? 0 : 1; for (let k = Wa.length; k < Pa.length / 3; k++) Wa.push(win);
   }
-  const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(Pa, 3)); bldGeo = bg; bldY = new Float32Array(Pa.filter((_, i) => i % 3 === 1)); downKey = ''; bg.setAttribute('normal', new THREE.Float32BufferAttribute(Na, 3)); bg.setAttribute('color', new THREE.Float32BufferAttribute(Ca, 3));
+  const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(Pa, 3)); bldGeo = bg; bldY = new Float32Array(Pa.filter((_, i) => i % 3 === 1)); downKey = ''; bg.setAttribute('normal', new THREE.Float32BufferAttribute(Na, 3)); bg.setAttribute('color', new THREE.Float32BufferAttribute(Ca, 3)); bg.setAttribute('foWin', new THREE.Float32BufferAttribute(Wa, 1));
   winScale.value = M_PER_UNIT / 4.4;
   const bm = new THREE.Mesh(bg, greyUnseen(new THREE.MeshLambertMaterial({ vertexColors: true }), true)); bm.castShadow = true; bm.receiveShadow = true; mapGroup.add(bm); xrayable.push(bm);
 
@@ -307,13 +322,43 @@ export function buildMap3D() {
     list.forEach((t, i) => { const w = (1.3 + t[2] * .18) * 2, sh = .82 + ((t[0] * 7.31 + t[1] * 3.17) % 1) * .3; _q.setFromAxisAngle(_up, t[0]); _p.set(t[0] - W / 2, M.hAt(t[0], t[1]) - .1, t[1] - H / 2); _s.set(w, t[2] * 1.15, w); _m.compose(_p, _q, _s); tm.setMatrixAt(i, _m); _c.setRGB(sh, sh, sh); tm.setColorAt(i, _c); });
     tm.castShadow = inside; tm.receiveShadow = true; mapGroup.add(tm); xrayable.push(tm);
   }
+  // Hedges, walls and fences, laid end to end along the mapped lines. A piece stands only where its cell holds
+  // that boundary, so gates, roads and buildings leave gaps exactly where the battle rules have them.
+  const FK = [[F_HEDGE, MODELS.hedge, 1.15, 1.45, 1], [F_WALL, MODELS.fieldWall, 1.3, 1.3, 1], [F_FENCE, MODELS.fence, 1.6, 1.4, .6]] as const;
+  for (const [k, geom, step, sy, sw] of FK) {
+    const at: number[][] = [];
+    for (const f of M.fences) {
+      if (f.k !== k) continue;
+      for (let i = 0; i < f.pts.length - 1; i++) {
+        const a = f.pts[i], b = f.pts[i + 1], L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < .05) continue;
+        const n = Math.max(1, Math.round(L / step)), len = L / n, yaw = Math.atan2(-(b[1] - a[1]), b[0] - a[0]);
+        for (let j = 0; j < n; j++) {
+          const x = a[0] + (b[0] - a[0]) * (j + .5) / n, y = a[1] + (b[1] - a[1]) * (j + .5) / n, cx = Math.floor(x / C), cy = Math.floor(y / C);
+          if (cx < 0 || cy < 0 || cx >= GW || cy >= GH || M.feat[cy * GW + cx] !== k) continue;
+          at.push([x, y, len, yaw]);
+        }
+      }
+    }
+    if (!at.length) continue;
+    const fm = new THREE.InstancedMesh(geom, greyUnseen(new THREE.MeshLambertMaterial({ vertexColors: true })), at.length);
+    at.forEach(([x, y, len, yaw], i) => {
+      const r = (x * 7.31 + y * 3.17) % 1, out0 = !inPlay(x, y), sh = out0 ? .55 : .86 + r * .26;
+      // Hedges vary in height and turn a little, piece by piece, so a row reads as growth and not as blocks.
+      const hedge = k === F_HEDGE, r2 = (x * 3.73 + y * 5.11) % 1;
+      _q.setFromAxisAngle(_up, yaw + (hedge ? (r2 - .5) * .5 : 0)); _p.set(x - W / 2, M.hAt(x, y) - .05, y - H / 2);
+      _s.set(len * (hedge ? 1.25 : 1.08), sy * (hedge ? .78 + r * .44 : .9 + r * .2), sw * (hedge ? .9 + r2 * .3 : 1)); _m.compose(_p, _q, _s); fm.setMatrixAt(i, _m);
+      if (out0) _c.setRGB(sh * 1.2, sh, sh * 1.15); else _c.setRGB(sh, sh, sh); fm.setColorAt(i, _c);
+    });
+    fm.castShadow = true; fm.receiveShadow = true; mapGroup.add(fm); if (k === F_HEDGE) xrayable.push(fm);
+  }
   const fogMesh = new THREE.Mesh(tg, new THREE.MeshBasicMaterial({ map: fogTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 })); fogMesh.renderOrder = 3; mapGroup.add(fogMesh);
   scene.add(mapGroup); structKey = ''; applyViews();
 }
 
 // Dynamic objects, created once and refilled every frame.
 const mModel: Record<string, any> = {}, nModel: Record<string, number> = {};
-let mSoldier, mBody, mSmoke, mTrench, mTrenchLip, mSand, mWire, mWall, mTrap, mPlane, mCrater, mBoom, ptUnits, ptBodies, ptGhosts, ptHeads, lineG;
+let mBank: any, terrGeo: THREE.BufferGeometry | null = null, terrY0: Float32Array | null = null, pitMesh: THREE.Mesh | null = null;
+let mSoldier, mBody, mThigh, mShin, mProne, mSmoke, mTrench, mTrenchLip, mSand, mWire, mWall, mTrap, mPlane, mCrater, mBoom, ptUnits, ptBodies, ptGhosts, ptHeads, lineG;
 const LMAX = 8000;
 function inst(geom: THREE.BufferGeometry, mat: THREE.Material, cap: number, shadow?: boolean) {
   const m = new THREE.InstancedMesh(geom, mat, cap); m.frustumCulled = false; const c = new THREE.Color(1, 1, 1);
@@ -327,15 +372,16 @@ function pointsObj(cap: number, size: number, opacity: number) {
 function createDynamic() {
   const box = new THREE.BoxGeometry(1, 1, 1);
   const dm = () => new THREE.MeshLambertMaterial({ vertexColors: true });
-  mTrench = inst(DEFENCES.trench, dm(), 4000); mSand = inst(DEFENCES.sandbag, dm(), 4000, true); mWire = inst(DEFENCES.wire, dm(), 4000, true); mWall = inst(DEFENCES.wall, dm(), 4000, true);
+  mTrench = inst(DEFENCES.trench, dm(), 4000); mBank = inst(DEFENCES.trenchBank, dm(), 8000, true); mSand = inst(DEFENCES.sandbag, dm(), 4000, true); mWire = inst(DEFENCES.wire, dm(), 4000, true); mWall = inst(DEFENCES.wall, dm(), 4000, true);
   mTrap = inst(DEFENCES.tanktrap, dm(), 4000, true); mRubble = inst(box, lam('#ffffff'), 20000, true);
-  for (const k of Object.keys(MODELS)) mModel[k] = inst(MODELS[k], new THREE.MeshLambertMaterial({ vertexColors: true }), k === 'hq' || k === 'flag' ? 8 : 400, true);
+  for (const k of Object.keys(MODELS)) if (!MAN_PARTS.has(k)) mModel[k] = inst(MODELS[k], new THREE.MeshLambertMaterial({ vertexColors: true }), k === 'hq' || k === 'flag' ? 8 : 400, true);
   mPlane = inst(box, new THREE.MeshLambertMaterial({ color: '#c87a2a' }), 40, true);
   mCrater = inst(new THREE.CircleGeometry(1, 7).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#211b14', transparent: true, opacity: .75, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }), 700);
   // Smoke: grey puffs, a few per cloud, swelling and fading.
   mSmoke = inst(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshLambertMaterial({ color: '#c9ccc8', transparent: true, opacity: .62, depthWrite: false }), 400);
   mBoom = inst(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicMaterial({ color: '#ffffff', blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }), 300);
-  mSoldier = inst(MODELS.soldier, new THREE.MeshLambertMaterial({ vertexColors: true }), 5000, true); mBody = inst(MODELS.body, new THREE.MeshLambertMaterial({ vertexColors: true }), 5000);
+  mSoldier = inst(MODELS.soldier, dm(), 5000, true); mThigh = inst(MODELS.thigh, dm(), 10000, true); mShin = inst(MODELS.shin, dm(), 10000, true);
+  mProne = inst(MODELS.prone, dm(), 5000, true); mBody = inst(MODELS.body, dm(), 5000, true);
   ptUnits = pointsObj(5000, 3, 1); ptBodies = pointsObj(5000, 2, 1); ptGhosts = pointsObj(3000, 3, .45); ptHeads = pointsObj(800, 3, 1);
   lineG = new THREE.BufferGeometry(); lineG.setAttribute('position', new THREE.BufferAttribute(new Float32Array(LMAX * 6), 3)); lineG.setAttribute('color', new THREE.BufferAttribute(new Float32Array(LMAX * 6), 3)); lineG.setDrawRange(0, 0);
   const lines = new THREE.LineSegments(lineG, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: .85 })); lines.frustumCulled = false; scene.add(lines);
@@ -361,6 +407,48 @@ export function visibleStruct(s: any, V?: View) {
   if (V && V.fogOn && s.team !== NET.me) return s.cells.some((c: number) => cellSeen(V.seen, (c % GW) * C + 1, Math.floor(c / GW) * C + 1));
   return true;
 }
+// Trenches are dug into the ground. The ground of each trench cell drops to the trench floor, earth walls close the
+// sides that face open ground, and the dug earth lies as a bank with sandbags along those sides.
+// Men in a trench are drawn lower, so only their heads and shoulders show. This is drawing only: the battle rules
+// for trenches do not change.
+export const TRENCH_D = .95;
+const dug = new Uint8Array(GW * GH); let dugKey = '';
+export const inTrench = (x: number, y: number) => { const ci = cellOf(x, y); return ci >= 0 && dug[ci] === 1; };
+function digTrenches(list: any[]) {
+  if (!terrGeo || !terrY0) return;
+  const key = list.map(s => s.id).join(','); if (key === dugKey) return; dugKey = key;
+  dug.fill(0); for (const s of list) for (const ci of s.cells) if (M.terr[ci] !== T_BUILD) dug[ci] = 1;
+  const pos = terrGeo.attributes.position as THREE.BufferAttribute;
+  for (let ci = 0; ci < GW * GH; ci++) for (let v = 0; v < 6; v++) pos.setY(ci * 6 + v, terrY0[ci * 6 + v] - (dug[ci] ? TRENCH_D : 0));
+  pos.needsUpdate = true; terrGeo.computeVertexNormals();
+  // Earth walls on the open sides, and a bank with sandbags outside each of them.
+  const VW = GW + 1, TH = M.TH, P: number[] = [], Cc: number[] = []; let nt = 0, nb = 0;
+  const quad = (a: number[], b: number[], c: number[], d: number[], col: number[]) => { for (const q of [a, b, c, a, c, d]) { P.push(q[0] - W / 2, q[1], q[2] - H / 2); Cc.push(col[0], col[1], col[2]); } };
+  for (let ci = 0; ci < GW * GH; ci++) {
+    if (!dug[ci]) continue; const i = ci % GW, j = (ci / GW) | 0, x = i * C + 1, y = j * C + 1;
+    setI(mTrench, nt++, x, y, M.hAt(x, y) - TRENCH_D, 1, 1, 1, 0);
+    // Each side: its two corners, the cell beyond it, and the way out.
+    const sides: [number, number, number, number, number, number][] = [[i, j, i + 1, j, 0, -1], [i + 1, j, i + 1, j + 1, 1, 0], [i + 1, j + 1, i, j + 1, 0, 1], [i, j + 1, i, j, -1, 0]];
+    for (const [ai, aj, bi, bj, ox, oy] of sides) {
+      const ni = i + ox, nj = j + oy; if (ni >= 0 && nj >= 0 && ni < GW && nj < GH && dug[nj * GW + ni]) continue;
+      const ha = TH[aj * VW + ai], hb = TH[bj * VW + bi], shade = ox + oy > 0 ? .8 : 1, col = [.33 * shade, .26 * shade, .18 * shade];
+      quad([ai * C, ha, aj * C], [bi * C, hb, bj * C], [bi * C, hb - TRENCH_D, bj * C], [ai * C, ha - TRENCH_D, aj * C], col);
+      // Plank revetment along the wall, a little lighter.
+      const pc = [.42 * shade, .33 * shade, .22 * shade], t0 = .35, t1 = .55;
+      quad([ai * C, ha - t0, aj * C], [bi * C, hb - t0, bj * C], [bi * C, hb - t1, bj * C], [ai * C, ha - t1, aj * C], pc);
+      if (nb < 8000 && !(ni >= 0 && nj >= 0 && ni < GW && nj < GH && M.terr[nj * GW + ni] === T_BUILD)) {
+        const mx = (ai + bi) / 2 * C + ox * .45, my = (aj + bj) / 2 * C + oy * .45;
+        setI(mBank, nb++, mx, my, M.hAt(mx, my) - .05, 1, 1, 1, Math.atan2(ox, oy));
+      }
+    }
+  }
+  done(mTrench, nt); done(mBank, nb);
+  if (pitMesh) { scene.remove(pitMesh); pitMesh.geometry.dispose(); pitMesh = null; }
+  if (P.length) {
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(Cc, 3)); g.computeVertexNormals();
+    pitMesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })); pitMesh.receiveShadow = true; scene.add(pitMesh);
+  }
+}
 function updateStructs(V: View) {
   const vis = S.structs.filter((s: any) => visibleStruct(s, V)); const key = vis.map((s: any) => s.id).join(',') + S.phase; if (key === structKey) return; structKey = key;
   let nt = 0, nl = 0, ns = 0, nw = 0, nwl = 0, nk = 0;
@@ -368,16 +456,86 @@ function updateStructs(V: View) {
     const yaw = Math.atan2(-(s.b.y - s.a.y), s.b.x - s.a.x);
     for (const ci of s.cells) {
       const x = (ci % GW) * C + 1, y = Math.floor(ci / GW) * C + 1, h = M.hAt(x, y);
-      if (s.type === 'trench') setI(mTrench, nt++, x, y, h + .02, 1, 1, 1, yaw);
+      if (s.type === 'trench') continue;
       else if (s.type === 'sandbag') setI(mSand, ns++, x, y, h, 1.05, 1.1, 1.3, yaw);
       else if (s.type === 'wire') setI(mWire, nw++, x, y, h, 1.05, 1, 1, yaw);
       else if (s.type === 'tanktrap') setI(mTrap, nk++, x, y, h, 1, 1, 1, yaw + (nk % 3) * .5);
       else setI(mWall, nwl++, x, y, h, 1, 1, 1, 0);
     }
   }
-  done(mTrap, nk); done(mTrench, nt); done(mSand, ns); done(mWire, nw); done(mWall, nwl);
+  done(mTrap, nk); done(mSand, ns); done(mWire, nw); done(mWall, nwl);
+  digTrenches(vis.filter((s: any) => s.type === 'trench'));
 }
 
+// Soldier figures. The battle data has no animation state; the renderer keeps a little for each man:
+// where it drew him, his heading, his stride and his pose. The battle data itself stays plain.
+interface Anim { x: number; y: number; px: number; py: number; hd: number; ph: number; spd: number; pr: number; die: number; alive: boolean; ox: number; oy: number }
+// Men are drawn a little apart from each other and clear of walls. This moves only the figure, never the unit.
+// The places of the men drawn in the last frame (x, y, unit number), in buckets of one cell.
+let crowd = new Map<number, number[]>(), crowdNext = new Map<number, number[]>();
+const CLEAR = .55, APART = .75;
+function nudgeOut(x: number, y: number, self: number, out: number[]) {
+  let fx = 0, fy = 0; const cx = Math.floor(x / C), cy = Math.floor(y / C);
+  // Other men close by push apart.
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const b = crowd.get((cy + dy) * GW + cx + dx); if (!b) continue;
+    for (let i = 0; i < b.length; i += 3) { if (b[i + 2] === self) continue; const ex = x - b[i], ey = y - b[i + 1], d = Math.hypot(ex, ey); if (d > 1e-3 && d < APART) { fx += ex / d * (APART - d) * .5; fy += ey / d * (APART - d) * .5; } }
+  }
+  // Walls push out: a man inside an outline or closer than CLEAR to it moves out to CLEAR.
+  let seen = -2;
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const ix = cx + dx, iy = cy + dy; if (ix < 0 || iy < 0 || ix >= GW || iy >= GH) continue; const id = M.bldId[iy * GW + ix];
+    if (id < 0 || id === seen) continue; seen = id; const b: any = M.B[id]; if (!b || b.down != null) continue; const P = b.p as number[][];
+    let ins = false, bd = 1e9, qx = 0, qy = 0;
+    for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+      const a0 = P[j], a1 = P[i]; if ((a1[1] > y) !== (a0[1] > y) && x < (a0[0] - a1[0]) * (y - a1[1]) / (a0[1] - a1[1]) + a1[0]) ins = !ins;
+      const ex = a1[0] - a0[0], ey = a1[1] - a0[1], L = ex * ex + ey * ey || 1, t = clamp(((x - a0[0]) * ex + (y - a0[1]) * ey) / L, 0, 1), px = a0[0] + ex * t, py = a0[1] + ey * t, d = Math.hypot(x - px, y - py);
+      if (d < bd) { bd = d; qx = px; qy = py; }
+    }
+    if (bd > CLEAR && !ins) continue;
+    let nx = x - qx, ny = y - qy; const l = Math.hypot(nx, ny) || 1; nx /= l; ny /= l; if (ins) { nx = -nx; ny = -ny; }
+    const need = ins ? bd + CLEAR : CLEAR - bd; fx += nx * need; fy += ny * need;
+  }
+  const m = Math.hypot(fx, fy); if (m > 1.2) { fx *= 1.2 / m; fy *= 1.2 / m; }
+  out[0] = fx; out[1] = fy;
+}
+const _push = [0, 0];
+const ANIM = new WeakMap<any, Anim>();
+// Radians of stride for each map unit walked, so the feet keep pace with the ground and do not slide.
+const STRIDE = Math.PI * 2 / 1.55;
+let nm = 0, nl = 0, nPr = 0, nd = 0, lastAnimT = 0;
+// The battle runs in fixed ticks. Before each tick the main loop keeps where each man stood (snapUnits).
+// After the ticks it gives the part of the next tick that has gone by (interp.a). Men are drawn between the two places.
+export const interp = { a: 1, on: false };
+export function snapUnits() { for (const u of S.units) { const a = ANIM.get(u); if (a) { a.px = u.x; a.py = u.y; } } }
+interface Pose { swing: number; kneeL: number; kneeR: number; bob: number; lean: number; fall: number; kick: number }
+const IDLE: Pose = { swing: 0, kneeL: -.05, kneeR: -.05, bob: 0, lean: 0, fall: 0, kick: 0 }, P: Pose = { ...IDLE };
+const _B = new THREE.Matrix4(), _H = new THREE.Matrix4(), _L = new THREE.Matrix4(), _X = new THREE.Matrix4(), _Y = new THREE.Matrix4(), _cc = new THREE.Color();
+const HIP = .52, THIGH = .25;
+// One man from his parts: the body, then each leg as a thigh from the hip and a shin from the knee.
+function drawMan(x: number, y: number, h: number, yaw: number, col: number[], p: Pose) {
+  if (nm >= 5000 || nl + 2 > 10000) return;
+  _q.setFromAxisAngle(_up, yaw); _p.set(x - W / 2, h, y - H / 2); _s.set(1.25, 1.25, 1.25); _B.compose(_p, _q, _s);
+  // A falling man turns forward round his feet.
+  if (p.fall) _B.multiply(_X.makeRotationZ(-p.fall));
+  _cc.setRGB(col[0], col[1], col[2]);
+  // The body turns forward round the hips when the man leans.
+  _H.copy(_B).multiply(_X.makeTranslation(p.kick, HIP + p.bob, 0)).multiply(_Y.makeRotationZ(-p.lean)).multiply(_X.makeTranslation(0, -HIP, 0));
+  mSoldier.setMatrixAt(nm, _H); mSoldier.setColorAt(nm++, _cc);
+  for (const [side, sw, knee] of [[1, p.swing, p.kneeL], [-1, -p.swing, p.kneeR]]) {
+    _L.copy(_B).multiply(_X.makeTranslation(0, HIP + p.bob, side * .085)).multiply(_Y.makeRotationZ(sw));
+    mThigh.setMatrixAt(nl, _L); mThigh.setColorAt(nl, _cc);
+    _L.multiply(_X.makeTranslation(0, -THIGH, 0)).multiply(_Y.makeRotationZ(knee));
+    mShin.setMatrixAt(nl, _L); mShin.setColorAt(nl++, _cc);
+  }
+}
+// Where a man in a building stands: on the roof, on the slope of a pitched roof as the roof is drawn.
+export function roofH(x: number, y: number) {
+  const h = unitH(x, y), ci = cellOf(x, y); if (ci < 0) return h; const id = M.bldId[ci], b: any = id >= 0 ? M.B[id] : null;
+  if (!b || !b.hip || b.down != null) return h; const r = b.hip, l = x * r.lx + y * r.ly, s = x * r.sx + y * r.sy;
+  const k = Math.min(1 - Math.abs(s - r.sm) / r.hs, (l - r.l0) / Math.max(.01, r.inset), (r.l1 - l) / Math.max(.01, r.inset));
+  return h + r.rh * clamp(k, 0, 1);
+}
 export function update3D(V: View) {
   const plan = S.phase === 'plan';
   const up = ptUnits.geometry.attributes.position.array, uc = ptUnits.geometry.attributes.color.array;
@@ -386,10 +544,57 @@ export function update3D(V: View) {
   let n = 0, nb = 0, ng = 0;
   const putU = (x: number, y: number, h: number, c: number[], dim: number) => { if (n >= 5000) return; up[n * 3] = x - W / 2; up[n * 3 + 1] = h; up[n * 3 + 2] = y - H / 2; uc[n * 3] = c[0] * dim; uc[n * 3 + 1] = c[1] * dim; uc[n * 3 + 2] = c[2] * dim; n++; };
   // Zoomed in, soldiers are small figures; zoomed out (or in x-ray) they are dots, so they never get lost.
-  const ppu = view.ch / 2 / (cam.dist * Math.tan(FOV / 2 * Math.PI / 180)), figures = (ppu > 3.2 || fpv.on) && !viewOpts.xray; let nm = 0, nd = 0;
+  const ppu = view.ch / 2 / (cam.dist * Math.tan(FOV / 2 * Math.PI / 180)), figures = (ppu > 3.2 || fpv.on) && !viewOpts.xray; nm = nl = nPr = nd = 0; { const t = crowd; crowd = crowdNext; crowdNext = t; crowdNext.clear(); }
+  const tint = (c: number[], dim: number) => [Math.min(1, c[0] * dim * 1.2 + .08), Math.min(1, c[1] * dim * 1.2 + .08), Math.min(1, c[2] * dim * 1.2 + .08)];
+  // A man who stands still (placed units, previews): no state, only the idle pose.
   const man = (u: any, h: number, c: number[], dim: number) => {
     if (!figures || nm >= 5000) { putU(u.x, u.y, h + .9, c, dim); return; }
-    setI(mSoldier, nm++, u.x, u.y, h, 1.25, (u.sup || 0) > .75 ? .8 : 1.25, 1.25, u.hd || 0, [Math.min(1, c[0] * dim * 1.2 + .08), Math.min(1, c[1] * dim * 1.2 + .08), Math.min(1, c[2] * dim * 1.2 + .08)]);
+    drawMan(u.x, u.y, h, u.hd || 0, tint(c, dim), IDLE);
+  };
+  // A man in the battle: drawn where he is between two ticks, turning smoothly, with legs that keep pace with the ground.
+  const live = S.phase === 'battle' && NET.mode !== 'guest' && interp.on, guest = NET.mode === 'guest', rNow = performance.now() / 1000, fdt = Math.min(.1, rNow - (lastAnimT || rNow)); lastAnimT = rNow;
+  const actor = (u: any) => {
+    let a = ANIM.get(u); const fresh = !a;
+    if (!a) { a = { x: u.x, y: u.y, px: u.x, py: u.y, hd: u.hd || 0, ph: (u.i * 1.7) % 6.28, spd: 0, pr: 0, die: -1, alive: !!u.alive, ox: 0, oy: 0 }; ANIM.set(u, a); }
+    let tx = u.x, ty = u.y;
+    if (live) { tx = a.px + (u.x - a.px) * interp.a; ty = a.py + (u.y - a.py) * interp.a; }
+    const jump = Math.hypot(tx - a.x, ty - a.y);
+    // A guest gets the host's positions ten times a second: ease toward them.
+    let nx = tx, ny = ty; if (guest && jump < 8) { const k = Math.min(1, fdt * 10); nx = a.x + (tx - a.x) * k; ny = a.y + (ty - a.y) * k; }
+    const d = fresh || jump > 8 ? 0 : Math.hypot(nx - a.x, ny - a.y); a.x = nx; a.y = ny;
+    if (fdt > 0) a.spd += (d / fdt - a.spd) * Math.min(1, fdt * 8);
+    a.ph += d * STRIDE;
+    let dh = (u.hd || 0) - a.hd; dh = Math.atan2(Math.sin(dh), Math.cos(dh)); a.hd += fresh ? dh : Math.sign(dh) * Math.min(Math.abs(dh), fdt * 9);
+    const prone = (u.sup || 0) > .75 && a.spd < .3; a.pr = clamp(a.pr + (prone ? 1 : -1) * fdt * 3, 0, 1);
+    if (!u.alive) { if (a.alive && !fresh) a.die = rNow; a.alive = false; } else { a.alive = true; a.die = -1; }
+    return a;
+  };
+  const soldier = (u: any, c: number[], dim: number, drop: number) => {
+    const a = actor(u);
+    // Figures only: ease the drawn place away from walls and from other men. Men on roofs stay where they are.
+    if (figures && !u.gar) { nudgeOut(a.x + a.ox, a.y + a.oy, u.i, _push); const k = Math.min(1, fdt * 6); a.ox = a.ox * (1 - k * .25) + _push[0] * k; a.oy = a.oy * (1 - k * .25) + _push[1] * k; const m = Math.hypot(a.ox, a.oy); if (m > 1.2) { a.ox *= 1.2 / m; a.oy *= 1.2 / m; } }
+    else { a.ox = a.oy = 0; }
+    const x = a.x + a.ox, y = a.y + a.oy, h = (u.gar ? roofH(x, y) : unitH(x, y) - (inTrench(x, y) ? TRENCH_D - .05 : 0)) + drop;
+    if (figures) { const key = Math.floor(y / C) * GW + Math.floor(x / C); let b = crowdNext.get(key); if (!b) crowdNext.set(key, b = []); b.push(x, y, u.i); }
+    if (!figures || nm >= 5000) { putU(a.x, a.y, h + .9, c, dim); return; }
+    const col = tint(c, dim);
+    // Pinned down: the man lies flat.
+    if (a.pr >= .55) { if (nPr < 5000) setI(mProne, nPr++, x, y, h, 1.25, 1.25, 1.25, a.hd, col); return; }
+    // Walk to run: longer strides and more lean as the man goes faster. Still: a slow breath.
+    const w = clamp(a.spd / .6, 0, 1), run = clamp((a.spd - 1.6) / 1.5, 0, 1), amp = (.5 + run * .3) * w, sn = Math.sin(a.ph), cs = Math.cos(a.ph);
+    P.swing = sn * amp; P.kneeL = -Math.max(0, cs) * (.9 + run * .5) * w - .05; P.kneeR = -Math.max(0, -cs) * (.9 + run * .5) * w - .05;
+    P.bob = (Math.cos(P.swing) - 1) * .4 + Math.abs(cs) * .03 * w + (1 - w) * Math.sin(rNow * 1.9 + u.i) * .006;
+    P.lean = .1 * w + .15 * run + a.pr * .9; P.fall = 0;
+    // The rifle kicks back a little at each shot.
+    P.kick = live && u.fired != null && S.t - u.fired < .12 ? -.05 : 0;
+    drawMan(x, y, h, a.hd, col, P);
+  };
+  // A man who is hit falls forward, then lies still.
+  const fallen = (u: any) => {
+    const a = actor(u), h = unitH(a.x, a.y) - (inTrench(a.x, a.y) ? TRENCH_D - .05 : 0), yaw = a.die >= 0 || a.spd > 0 ? a.hd : (u.hd || 0) + u.i * .7;
+    const t = a.die >= 0 ? (rNow - a.die) / .45 : 1;
+    if (t < 1) { Object.assign(P, IDLE); P.fall = t * t * 1.5; drawMan(a.x, a.y, h, yaw, [.72, .72, .7], P); return; }
+    if (nd < 5000) setI(mBody, nd++, a.x, a.y, h, 1.25, 1.25, 1.25, yaw);
   };
   // Team tint over the model's own colours: a light wash of the team colour.
   for (const k in mModel) nModel[k] = 0;
@@ -401,10 +606,10 @@ export function update3D(V: View) {
     if (u.alive) {
       if (u.team !== NET.me && V.fogOn && !V.isVis(u)) continue;
       if (MODEL_KINDS.has(u.kind)) { emp(u.kind, u.x, u.y, c, u.hd); if (!figures) putU(u.x, u.y, unitH(u.x, u.y) + .9, c, 1); }
-      else man(u, unitH(u.x, u.y) + (u.drop > 0 ? u.drop * 14 : 0), c, 1);
+      else soldier(u, c, 1, u.drop > 0 ? u.drop * 14 : 0);
     } else if (nb < 5000) {
       if (u.team !== NET.me && V.fogOn && !cellSeen(V.seen, u.x, u.y)) continue;
-      if (figures && !MODEL_KINDS.has(u.kind)) { if (nd < 5000) setI(mBody, nd++, u.x, u.y, unitH(u.x, u.y), 1.25, 1.25, 1.25, (u.hd || 0) + u.i); }
+      if (figures && !MODEL_KINDS.has(u.kind)) fallen(u);
       else { bp[nb * 3] = u.x - W / 2; bp[nb * 3 + 1] = unitH(u.x, u.y) + .2; bp[nb * 3 + 2] = u.y - H / 2; bc[nb * 3] = .42; bc[nb * 3 + 1] = .42; bc[nb * 3 + 2] = .4; nb++; } // the dead: grey
       // Wrecked guns and tanks stay where they fell, burnt dark.
       if (MODEL_KINDS.has(u.kind)) model(u.kind, u.x, u.y, unitH(u.x, u.y) - .15, 1.6, (u.hd || 0) + .3, [.22, .2, .18], 1.3);
@@ -413,7 +618,7 @@ export function update3D(V: View) {
   if (plan) for (const s of S.squads) {
     if (s.members || s.team !== NET.me) continue; const c = s.order && !MODEL_KINDS.has(s.kind) ? ORDERED : TRGB[0];
     const hd0 = Math.atan2(-(H / 2 - s.pos[0][1]), W / 2 - s.pos[0][0]);
-    for (const p of s.pos) { if (MODEL_KINDS.has(s.kind)) putU(p[0], p[1], unitH(p[0], p[1]) + .9, c, .75); else man({ x: p[0], y: p[1], hd: hd0 }, unitH(p[0], p[1]), c, .75); }
+    for (const p of s.pos) { if (MODEL_KINDS.has(s.kind)) putU(p[0], p[1], unitH(p[0], p[1]) + .9, c, .75); else man({ x: p[0], y: p[1], hd: hd0 }, s.kind === 'garrison' ? roofH(p[0], p[1]) : unitH(p[0], p[1]), c, .75); }
     if (MODEL_KINDS.has(s.kind)) emp(s.kind, s.pos[0][0], s.pos[0][1], c, Math.atan2(-(H / 2 - s.pos[0][1]), W / 2 - s.pos[0][0]));
   }
   // Previews while planning: the unit you are about to place, or where the selected units will stand.
@@ -423,22 +628,31 @@ export function update3D(V: View) {
       const uk = unitKind(kind);
       if (MODEL_KINDS.has(uk)) { model(uk, x, y, unitH(x, y), 1.6, hd, c); return; }
       const n = PLATOON_SIZE[kind] || 1, fx = Math.cos(-hd), fy = Math.sin(-hd);
-      for (let i = 0; i < n; i++) { const col = (i % 4 - 1.5) * 2.3, row = (Math.floor(i / 4) - 1.5) * 2.3, px = x - fy * col - fx * row, py = y + fx * col - fy * row; man({ x: px, y: py, hd }, unitH(px, py), c, 1); }
+      // Men never stand in a building or in water: each one goes to the nearest open cell, as they will when they get there.
+      for (let i = 0; i < n; i++) { const col = (i % 4 - 1.5) * 2.3, row = (Math.floor(i / 4) - 1.5) * 2.3, q = nudge(x - fy * col - fx * row, y + fx * col - fy * row); if (q) man({ x: q[0], y: q[1], hd }, unitH(q[0], q[1]), c, 1); }
     };
     const toMid = Math.atan2(-(H / 2 - hv.y), W / 2 - hv.x);
     if ((tl.mode === 'point' || tl.mode === 'aim') && K[unitKind(S.tool)] && S.tool !== 'garrison') {
       // The preview stands where the unit will really go: moved aside if another unit is in the way.
-      const q = placeSpot(NET.me, S.tool, hv.x, hv.y), ok = !!q && left(NET.me) >= COST[S.tool];
-      ghost(S.tool, q ? q[0] : hv.x, q ? q[1] : hv.y, ok ? [.55, 1, .65] : [1, .4, .36], toMid);
+      // A platoon shows each man where he will stand (the same layout the placement uses).
+      const L = squadLayout(NET.me, S.tool, hv.x, hv.y), ok = !!L && left(NET.me) >= COST[S.tool], gc = ok ? [.55, 1, .65] : [1, .4, .36];
+      if (L && PLATOON_SIZE[S.tool]) for (const q of L.pos) man({ x: q[0], y: q[1], hd: toMid }, unitH(q[0], q[1]), gc, 1);
+      else { const q = L ? L.p : placeSpot(NET.me, S.tool, hv.x, hv.y); ghost(S.tool, q ? q[0] : hv.x, q ? q[1] : hv.y, gc, toMid); }
     } else if (S.tool === 'move' || S.tool === 'attack' || S.tool === 'defend') {
       const sel = (S.selMany || []).filter((s: any) => s.team === NET.me && MOVERS.includes(s.kind)); let gx = 0, gy = 0, k = 0;
       for (const s of sel) { gx += s.x; gy += s.y; k++; }
-      if (k) { const a = Math.atan2(hv.y - gy / k, hv.x - gx / k), dx = Math.cos(a), dy = Math.sin(a); sel.forEach((s: any, j: number) => { const off = (j - (k - 1) / 2) * 11; ghost(s.kind, hv.x - dy * off, hv.y + dx * off, [.5, .78, 1], -a); }); }
+      if (k) { const a = Math.atan2(hv.y - gy / k, hv.x - gx / k), dx = Math.cos(a), dy = Math.sin(a); sel.forEach((s: any, j: number) => {
+        const off = (j - (k - 1) / 2) * 11, tx = hv.x - dy * off, ty = hv.y + dx * off, uk = unitKind(s.kind);
+        if (MODEL_KINDS.has(uk)) { ghost(s.kind, tx, ty, [.5, .78, 1], -a); return; }
+        // Each man where he will stand: the same spots the battle gives him (in line, or in the cover round the point).
+        const n = s.members ? s.members.filter((i: number) => S.units[i].alive).length : (s.pos ? s.pos.length : PLATOON_SIZE[s.kind] || 1);
+        for (const q of orderSpots(S.tool, tx, ty, a, n, uk === 'tank')) man({ x: q[0], y: q[1], hd: -a }, unitH(q[0], q[1]), [.5, .78, 1], 1);
+      }); }
     }
   }
   // Last known enemy positions, shown faded.
   for (const g of V.ghosts) { if (ng >= 3000) break; const c = TRGB[sw(g.team)]; gp[ng * 3] = g.x - W / 2; gp[ng * 3 + 1] = unitH(g.x, g.y) + .9; gp[ng * 3 + 2] = g.y - H / 2; gc[ng * 3] = c[0]; gc[ng * 3 + 1] = c[1]; gc[ng * 3 + 2] = c[2]; ng++; }
-  done(mSoldier, nm); done(mBody, nd);
+  done(mSoldier, nm); done(mThigh, nl); done(mShin, nl); done(mProne, nPr); done(mBody, nd);
   for (const [p, c] of [[ptUnits, n], [ptBodies, nb], [ptGhosts, ng]] as [any, number][]) { p.geometry.setDrawRange(0, c); p.geometry.attributes.position.needsUpdate = true; p.geometry.attributes.color.needsUpdate = true; }
   // Each HQ: a bunker with a flag in the team colour. Enemy HQs show once your side has found them.
   for (const t of S.teams) {

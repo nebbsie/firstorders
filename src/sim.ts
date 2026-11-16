@@ -4,6 +4,11 @@ import { cellOf, unitH, passable, nudge, opRange } from './world';
 import { aliveMembers, spentNow, sqName, nextCall, rollPersonalities, initOwn } from './plan';
 import { aiPlan } from './ai';
 import { BTYPES } from './map/btypes';
+import { F_HEDGE, F_WALL } from './map/types';
+
+// Hedges block sight up to this height above the ground: a man standing behind one is hidden,
+// but an observer on a roof or a hill sees over it.
+const HEDGE_H = 1.9, HEDGE_NEAR = 2.8;
 
 let rnd = Math.random;
 const gauss = () => { const u = rnd() || 1e-9, v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(6.283 * v); };
@@ -144,6 +149,35 @@ function spawnSquad(sq: any, drop?: boolean) {
   }
   const o = sq.order; sq.state = o ? o.type : 'hold'; sq.tx = o ? o.x : sq.x; sq.ty = o ? o.y : sq.y; if (o) useVia(sq, o); sq.dir = o && o.dir != null ? o.dir : sq.face; sq.dbridge = o ? o.bridge : undefined; sq.dbld = o ? o.bld : undefined; sq.planted = null; faceMembers(sq); sq.contact = S.t; sq.arrived = -1; assignSlots(sq); setPace(sq);
 }
+// Where each man of a unit will stand for an order. The order preview uses this too, so it shows where the men will go.
+// jit gives a random offset from -0.5 to 0.5; the preview gives 0.
+export function orderSpots(state: string, tx: number, ty: number, face: number, n: number, veh: boolean, jit: () => number = () => 0): number[][] {
+  const vok = veh ? (x: number, y: number) => passable(cellOf(x, y), true) : undefined, fx = Math.cos(face), fy = Math.sin(face), out: number[][] = [];
+  if (state === 'attack' || state === 'move' || state === 'demolish' || state === 'follow') {
+    // A line across the facing direction: six wide, ranks behind.
+    // Spread out as real sections do: about 10 m between men, so one shell does not take a whole platoon.
+    for (let i = 0; i < n; i++) { const col = i % 6 - 2.5, row = Math.floor(i / 6); out.push(nudge(tx - fy * col * 4.5 - fx * row * 5 + jit() * 1.5, ty + fx * col * 4.5 - fy * row * 5 + jit() * 1.5, vok) || [tx, ty]); }
+    return out;
+  }
+  const cells: number[][] = [], r = 16, c0 = Math.floor(tx / C), r0 = Math.floor(ty / C), rc = Math.ceil(r / C);
+  for (let dy = -rc; dy <= rc; dy++) for (let dx = -rc; dx <= rc; dx++) { const cx = c0 + dx, cy = r0 + dy; if (cx < 0 || cy < 0 || cx >= GW || cy >= GH) continue; const ci = cy * GW + cx, c = S.cover ? S.cover[ci] : 0; if (Math.hypot(dx, dy) * C > r || !passable(ci, veh)) continue;
+    // Cover, best first: trenches and sandbags, walls, hedges, woods, the side of a building. Open ground is a last choice.
+    const t = M.terr[ci], f = M.feat[ci], beside = t !== T_BUILD && (besideWall(ci) || [ci - 1, ci + 1, ci - GW, ci + GW].some(k => k >= 0 && k < M.terr.length && M.terr[k] === T_BUILD));
+    const best = c === 2 ? 0 : c === 1 ? .5 : f === F_WALL || (beside && besideWall(ci)) ? 1 : f === F_HEDGE ? 1.5 : t === T_WOOD ? 2 : beside ? 2.5 : -1;
+    if (best >= 0) cells.push([ci, Math.hypot(dx, dy) + best * 2]); }
+  // Cover on the facing side comes first.
+  for (const c of cells) { const px = (c[0] % GW) * C + 1 - tx, py = Math.floor(c[0] / GW) * C + 1 - ty; c[1] -= (px * fx + py * fy) / C * .6; }
+  cells.sort((a, b) => a[1] - b[1]);
+  // The best cells, two for each man, shared out so the men stand apart along the cover. With too little cover,
+  // the other men stand round the point in the open.
+  const pool = Math.min(cells.length, n * 2);
+  for (let i = 0; i < n; i++) {
+    if (i < pool && pool >= n) { const pick = cells[Math.floor(i * pool / n)][0]; out.push([(pick % GW) * C + 1 + jit() * .6, Math.floor(pick / GW) * C + 1 + jit() * .6]); }
+    else if (i < pool) { const pick = cells[i][0]; out.push([(pick % GW) * C + 1 + jit() * .6, Math.floor(pick / GW) * C + 1 + jit() * .6]); }
+    else { const a = i * 2.4 + jit(), d = 4 + (i * 5) % 12 + jit() * 2; out.push(nudge(tx + Math.cos(a) * d, ty + Math.sin(a) * d, vok) || [tx, ty]); }
+  }
+  return out;
+}
 function assignSlots(sq: any) {
   const mem = aliveMembers(sq); if (!mem.length) return;
   // Suppressing fire is given from where the unit stands.
@@ -153,21 +187,8 @@ function assignSlots(sq: any) {
   // Facing: the order's direction, else the way from the unit to the target.
   const c0x = mem.reduce((a: number, u: any) => a + u.x, 0) / mem.length, c0y = mem.reduce((a: number, u: any) => a + u.y, 0) / mem.length;
   const face = sq.dir != null ? sq.dir : Math.atan2(sq.ty - c0y, sq.tx - c0x), fx = Math.cos(face), fy = Math.sin(face);
-  if (sq.state === 'attack' || sq.state === 'move' || sq.state === 'demolish' || sq.state === 'follow') {
-    // A line across the facing direction: eight wide, ranks behind.
-    // Spread out as real sections do: about 10 m between men, so one shell does not take a whole platoon.
-    let i = 0; for (const u of mem) { const col = i % 6 - 2.5, row = Math.floor(i / 6); i++; const q = nudge(sq.tx - fy * col * 4.5 - fx * row * 5 + (rnd() - .5) * 1.5, sq.ty + fx * col * 4.5 - fy * row * 5 + (rnd() - .5) * 1.5, vok) || [sq.tx, sq.ty]; u.sx = q[0]; u.sy = q[1]; if (!vok) u.hd = Math.atan2(-fy, fx); }
-    return;
-  }
-  const cells: number[][] = [], r = 16, c0 = Math.floor(sq.tx / C), r0 = Math.floor(sq.ty / C), rc = Math.ceil(r / C);
-  for (let dy = -rc; dy <= rc; dy++) for (let dx = -rc; dx <= rc; dx++) { const cx = c0 + dx, cy = r0 + dy; if (cx < 0 || cy < 0 || cx >= GW || cy >= GH) continue; const ci = cy * GW + cx, c = S.cover[ci]; if ((c === 1 || c === 2) && Math.hypot(dx, dy) * C <= r) cells.push([ci, Math.hypot(dx, dy)]); }
-  // Cover on the facing side comes first.
-  for (const c of cells) { const px = (c[0] % GW) * C + 1 - sq.tx, py = Math.floor(c[0] / GW) * C + 1 - sq.ty; c[1] -= (px * fx + py * fy) / C * .6; }
-  cells.sort((a, b) => a[1] - b[1]);
-  mem.forEach((u: any, i: number) => {
-    if (i < cells.length) { const pick = cells[Math.floor(i * cells.length / mem.length)][0]; u.sx = (pick % GW) * C + 1 + (rnd() - .5) * .6; u.sy = Math.floor(pick / GW) * C + 1 + (rnd() - .5) * .6; }
-    else { const a = rnd() * 6.28, d = 4 + rnd() * 12; const q = nudge(sq.tx + Math.cos(a) * d, sq.ty + Math.sin(a) * d, vok) || [u.x, u.y]; u.sx = q[0]; u.sy = q[1]; }
-  });
+  const spots = orderSpots(sq.state, sq.tx, sq.ty, face, mem.length, !!vok, () => rnd() - .5);
+  mem.forEach((u: any, i: number) => { u.sx = spots[i][0]; u.sy = spots[i][1]; if (!vok && (sq.state === 'attack' || sq.state === 'move' || sq.state === 'demolish' || sq.state === 'follow')) u.hd = Math.atan2(-fy, fx); });
 }
 function clearLine(ax: number, ay: number, bx: number, by: number, veh?: boolean) {
   // Step cell by cell. A diagonal step needs both side cells open, so a line cannot slip between two wall cells that touch at a corner.
@@ -228,20 +249,24 @@ export function los(ax: number, ay: number, bx: number, by: number) {
     const lh = ha + (hb - ha) * f, t = M.terr[ci], g = M.hAt(x, y);
     if (t === T_BUILD) { const id = M.bldId[ci]; if (id >= 0 && (id === ia || id === ib)) continue; if (M.bldTop[ci] > lh) return false; continue; }
     if (S.cover && S.cover[ci] === 3 && lh < g + 2.6) return false;
+    // A hedge hides what is behind it. Men in the hedge, or right against it, see and shoot through it.
+    if (M.feat[ci] === F_HEDGE && lh < g + HEDGE_H && f * d > HEDGE_NEAR && (1 - f) * d > HEDGE_NEAR) return false;
     if (g > lh + .2) return false;
     if (t === T_WOOD && lh < g + 5) { wood += 1.5; if (wood > 12) return false; }
     if (S.smokes && S.smokes.length && lh < g + 10 && inSmoke(x, y)) { smoke += 1.5; if (smoke > 4) return false; }
   }
   return true;
 }
-function coverAt(u: any) { if (u.gar) { const b = M.B[M.bldId[cellOf(u.x, u.y)]]; return (b && BTYPES[b.btype || 'house'].cover) || .85; } const ci = cellOf(u.x, u.y); if (ci < 0) return 0; const c = S.cover[ci]; if (c === 2) return .7; if (c === 1) return .5; if (M.terr[ci] === T_WOOD) return .35; const t = M.terr; if ((ci % GW > 0 && t[ci - 1] === T_BUILD) || (ci % GW < GW - 1 && t[ci + 1] === T_BUILD) || t[ci - GW] === T_BUILD || t[ci + GW] === T_BUILD) return .3; return 0; }
+function coverAt(u: any) { if (u.gar) { const b = M.B[M.bldId[cellOf(u.x, u.y)]]; return (b && BTYPES[b.btype || 'house'].cover) || .85; } const ci = cellOf(u.x, u.y); if (ci < 0) return 0; const c = S.cover[ci]; if (c === 2) return .7; if (c === 1) return .5; const f = M.feat[ci]; if (f === F_WALL) return .5; if (M.terr[ci] === T_WOOD) return .35; if (f === F_HEDGE) return .3; const t = M.terr; if ((ci % GW > 0 && t[ci - 1] === T_BUILD) || (ci % GW < GW - 1 && t[ci + 1] === T_BUILD) || t[ci - GW] === T_BUILD || t[ci + GW] === T_BUILD) return besideWall(ci) ? .5 : .3; return 0; }
+// True when a low wall stands in a cell next to this one: men behind it have good cover.
+function besideWall(ci: number) { for (const n of [ci - 1, ci + 1, ci - GW, ci + GW]) { const id = n >= 0 && n < M.bldId.length ? M.bldId[n] : -1; if (id >= 0 && M.B[id].btype === 'wall') return true; } return false; }
 // AT guns shoot only tanks, small arms ignore tanks, tanks shoot anything. Woods make targets harder to see.
 function findTarget(u: any, range: number) {
   let best = -1, bd = range * range; const U = S.units, wantTank = u.kind === 'at', any = u.kind === 'tank';
   for (let j = 0; j < U.length; j++) {
     const e = U[j]; if (!e.alive || e.team === u.team || e.drop > 0) continue; const isT = e.kind === 'tank';
     if (wantTank ? !isT : (!any && isT)) continue;
-    const dx = e.x - u.x, dy = e.y - u.y; let d = dx * dx + dy * dy; const ce = cellOf(e.x, e.y); if (ce >= 0 && M.terr[ce] === T_WOOD && !isT) d *= 2.8;
+    const dx = e.x - u.x, dy = e.y - u.y; let d = dx * dx + dy * dy; const ce = cellOf(e.x, e.y); if (ce >= 0 && !isT) { if (M.terr[ce] === T_WOOD) d *= 2.8; else if (M.feat[ce] === F_HEDGE) d *= 1.8; }
     if (d < bd && inArc(u, e.x, e.y) && los(u.x, u.y, e.x, e.y)) { bd = d; best = j; }
   }
   return best;
@@ -319,7 +344,7 @@ function explode(x: number, y: number, r: number, power: number, team: number) {
   for (const v of S.units) {
     if (!v.alive || v.drop > 0) continue; const d = Math.hypot(v.x - x, v.y - y); if (d < r * 1.8) suppress(v, .7 * (1 - d / (r * 1.8))); if (d > r) continue;
     if (v.kind === 'tank') { if (d < r * .5 && rnd() < power) { v.hp -= 3; if (v.hp <= 0) kill(v, team); } continue; }
-    const ci = cellOf(v.x, v.y), cov = v.gar ? .5 : ci >= 0 && S.cover[ci] === 2 ? .55 : ci >= 0 && S.cover[ci] === 1 ? .3 : 0;
+    const ci = cellOf(v.x, v.y), cov = v.gar ? .5 : ci >= 0 && S.cover[ci] === 2 ? .55 : ci >= 0 && (S.cover[ci] === 1 || M.feat[ci] === F_WALL) ? .3 : 0;
     if (rnd() < power * (1 - d / r * .6) * (1 - cov)) { v.hp -= 2; if (v.hp <= 0 && !saved(v)) kill(v, team); }
   }
 }
@@ -335,8 +360,10 @@ function mortarTarget(u: any) {
 }
 // How fast ground is to cross, times the unit's speed: roads speed tanks up; trenches, wire and woods slow men down.
 export function moveFactor(ci: number, veh?: boolean) {
-  if (ci < 0) return 1; const cov = S.cover ? S.cover[ci] : 0, tt = M.terr[ci];
-  return veh ? (tt === T_ROAD || tt === T_BRIDGE ? 1.5 : cov === 2 ? .7 : 1) : (cov === 2 ? .6 : cov === 4 ? .33 : tt === T_WOOD ? .85 : 1);
+  if (ci < 0) return 1; const cov = S.cover ? S.cover[ci] : 0, tt = M.terr[ci], f = M.feat[ci];
+  // Hedges and walls: men climb through, tanks push through slowly.
+  const ff = f === F_HEDGE ? (veh ? .5 : .55) : f === F_WALL ? (veh ? .7 : .65) : 1;
+  return ff * (veh ? (tt === T_ROAD || tt === T_BRIDGE ? 1.5 : cov === 2 ? .7 : 1) : (cov === 2 ? .6 : cov === 4 ? .33 : tt === T_WOOD ? .85 : 1));
 }
 const TURN = 1.1; // tank turn speed, radians a second
 function moveUnit(u: any, k: any, sq: any) {
@@ -373,11 +400,36 @@ function moveUnit(u: any, k: any, sq: any) {
   }
   // The next spot must be open, and a step across a cell corner needs both side cells open (no slipping through walls).
   const cn = cellOf(nx, ny), diag = ci >= 0 && cn >= 0 && cn !== ci && cn % GW !== ci % GW && ((cn / GW) | 0) !== ((ci / GW) | 0), cornerOk = !diag || (passable(((ci / GW) | 0) * GW + cn % GW, k.veh) && passable(((cn / GW) | 0) * GW + ci % GW, k.veh));
-  if ((passable(cn, k.veh) && cornerOk) || !passable(ci, k.veh)) { if (!k.veh) u.hd = Math.atan2(-(ny - u.y), nx - u.x); u.x = nx; u.y = ny; }
-  // Blocked: slide along the wall on one axis before a small random step.
+  // A unit in a closed cell (a wall was built on it, a building fell on it) goes straight to the nearest open cell.
+  // It does not walk on through the building.
+  if (!passable(ci, k.veh)) { const q = nudge(u.x, u.y, (px, py) => passable(cellOf(px, py), k.veh)); if (q) { const ex = q[0] - u.x, ey = q[1] - u.y, el = Math.hypot(ex, ey) || 1, st = Math.min(el, Math.max(sp, .1)); u.x += ex / el * st; u.y += ey / el * st; } return; }
+  if (passable(cn, k.veh) && cornerOk) { if (!k.veh) u.hd = Math.atan2(-(ny - u.y), nx - u.x); u.x = nx; u.y = ny; }
+  // Blocked: slide along the wall on one axis, or else a small random step, but only into an open cell.
   else if (passable(cellOf(nx, u.y), k.veh)) u.x = nx;
   else if (passable(cellOf(u.x, ny), k.veh)) u.y = ny;
-  else { u.wp = null; u.x += (rnd() - .5) * .15; u.y += (rnd() - .5) * .15; }
+  else { u.wp = null; const jx = u.x + (rnd() - .5) * .15, jy = u.y + (rnd() - .5) * .15; if (passable(cellOf(jx, jy), k.veh)) { u.x = jx; u.y = jy; } }
+}
+// Men on foot keep a few metres apart: each one steps a little away from men of his side who are too close.
+// Without this, men who follow the same path walk in one file, on top of each other. A step goes only into an open cell.
+const SPREAD = 2.4, spreadGrid = new Map<number, number[]>();
+function spreadOut() {
+  spreadGrid.clear(); const U = S.units, G = 4;
+  for (const u of U) { if (!u.alive || u.gar || K[u.kind].veh || K[u.kind].speed <= 0) continue; const key = Math.floor(u.y / G) * 1000 + Math.floor(u.x / G); let b = spreadGrid.get(key); if (!b) spreadGrid.set(key, b = []); b.push(u.i); }
+  for (const u of U) {
+    // Only men on the way: a man at (or close to) his place stays there, so men in a trench or along a wall hold their spots.
+    if (!u.alive || u.gar || K[u.kind].veh || K[u.kind].speed <= 0 || u.sx == null || Math.hypot(u.sx - u.x, u.sy - u.y) < 4) continue;
+    const gx = Math.floor(u.x / G), gy = Math.floor(u.y / G); let fx = 0, fy = 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const b = spreadGrid.get((gy + dy) * 1000 + gx + dx); if (!b) continue;
+      for (const j of b) { if (j === u.i) continue; const o = U[j]; if (o.team !== u.team) continue; const ex = u.x - o.x, ey = u.y - o.y, d = Math.hypot(ex, ey); if (d >= SPREAD) continue; if (d < 1e-3) { fx += Math.cos(u.i) * .5; fy += Math.sin(u.i) * .5; continue; } const w = (SPREAD - d) / SPREAD; fx += ex / d * w; fy += ey / d * w; }
+    }
+    // Sideways only, across the way the man walks, so men fan out into lanes and nobody is held back.
+    const wx = u.sx - u.x, wy = u.sy - u.y, wl = Math.hypot(wx, wy) || 1, px = -wy / wl, py = wx / wl, side = fx * px + fy * py; fx = px * side; fy = py * side;
+    const m = Math.hypot(fx, fy); if (m < 1e-3) continue;
+    // A slow drift, so men ease apart and do not jump.
+    const st = Math.min(m, 1) * .6 * DT, nx = u.x + fx / m * st, ny = u.y + fy / m * st;
+    if (passable(cellOf(nx, ny), false)) { u.x = nx; u.y = ny; }
+  }
 }
 function updateSquads() {
   const tick = Math.floor(S.t * 2) !== Math.floor((S.t - DT) * 2);
@@ -506,6 +558,7 @@ function viewshed(g: Uint8Array, u: any, R: number) {
       else if (t === T_WOOD) { wood += 1; if (wood > 12) break; }
       if (S.smokes && S.smokes.length && inSmoke(x, y)) { smoke += 1; if (smoke > 3) break; }
       if (S.cover && S.cover[ci] === 3) top = Math.max(top, gr + 2.6);
+      if (M.feat[ci] === F_HEDGE && d > HEDGE_NEAR) top = Math.max(top, gr + HEDGE_H);
       maxS = Math.max(maxS, (top - ha) / d);
     }
   }
@@ -521,7 +574,7 @@ export function updateVision() {
       let seen = false;
       for (const [p, sp] of spies) if (Math.hypot(e.x - sp[0], e.y - sp[1]) < SPY_RADIUS) { seen = true; p.seen.add(j); break; }
       if (!seen) {
-        const ce = cellOf(e.x, e.y), sqE = e.sqo; let hid = ce >= 0 && M.terr[ce] === T_WOOD && e.kind !== 'tank' ? .5 : 1;
+        const ce = cellOf(e.x, e.y), sqE = e.sqo; let hid = ce >= 0 && e.kind !== 'tank' ? (M.terr[ce] === T_WOOD ? .5 : M.feat[ce] === F_HEDGE ? .6 : 1) : 1;
         if (sqE && sqE.stance === 'ambush' && !sqE.sprung && !e.moving) hid *= .5; // men lying in wait are hard to spot
         for (const o of own) { const R = sightOf(o) * hid, dx = o.x - e.x, dy = o.y - e.y; if (Math.abs(dx) < R && Math.abs(dy) < R && dx * dx + dy * dy < R * R && inArc(o, e.x, e.y) && los(o.x, o.y, e.x, e.y)) { seen = true; break; } }
       }
@@ -611,6 +664,7 @@ export function step() {
     // Infantry on a MOVE order keep walking while they shoot; on ATTACK they stop to fight.
     if (k.speed > 0 && !u.gar && !pinned && (!e || (!k.veh && sq && (sq.stance === 'rush' || sq.state === 'move'))) && sq) { const x0 = u.x, y0 = u.y; moveUnit(u, k, sq); u.moving = u.x !== x0 || u.y !== y0; }
   }
+  spreadOut();
   for (const s of S.shells) { s.t += DT; if (s.t >= s.dur && !s.done) { s.done = true; if (s.smoke) { S.smokes.push({ x: s.x1, y: s.y1, r: 9, t0: S.t, life: 32 }); S.rec.smokes.push([S.t, s.x1, s.y1]); snd('launch', s.x1, s.y1); } else explode(s.x1, s.y1, s.r, s.power, s.team); } }
   if (S.smokes.length) S.smokes = S.smokes.filter((m: any) => S.t - m.t0 < m.life); S.shells = S.shells.filter((s: any) => !s.done);
   for (const b of S.bombs) { b.t -= DT; if (b.t <= 0 && !b.done) { b.done = true; explode(b.x, b.y, 9, .95, b.team); } } S.bombs = S.bombs.filter((b: any) => !b.done);

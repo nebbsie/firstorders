@@ -6,7 +6,7 @@ import { nudge, canDeploy, bridgeNear, bridgeTouches, cellOf, canPlaceUnit, inWa
 import { SUPPORT_ROUND, placeSpot } from '../plan';
 import { M_PER_UNIT as MPU } from '../config';
 import { sqCenter, left, addSquad, addStruct, addSupport, lineCells, canRemove, removeItem } from '../plan';
-import { cam, pick, panBy, P, fit, fpv } from '../render/camera';
+import { cam, pick, panBy, P, fit, fpv, PITCH_MIN } from '../render/camera';
 import { setSel, setTool, toast, cursorNote, syncSpeed, syncFollow, closeTools } from './hud';
 import { actSquad, actStruct, actSupport, actOrders, actRemove, actSpeed } from '../actions';
 
@@ -58,7 +58,8 @@ export function initInput(cv: HTMLCanvasElement) {
   cv.addEventListener('pointerdown', e => {
     if (!M || S.phase === 'menu') return; cv.setPointerCapture(e.pointerId); const [sx, sy] = local(e);
     if (e.button === 1) { e.preventDefault(); input.ptr = { mode: 'pan', lx: sx, ly: sy }; cv.style.cursor = 'move'; return; }
-    if (e.button === 2) { input.ptr = { mode: 'rot', lx: sx, ly: sy, moved: false }; return; }
+    // Right drag turns the view round the ground point under the pointer, not round the middle of the screen.
+    if (e.button === 2) { const g = fpv.on ? null : pick(sx, sy); input.ptr = { mode: 'rot', lx: sx, ly: sy, moved: false, px: g ? g.x : cam.tx, py: g ? g.y : cam.ty }; return; }
     if (S.phase === 'replay') return;
     const w = pick(sx, sy), tool = TOOLDEF[S.tool];
     const live = S.phase === 'plan';
@@ -74,7 +75,7 @@ export function initInput(cv: HTMLCanvasElement) {
   });
   cv.addEventListener('pointermove', e => {
     if (!M || S.phase === 'menu') return; const [sx, sy] = local(e), ptr = input.ptr;
-    if (ptr && ptr.mode === 'rot') { const dx = sx - ptr.lx, dy = sy - ptr.ly; ptr.lx = sx; ptr.ly = sy; if (fpv.on && Math.abs(dx) + Math.abs(dy) > 0) { ptr.moved = true; fpv.look += dx * .005; fpv.pitch = clamp(fpv.pitch - dy * .004, -.9, .6); return; } if (Math.abs(dx) + Math.abs(dy) > 0) { ptr.moved = true; cam.yaw -= dx * .006; cam.pitch = clamp(cam.pitch + dy * .005, .3, 1.45); stopFollow(); } return; }
+    if (ptr && ptr.mode === 'rot') { const dx = sx - ptr.lx, dy = sy - ptr.ly; ptr.lx = sx; ptr.ly = sy; if (fpv.on && Math.abs(dx) + Math.abs(dy) > 0) { ptr.moved = true; fpv.look += dx * .005; fpv.pitch = clamp(fpv.pitch - dy * .004, -.9, .6); return; } if (Math.abs(dx) + Math.abs(dy) > 0) { ptr.moved = true; const da = -dx * .006, ox = cam.tx - ptr.px, oy = cam.ty - ptr.py, c = Math.cos(da), si = Math.sin(da); cam.yaw += da; cam.tx = ptr.px + ox * c + oy * si; cam.ty = ptr.py - ox * si + oy * c; cam.pitch = clamp(cam.pitch + dy * .005, PITCH_MIN, 1.45); stopFollow(); } return; }
     if (ptr && ptr.mode === 'pan') { const dx = sx - ptr.lx, dy = sy - ptr.ly; ptr.lx = sx; ptr.ly = sy; if (dx || dy) { panBy(dx, dy); stopFollow(); } return; }
     if (ptr && ptr.mode === 'box') { if (Math.abs(sx - ptr.x0) + Math.abs(sy - ptr.y0) > 5) input.box = { x0: ptr.x0, y0: ptr.y0, x1: sx, y1: sy }; return; }
     const w = pick(sx, sy); input.hover = w; input.mx = sx; input.my = sy; if (ptr && w) ptr.w = w;

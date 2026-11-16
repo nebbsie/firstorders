@@ -6,7 +6,7 @@ import { newBattle, step } from './sim';
 import { liveView, replayView, followCam, replayRate } from './replay';
 import { camera, cam, view, applyCam, fit, fpv } from './render/camera';
 import { unitH } from './world';
-import { initRenderer, renderer, buildMap3D, update3D, render, scene, THREE_ } from './render/scene';
+import { initRenderer, renderer, buildMap3D, update3D, render, scene, THREE_, interp, snapUnits } from './render/scene';
 import { initOverlay, resizeOverlay, draw2D } from './render/overlay';
 import { initInput, keyCam } from './ui/input';
 import { setTool, syncUI, banner, showResult, tickHud, hudPulse, bindStrip, refreshFogPaint, phaseCard, toast } from './ui/hud';
@@ -65,7 +65,9 @@ function tickSim(now: number) {
   const dt = Math.min(.25, (now - lastSim) / 1000); lastSim = now;
   if (S.phase === 'menu' || !S.teams.length) return;
   hostTick(now);
-  if (S.phase === 'battle' && !S.paused && NET.mode !== 'guest') { acc += dt * S.speed; let n = 0; while (acc >= DT && n < 80 && S.phase === 'battle') { step(); acc -= DT; n++; } if (n >= 80) acc = 0; } else acc = 0;
+  if (S.phase === 'battle' && !S.paused && NET.mode !== 'guest') { acc += dt * S.speed; let n = 0; while (acc >= DT && n < 80 && S.phase === 'battle') { snapUnits(); step(); acc -= DT; n++; } if (n >= 80) acc = 0; } else acc = 0;
+  // The figures are drawn between the last two ticks.
+  interp.on = S.phase === 'battle' && NET.mode !== 'guest'; interp.a = Math.min(1, acc / DT);
 }
 const simTimer = new Worker(URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 50)'], { type: 'text/javascript' })));
 simTimer.onmessage = () => tickSim(performance.now());
