@@ -133,7 +133,7 @@ export function finishMap(raw: RawMap): MapData {
         if (!named && !narrow) return;
         const reach = named ? 30 / M_PER_UNIT + 4 : .8;
         if (!forts.some(j => gap(i, j) <= reach)) return;
-        b.btype = named ? 'castle' : 'rampart'; const BT = BTYPES[b.btype]; b.h = Math.max(b.h, (BT.minH || 7) / M_PER_UNIT); b.mat = BT.roof; changed = true;
+        b.btype = named ? 'castle' : 'rampart'; const BT = BTYPES[b.btype]; b.h = Math.max(b.h, ((BT.minH || 7) + (named ? (b.v || 0) * 6 : 0)) / M_PER_UNIT); b.mat = BT.roof; changed = true;
       });
       if (!changed) break;
     }
@@ -246,5 +246,5 @@ export function finishMap(raw: RawMap): MapData {
   // Hedges and walls only stand on open ground: not in water, on roads or inside buildings.
   const feat = raw.feat ? raw.feat.slice() : new Uint8Array(GW * GH);
   for (let ci = 0; ci < feat.length; ci++) if (feat[ci] && !open(ci)) feat[ci] = 0;
-  return { seed: raw.seed, name: raw.name, source: raw.source, credit: raw.credit, ground, terr, terr0: terr.slice(), TH, hAt, deck, deck0: deck.slice(), bridges, B, trees, bldTop, bldId, count: B.length, play, bldId0: bldId.slice(), bldTop0: bldTop.slice(), wl, feat, fences: raw.fences || [] };
+  return { seed: raw.seed, name: raw.name, source: raw.source, credit: raw.credit, hist: raw.hist, ground, terr, terr0: terr.slice(), TH, hAt, deck, deck0: deck.slice(), bridges, B, trees, bldTop, bldId, count: B.length, play, bldId0: bldId.slice(), bldTop0: bldTop.slice(), wl, feat, fences: raw.fences || [] };
 }

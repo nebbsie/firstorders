@@ -17,7 +17,7 @@ export interface Bridge {
 }
 // What a map source (the sample town or an OpenStreetMap import) hands over.
 export interface RawMap {
-  seed: number; name: string; source: 'sample' | 'osm'; credit?: string;
+  seed: number; name: string; source: 'sample' | 'osm'; credit?: string; hist?: { a: number; you: boolean; d: number };
   terr: Uint8Array;           // surface per cell, without buildings
   baseH: Float32Array;        // ground height at cell corners, before water is cut in
   B: Building[];
@@ -32,7 +32,7 @@ export interface RawMap {
 export const F_HEDGE = 1, F_WALL = 2, F_FENCE = 3;
 export interface Fence { k: number; pts: number[][] }
 export interface MapData {
-  seed: number; name: string; source: 'sample' | 'osm'; credit?: string;
+  seed: number; name: string; source: 'sample' | 'osm'; credit?: string; hist?: { a: number; you: boolean; d: number };
   ground: HTMLCanvasElement;
   terr: Uint8Array; terr0: Uint8Array;
   TH: Float32Array; hAt: (x: number, y: number) => number;

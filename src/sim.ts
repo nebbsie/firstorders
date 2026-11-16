@@ -152,7 +152,8 @@ function spawnSquad(sq: any, drop?: boolean) {
 // Where each man of a unit will stand for an order. The order preview uses this too, so it shows where the men will go.
 // jit gives a random offset from -0.5 to 0.5; the preview gives 0.
 export function orderSpots(state: string, tx: number, ty: number, face: number, n: number, veh: boolean, jit: () => number = () => 0): number[][] {
-  const vok = veh ? (x: number, y: number) => passable(cellOf(x, y), true) : undefined, fx = Math.cos(face), fy = Math.sin(face), out: number[][] = [];
+  // No unit stops on a bridge: it is a way across, not a place to stand.
+  const vok = (x: number, y: number) => { const ci = cellOf(x, y); return ci >= 0 && M.terr[ci] !== T_BRIDGE && (!veh || passable(ci, true)); }, fx = Math.cos(face), fy = Math.sin(face), out: number[][] = [];
   if (state === 'attack' || state === 'move' || state === 'demolish' || state === 'follow') {
     // A line across the facing direction: six wide, ranks behind.
     // Spread out as real sections do: about 10 m between men, so one shell does not take a whole platoon.
@@ -160,7 +161,7 @@ export function orderSpots(state: string, tx: number, ty: number, face: number, 
     return out;
   }
   const cells: number[][] = [], r = 16, c0 = Math.floor(tx / C), r0 = Math.floor(ty / C), rc = Math.ceil(r / C);
-  for (let dy = -rc; dy <= rc; dy++) for (let dx = -rc; dx <= rc; dx++) { const cx = c0 + dx, cy = r0 + dy; if (cx < 0 || cy < 0 || cx >= GW || cy >= GH) continue; const ci = cy * GW + cx, c = S.cover ? S.cover[ci] : 0; if (Math.hypot(dx, dy) * C > r || !passable(ci, veh)) continue;
+  for (let dy = -rc; dy <= rc; dy++) for (let dx = -rc; dx <= rc; dx++) { const cx = c0 + dx, cy = r0 + dy; if (cx < 0 || cy < 0 || cx >= GW || cy >= GH) continue; const ci = cy * GW + cx, c = S.cover ? S.cover[ci] : 0; if (Math.hypot(dx, dy) * C > r || !passable(ci, veh) || M.terr[ci] === T_BRIDGE) continue;
     // Cover, best first: trenches and sandbags, walls, hedges, woods, the side of a building. Open ground is a last choice.
     const t = M.terr[ci], f = M.feat[ci], beside = t !== T_BUILD && (besideWall(ci) || [ci - 1, ci + 1, ci - GW, ci + GW].some(k => k >= 0 && k < M.terr.length && M.terr[k] === T_BUILD));
     const best = c === 2 ? 0 : c === 1 ? .5 : f === F_WALL || (beside && besideWall(ci)) ? 1 : f === F_HEDGE ? 1.5 : t === T_WOOD ? 2 : beside ? 2.5 : -1;
@@ -430,7 +431,24 @@ function spreadOut() {
     const st = Math.min(m, 1) * .6 * DT, nx = u.x + fx / m * st, ny = u.y + fy / m * st;
     if (passable(cellOf(nx, ny), false)) { u.x = nx; u.y = ny; }
   }
+  // Men step out of the way of a tank that drives at them, of either side, to the side away from its track.
+  for (const t of U) {
+    if (!t.alive || !K[t.kind].veh || !t.moving) continue;
+    const gx = Math.floor(t.x / G), gy = Math.floor(t.y / G), hx = Math.cos(t.hd ?? 0), hy = -Math.sin(t.hd ?? 0);
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const b = spreadGrid.get((gy + dy) * 1000 + gx + dx); if (!b) continue;
+      for (const j of b) {
+        const o = U[j], ex = o.x - t.x, ey = o.y - t.y, d = Math.hypot(ex, ey); if (d >= TANK_R) continue;
+        // Ahead or beside: go to the nearer side of the track. A man behind the tank is already clear.
+        const along = ex * hx + ey * hy; if (along < -1.5) continue;
+        const side = ex * -hy + ey * hx >= 0 ? 1 : -1, px = -hy * side, py = hx * side, st = (TANK_R - d) / TANK_R * 3 * DT;
+        const nx = o.x + px * st + (d > 1e-3 ? ex / d : 0) * st * .3, ny = o.y + py * st + (d > 1e-3 ? ey / d : 0) * st * .3;
+        if (passable(cellOf(nx, ny), false)) { o.x = nx; o.y = ny; }
+      }
+    }
+  }
 }
+const TANK_R = 3.6;
 function updateSquads() {
   const tick = Math.floor(S.t * 2) !== Math.floor((S.t - DT) * 2);
   for (const sq of S.squads) {

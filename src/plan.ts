@@ -11,8 +11,14 @@ export function makeTeams() {
   // Start areas: a random turn of the whole ring, then each side moved a little round and in or out.
   // Host and guest share the seed, so both get the same places.
   S.teams = []; const N = S.nTeams, rs = mulberry32(S.spawnSeed ?? 1), a0 = rs() * Math.PI * 2;
-  for (let i = 0; i < N; i++) {
-    const a = a0 + i * Math.PI * 2 / N + (rs() - .5) * (Math.PI / N) * .8, d = PLAY_R * (.34 + rs() * .16), r = N <= 3 ? 40 : N <= 4 ? 36 : 30;
+  // A famous battlefield with two sides: each side starts where it did in the battle. Your side is the first. The map
+  // has y to the south, so a compass bearing b points along (sin b, -cos b).
+  const hs = N === 2 && M.hist, toA = (deg: number) => Math.atan2(-Math.cos(deg * Math.PI / 180), Math.sin(deg * Math.PI / 180));
+  // The defender is placed first, so it keeps its place; the attacker then starts far enough out.
+  const order = hs ? (hs.you ? [1, 0] : [0, 1]) : [...Array(N).keys()];
+  for (const i of order) {
+    let a = a0 + i * Math.PI * 2 / N + (rs() - .5) * (Math.PI / N) * .8, d = PLAY_R * (.34 + rs() * .16); const r = N <= 3 ? 40 : N <= 4 ? 36 : 30;
+    if (hs) { const atk = hs.you ? i === 0 : i === 1; a = toA(atk ? hs.a : hs.a + 180); d = atk ? PLAY_R * .46 : PLAY_R * hs.d; }
     let dd = d, x = CX + Math.cos(a) * dd, y = CY + Math.sin(a) * dd;
     for (let k = 0; k < 20 && S.teams.some((o: any) => Math.hypot(o.zone.x - x, o.zone.y - y) < MIN_GAP); k++) { dd += 6; x = CX + Math.cos(a) * dd; y = CY + Math.sin(a) * dd; }
     // Move a start area that is mostly water or buildings in towards the centre.
@@ -32,6 +38,7 @@ export function makeTeams() {
     const spot = open([T_GROUND, T_PARK, T_ROAD]); if (spot) { x = spot[0]; y = spot[1]; }
     const c = i === NET.me ? 0 : i === 0 ? NET.me : i; S.teams.push({ id: i, name: TEAM_NAMES[c], color: TEAM_COLORS[c], human: i === 0 || (NET.mode !== 'solo' && i === (S.coop ? 0 : 1)), zone: { x, y, r } });
   }
+  S.teams.sort((p: any, q: any) => p.id - q.id);
 }
 export function rollPersonalities() { for (const t of S.teams) { t.rng = mulberry32((Math.random() * 1e9) | 0); t.per = t.human ? PERS[1] : PERS[Math.floor(Math.random() * PERS.length)]; } }
 export function initOwn() { OWN.fill(-1); for (let i = 0; i < OWN.length; i++) { const [x, y] = cellPos(i); let bd = 1e9; for (const t of S.teams) { const d = Math.hypot(x - t.zone.x, y - t.zone.y); if (d <= t.zone.r && d < bd) { bd = d; OWN[i] = t.id; } } } }

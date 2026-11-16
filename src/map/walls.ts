@@ -47,6 +47,24 @@ function band(pts: number[][], w: number) {
   }
   return L.concat(R.reverse());
 }
+// The length of one wall piece, in map units.
+const PIECE = 9;
+// Cut a line into pieces of about len each. The pieces share their end points, so the wall has no gaps.
+function chop(pts: number[][], len: number) {
+  let total = 0; for (let i = 1; i < pts.length; i++) total += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+  const n = Math.max(1, Math.round(total / len)), each = total / n, out: number[][][] = []; let cur = [pts[0]], acc = 0;
+  for (let i = 1; i < pts.length; i++) {
+    let a = pts[i - 1]; const b = pts[i];
+    let seg = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    while (out.length < n - 1 && acc + seg >= each) {
+      const f = (each - acc) / seg, c = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+      cur.push(c); out.push(cur); cur = [c]; seg -= each - acc; acc = 0; a = c;
+    }
+    acc += seg; cur.push(b);
+  }
+  if (cur.length >= 2) out.push(cur);
+  return out.filter(p => p.length >= 2 && Math.hypot(p[p.length - 1][0] - p[0][0], p[p.length - 1][1] - p[0][1]) > .05);
+}
 // blocked(ci): a cell the wall must leave open (a road, water, a bridge).
 export function wallBuildings(lines: { pts: number[][]; city: boolean }[], gates: number[][], blocked: (ci: number) => boolean): Building[] {
   const out: Building[] = [], step = .4, gateR = C * 1.3;
@@ -76,8 +94,11 @@ export function wallBuildings(lines: { pts: number[][]; city: boolean }[], gates
     for (const r of runs) {
       const s = straighten(r, .15); let len = 0; for (let i = 1; i < s.length; i++) len += Math.hypot(s[i][0] - s[i - 1][0], s[i][1] - s[i - 1][1]);
       if (s.length < 2 || len < .8) continue;
-      const p = band(s, w), v = ((s[0][0] * 7.31 + s[0][1] * 3.17) % 1 + 1) % 1;
-      out.push({ p, h, v, mat: BT.roof, btype: ln.city ? 'rampart' : 'wall', name: ln.city ? 'Town wall' : undefined, thin: true });
+      // Each wall is made of short pieces, so a shell or an engineers' charge breaks a gap, not the whole wall.
+      for (const piece of chop(s, PIECE)) {
+        const p = band(piece, w), v = ((piece[0][0] * 7.31 + piece[0][1] * 3.17) % 1 + 1) % 1;
+        out.push({ p, h, v, mat: BT.roof, btype: ln.city ? 'rampart' : 'wall', name: ln.city ? 'Town wall' : undefined, thin: true });
+      }
     }
   }
   return out;

@@ -37,7 +37,10 @@ export function initMenu(start: (raw: RawMap, spec: MapSpec) => void, guestMap: 
     $('#mBattles').innerHTML = BATTLEFIELDS.map((p, i) => `<button class="btn place${chosen === p ? ' on' : ''}" data-i="${i}" title="${esc(p.full)}. ${esc(p.note)}"><b>${esc(p.name)}</b><span>${p.year}</span></button>`).join('');
     document.querySelectorAll('#mBattles .place').forEach((b: any) => b.onclick = () => {
       const p = BATTLEFIELDS[+b.dataset.i]; chosen = p; render(); ($('#mImport') as HTMLButtonElement).disabled = false;
-      menuStatus(`${p.name.toUpperCase()}, ${p.year}. ${p.note} The map shows the place as it is today.`);
+      // Two sides: you start where your side did, and you attack or hold as it did.
+      const dirs = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'], h = p.hist;
+      const side = h ? (h.you ? ` Two sides: you attack from the ${dirs[Math.round(h.a / 45) % 8]} and must take the enemy HQ.` : ` Two sides: you hold, and the enemy attacks from the ${dirs[Math.round(h.a / 45) % 8]}.`) : '';
+      menuStatus(`${p.name.toUpperCase()}, ${p.year}. ${p.note}${side} Today's town, without the buildings that came later.`);
       (document.querySelector('#mBattles .place.on') as HTMLElement | null)?.scrollIntoView({ block: 'nearest' });
     });
   };

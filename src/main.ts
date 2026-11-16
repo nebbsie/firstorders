@@ -44,6 +44,8 @@ function startMap(raw: RawMap, spec: MapSpec) {
   afterPaint(async () => {
     buildMap(raw); if (spec.spawn == null) spec.spawn = (Math.random() * 1e9) | 0; S.spawnSeed = spec.spawn;
     if (NET.mode === 'host') { showLoading('WAITING FOR YOUR FRIEND TO LOAD THE MAP'); await sendMap(spec, S.nTeams); }
+    // A famous battlefield: you attack or you hold, as your side did in the battle.
+    if (M.hist && S.campaign == null && S.nTeams === 2) S.goal = M.hist.you ? 'assault' : 'hold';
     showMenu(false); showLoading(null); makeTeams(); newBattle(); refreshFogPaint(); phaseCard();
   });
 }

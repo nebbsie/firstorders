@@ -193,14 +193,29 @@ export function applyViews() {
   for (const p of [ptUnits, ptGhosts]) if (p) { p.material.depthTest = !viewOpts.xray; p.renderOrder = viewOpts.xray ? 10 : 0; }
 }
 // Collapsed buildings: their walls drop to a low slab, and rubble lies on their ground.
-let bldGeo: THREE.BufferGeometry = null, bldY: Float32Array = null, downKey = '', mRubble: any = null;
+let bldGeo: THREE.BufferGeometry = null, bldY: Float32Array = null, bldC: Float32Array = null, downKey = '', mRubble: any = null;
 function updateDowns() {
-  const downs = M.B.filter(b => b.down != null && (S.phase !== 'replay' || b.down <= S.rt)), key = downs.map(b => b.id).join(',');
+  const downs = M.B.filter(b => b.down != null && (S.phase !== 'replay' || b.down <= S.rt));
+  // Damage shows in stages before a building falls: first the walls go dark with soot, then the roof and top floor
+  // fall in. In a replay only the fall shows.
+  const stage = (b: any) => S.phase === 'replay' || !b.hp0 || b.down != null ? 0 : b.hp < b.hp0 * .34 ? 2 : b.hp < b.hp0 * .67 ? 1 : 0;
+  const hurt = M.B.filter(b => stage(b) > 0), key = downs.map(b => b.id).join(',') + '|' + hurt.map(b => b.id + ':' + stage(b)).join(',');
   if (key === downKey || !bldGeo) return; downKey = key;
-  const pos = bldGeo.attributes.position as THREE.BufferAttribute, isDown = new Set(downs.map(b => b.id));
-  for (const b of M.B) { if (!b.vr) continue; const [s, n] = b.vr; for (let i = s; i < s + n; i++) pos.setY(i, isDown.has(b.id) ? Math.min(bldY[i], b.base + .5) : bldY[i]); }
-  pos.needsUpdate = true; bldGeo.computeBoundingSphere();
+  const pos = bldGeo.attributes.position as THREE.BufferAttribute, col = bldGeo.attributes.color as THREE.BufferAttribute, isDown = new Set(downs.map(b => b.id));
+  if (!bldC) bldC = new Float32Array(col.array as Float32Array);
+  for (const b of M.B) {
+    if (!b.vr) continue; const [s, n] = b.vr, st = stage(b), dk = st === 2 ? .45 : st === 1 ? .72 : 1, top = b.base + (b.top - b.base) * .9;
+    for (let i = s; i < s + n; i++) {
+      // The broken top is uneven: each corner point drops by its own amount, the same for every face that meets there.
+      const jag = st === 2 ? (Math.abs(Math.sin(pos.getX(i) * 12.99 + pos.getZ(i) * 78.23) * 43758.5) % 1) * (b.top - b.base) * .22 : 0;
+      pos.setY(i, isDown.has(b.id) ? Math.min(bldY[i], b.base + .5) : st === 2 ? Math.min(bldY[i], top - jag) : bldY[i]);
+      col.setXYZ(i, bldC[i * 3] * dk, bldC[i * 3 + 1] * dk, bldC[i * 3 + 2] * dk);
+    }
+  }
+  pos.needsUpdate = true; col.needsUpdate = true; bldGeo.computeBoundingSphere();
   let k = 0;
+  // Rubble from a broken top floor lies round the foot of the building.
+  for (const b of hurt) if (stage(b) === 2) for (const c of b.cells) { if (k >= 20000 || c % 3) continue; const x = (c % GW) * C + 1, y = Math.floor(c / GW) * C + 1, r = (c * 7919 % 97) / 97; setI(mRubble, k++, x + (r - .5), y + (r * 3 % 1 - .5), M.hAt(x, y) + .2, 1 + r * .6, .35 + r * .4, .9 + r * .4, r * 6, [.4, .38, .35]); }
   for (const b of downs) for (const c of b.cells) { if (k >= 20000) break; const x = (c % GW) * C + 1, y = Math.floor(c / GW) * C + 1, r = (c * 7919 % 97) / 97; setI(mRubble, k++, x + (r - .5), y + (r * 3 % 1 - .5), M.hAt(x, y) + .3, 1.6 + r, .5 + r * .9, 1.4 + r * .6, r * 6, [.42 + r * .1, .4 + r * .1, .37 + r * .1]); }
   done(mRubble, k);
 }
@@ -284,7 +299,21 @@ export function buildMap3D() {
         out.set((a0[0] + a1[0]) / 2 - x0, half * .6, (a0[1] + a1[1]) / 2 - z0); tri([a0[0], y1, a0[1]], [a1[0], y1, a1[1]], [x0, y2, z0], roof, out);
       }
     }
-    if (BT.battlements && !out0) for (let i = 0; i < p.length; i++) {
+    // A small round or D-shaped castle tower: a cone roof of dark slate, as many towers had. Some keep their battlements.
+    let cone = false;
+    if (b.btype === 'castle' && !out0 && p.length >= 6 && fr(5.9) < .7) {
+      let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; for (const q of p) { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); }
+      const dx = x1 - x0, dy = y1 - y0, fill = Math.abs(area) / 2 / (dx * dy), round = fill > .6 && fill < .88 && Math.max(dx, dy) / Math.min(dx, dy) < 1.6;
+      if (round && Math.max(dx, dy) * M_PER_UNIT < 16) {
+        cone = true; const r = (dx + dy) / 4, apex = [b.cx - W / 2, b.top + r * 2.1, b.cy - H / 2], slate = [.27, .29, .33], eave = r * .12;
+        for (let i = 0; i < p.length; i++) {
+          const n = (i + 1) % p.length, a = [p[i][0] - b.cx, p[i][1] - b.cy], c = [p[n][0] - b.cx, p[n][1] - b.cy], la = Math.hypot(a[0], a[1]) || 1, lc = Math.hypot(c[0], c[1]) || 1;
+          const A = [b.cx + a[0] * (1 + eave / la) - W / 2, b.top, b.cy + a[1] * (1 + eave / la) - H / 2], Cn = [b.cx + c[0] * (1 + eave / lc) - W / 2, b.top, b.cy + c[1] * (1 + eave / lc) - H / 2];
+          out.set((a[0] + c[0]) / 2, r * .5, (a[1] + c[1]) / 2); tri(A, Cn, apex, i % 2 ? slate : slate.map(v => v * .9), out);
+        }
+      }
+    }
+    if (BT.battlements && !out0 && !cone) for (let i = 0; i < p.length; i++) {
       const n = (i + 1) % p.length, len = Math.hypot(p[n][0] - p[i][0], p[n][1] - p[i][1]), k = Math.max(1, Math.floor(len / 1.6));
       for (let s = 0; s < k; s += 2) { const f0 = s / k, f1 = Math.min(1, (s + 1) / k), a0 = [p[i][0] + (p[n][0] - p[i][0]) * f0, p[i][1] + (p[n][1] - p[i][1]) * f0], a1 = [p[i][0] + (p[n][0] - p[i][0]) * f1, p[i][1] + (p[n][1] - p[i][1]) * f1];
         const lo0 = [a0[0] - W / 2, b.top, a0[1] - H / 2], lo1 = [a1[0] - W / 2, b.top, a1[1] - H / 2], hi0 = [a0[0] - W / 2, b.top + .9, a0[1] - H / 2], hi1 = [a1[0] - W / 2, b.top + .9, a1[1] - H / 2];
@@ -298,7 +327,7 @@ export function buildMap3D() {
     b.vr = [vStart, Pa.length / 3 - vStart];
     const win = BT.plain ? 0 : 1; for (let k = Wa.length; k < Pa.length / 3; k++) Wa.push(win);
   }
-  const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(Pa, 3)); bldGeo = bg; bldY = new Float32Array(Pa.filter((_, i) => i % 3 === 1)); downKey = ''; bg.setAttribute('normal', new THREE.Float32BufferAttribute(Na, 3)); bg.setAttribute('color', new THREE.Float32BufferAttribute(Ca, 3)); bg.setAttribute('foWin', new THREE.Float32BufferAttribute(Wa, 1));
+  const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(Pa, 3)); bldGeo = bg; bldY = new Float32Array(Pa.filter((_, i) => i % 3 === 1)); bldC = null; downKey = ''; bg.setAttribute('normal', new THREE.Float32BufferAttribute(Na, 3)); bg.setAttribute('color', new THREE.Float32BufferAttribute(Ca, 3)); bg.setAttribute('foWin', new THREE.Float32BufferAttribute(Wa, 1));
   winScale.value = M_PER_UNIT / 4.4;
   const bm = new THREE.Mesh(bg, greyUnseen(new THREE.MeshLambertMaterial({ vertexColors: true }), true)); bm.castShadow = true; bm.receiveShadow = true; mapGroup.add(bm); xrayable.push(bm);
 
@@ -469,7 +498,7 @@ function updateStructs(V: View) {
 
 // Soldier figures. The battle data has no animation state; the renderer keeps a little for each man:
 // where it drew him, his heading, his stride and his pose. The battle data itself stays plain.
-interface Anim { x: number; y: number; px: number; py: number; hd: number; ph: number; spd: number; pr: number; die: number; alive: boolean; ox: number; oy: number }
+interface Anim { x: number; y: number; px: number; py: number; hd: number; ph: number; spd: number; pr: number; kn: number; die: number; alive: boolean; ox: number; oy: number }
 // Men are drawn a little apart from each other and clear of walls. This moves only the figure, never the unit.
 // The places of the men drawn in the last frame (x, y, unit number), in buckets of one cell.
 let crowd = new Map<number, number[]>(), crowdNext = new Map<number, number[]>();
@@ -508,8 +537,10 @@ let nm = 0, nl = 0, nPr = 0, nd = 0, lastAnimT = 0;
 // After the ticks it gives the part of the next tick that has gone by (interp.a). Men are drawn between the two places.
 export const interp = { a: 1, on: false };
 export function snapUnits() { for (const u of S.units) { const a = ANIM.get(u); if (a) { a.px = u.x; a.py = u.y; } } }
-interface Pose { swing: number; kneeL: number; kneeR: number; bob: number; lean: number; fall: number; kick: number }
-const IDLE: Pose = { swing: 0, kneeL: -.05, kneeR: -.05, bob: 0, lean: 0, fall: 0, kick: 0 }, P: Pose = { ...IDLE };
+const FLASH_MAX = 300, flashes = new Float32Array(FLASH_MAX * 3); let flashN = 0;
+// back: an extra forward turn of the right thigh only (the back leg of a kneeling man).
+interface Pose { swing: number; back: number; kneeL: number; kneeR: number; bob: number; lean: number; fall: number; kick: number }
+const IDLE: Pose = { swing: 0, back: 0, kneeL: -.05, kneeR: -.05, bob: 0, lean: 0, fall: 0, kick: 0 }, P: Pose = { ...IDLE };
 const _B = new THREE.Matrix4(), _H = new THREE.Matrix4(), _L = new THREE.Matrix4(), _X = new THREE.Matrix4(), _Y = new THREE.Matrix4(), _cc = new THREE.Color();
 const HIP = .52, THIGH = .25;
 // One man from his parts: the body, then each leg as a thigh from the hip and a shin from the knee.
@@ -522,7 +553,7 @@ function drawMan(x: number, y: number, h: number, yaw: number, col: number[], p:
   // The body turns forward round the hips when the man leans.
   _H.copy(_B).multiply(_X.makeTranslation(p.kick, HIP + p.bob, 0)).multiply(_Y.makeRotationZ(-p.lean)).multiply(_X.makeTranslation(0, -HIP, 0));
   mSoldier.setMatrixAt(nm, _H); mSoldier.setColorAt(nm++, _cc);
-  for (const [side, sw, knee] of [[1, p.swing, p.kneeL], [-1, -p.swing, p.kneeR]]) {
+  for (const [side, sw, knee] of [[1, p.swing, p.kneeL], [-1, -p.swing + p.back, p.kneeR]]) {
     _L.copy(_B).multiply(_X.makeTranslation(0, HIP + p.bob, side * .085)).multiply(_Y.makeRotationZ(sw));
     mThigh.setMatrixAt(nl, _L); mThigh.setColorAt(nl, _cc);
     _L.multiply(_X.makeTranslation(0, -THIGH, 0)).multiply(_Y.makeRotationZ(knee));
@@ -544,7 +575,7 @@ export function update3D(V: View) {
   let n = 0, nb = 0, ng = 0;
   const putU = (x: number, y: number, h: number, c: number[], dim: number) => { if (n >= 5000) return; up[n * 3] = x - W / 2; up[n * 3 + 1] = h; up[n * 3 + 2] = y - H / 2; uc[n * 3] = c[0] * dim; uc[n * 3 + 1] = c[1] * dim; uc[n * 3 + 2] = c[2] * dim; n++; };
   // Zoomed in, soldiers are small figures; zoomed out (or in x-ray) they are dots, so they never get lost.
-  const ppu = view.ch / 2 / (cam.dist * Math.tan(FOV / 2 * Math.PI / 180)), figures = (ppu > 3.2 || fpv.on) && !viewOpts.xray; nm = nl = nPr = nd = 0; { const t = crowd; crowd = crowdNext; crowdNext = t; crowdNext.clear(); }
+  const ppu = view.ch / 2 / (cam.dist * Math.tan(FOV / 2 * Math.PI / 180)), figures = (ppu > 3.2 || fpv.on) && !viewOpts.xray; nm = nl = nPr = nd = flashN = 0; { const t = crowd; crowd = crowdNext; crowdNext = t; crowdNext.clear(); }
   const tint = (c: number[], dim: number) => [Math.min(1, c[0] * dim * 1.2 + .08), Math.min(1, c[1] * dim * 1.2 + .08), Math.min(1, c[2] * dim * 1.2 + .08)];
   // A man who stands still (placed units, previews): no state, only the idle pose.
   const man = (u: any, h: number, c: number[], dim: number) => {
@@ -555,7 +586,7 @@ export function update3D(V: View) {
   const live = S.phase === 'battle' && NET.mode !== 'guest' && interp.on, guest = NET.mode === 'guest', rNow = performance.now() / 1000, fdt = Math.min(.1, rNow - (lastAnimT || rNow)); lastAnimT = rNow;
   const actor = (u: any) => {
     let a = ANIM.get(u); const fresh = !a;
-    if (!a) { a = { x: u.x, y: u.y, px: u.x, py: u.y, hd: u.hd || 0, ph: (u.i * 1.7) % 6.28, spd: 0, pr: 0, die: -1, alive: !!u.alive, ox: 0, oy: 0 }; ANIM.set(u, a); }
+    if (!a) { a = { x: u.x, y: u.y, px: u.x, py: u.y, hd: u.hd || 0, ph: (u.i * 1.7) % 6.28, spd: 0, pr: 0, kn: 0, die: -1, alive: !!u.alive, ox: 0, oy: 0 }; ANIM.set(u, a); }
     let tx = u.x, ty = u.y;
     if (live) { tx = a.px + (u.x - a.px) * interp.a; ty = a.py + (u.y - a.py) * interp.a; }
     const jump = Math.hypot(tx - a.x, ty - a.y);
@@ -566,6 +597,10 @@ export function update3D(V: View) {
     a.ph += d * STRIDE;
     let dh = (u.hd || 0) - a.hd; dh = Math.atan2(Math.sin(dh), Math.cos(dh)); a.hd += fresh ? dh : Math.sign(dh) * Math.min(Math.abs(dh), fdt * 9);
     const prone = (u.sup || 0) > .75 && a.spd < .3; a.pr = clamp(a.pr + (prone ? 1 : -1) * fdt * 3, 0, 1);
+    // Kneel: a man who stands still behind cover, or who fights or is under fire, goes down on one knee.
+    // In a trench he stands, because the trench is his cover. Men on roofs kneel too.
+    const still = a.spd < .25, ci = cellOf(u.x, u.y), fight = u.fired != null && S.t - u.fired < 6, cov = ci >= 0 && S.cover && (S.cover[ci] === 1 || M.feat[ci] === F_WALL || M.feat[ci] === F_HEDGE);
+    const kneel = u.alive && still && !inTrench(u.x, u.y) && (u.gar || cov || fight || (u.sup || 0) > .25); a.kn = clamp(a.kn + (kneel ? 1 : -1) * fdt * 4, 0, 1);
     if (!u.alive) { if (a.alive && !fresh) a.die = rNow; a.alive = false; } else { a.alive = true; a.die = -1; }
     return a;
   };
@@ -585,8 +620,12 @@ export function update3D(V: View) {
     P.swing = sn * amp; P.kneeL = -Math.max(0, cs) * (.9 + run * .5) * w - .05; P.kneeR = -Math.max(0, -cs) * (.9 + run * .5) * w - .05;
     P.bob = (Math.cos(P.swing) - 1) * .4 + Math.abs(cs) * .03 * w + (1 - w) * Math.sin(rNow * 1.9 + u.i) * .006;
     P.lean = .1 * w + .15 * run + a.pr * .9; P.fall = 0;
-    // The rifle kicks back a little at each shot.
-    P.kick = live && u.fired != null && S.t - u.fired < .12 ? -.05 : 0;
+    // Kneeling: the front leg forward with the shin upright, the back knee on the ground, the hips low.
+    const kn = a.kn * a.kn * (3 - 2 * a.kn); P.back = 1.4 * kn;
+    if (kn > 0) { P.swing += (1.45 - P.swing) * kn; P.kneeL += (-1.45 - P.kneeL) * kn; P.kneeR += (-1.5 - P.kneeR) * kn; P.bob += (-.24 - P.bob) * kn; P.lean += (.08 - P.lean) * kn; }
+    // The rifle kicks back a little at each shot, and the muzzle flashes.
+    const shot = live && u.fired != null && S.t - u.fired < .12; P.kick = shot ? -.05 : 0;
+    if (shot && S.t - u.fired < .07 && flashN < FLASH_MAX) { const f = Math.cos(a.hd), g = -Math.sin(a.hd); flashes[flashN * 3] = x + f * 1.05; flashes[flashN * 3 + 1] = y + g * 1.05; flashes[flashN * 3 + 2] = h + 1.25 * (.95 - .24 * kn); flashN++; }
     drawMan(x, y, h, a.hd, col, P);
   };
   // A man who is hit falls forward, then lies still.
@@ -683,6 +722,7 @@ export function update3D(V: View) {
     for (let i = 1; i <= 6; i++) { const q = Math.max(0, k - .3) + (k - Math.max(0, k - .3)) * i / 6, p = at(q), f = i / 6; seg(prev[0], prev[1], prev[2], p[0], p[1], p[2], [.15 + .5 * f, .15 + .5 * f, .15 + .48 * f]); prev = p; }
     if (nh < 800) { hp[nh * 3] = prev[0] - W / 2; hp[nh * 3 + 1] = prev[2]; hp[nh * 3 + 2] = prev[1] - H / 2; hc[nh * 3] = 1; hc[nh * 3 + 1] = 1; hc[nh * 3 + 2] = .9; nh++; }
   }
+  for (let i = 0; i < flashN && nh < 800; i++) { hp[nh * 3] = flashes[i * 3] - W / 2; hp[nh * 3 + 1] = flashes[i * 3 + 2]; hp[nh * 3 + 2] = flashes[i * 3 + 1] - H / 2; hc[nh * 3] = 1; hc[nh * 3 + 1] = .82; hc[nh * 3 + 2] = .38; nh++; }
   for (const b of V.bombs) if (nh < 800) { hp[nh * 3] = b.x - W / 2; hp[nh * 3 + 1] = unitH(b.x, b.y) + b.t * 60; hp[nh * 3 + 2] = b.y - H / 2; hc[nh * 3] = 1; hc[nh * 3 + 1] = .95; hc[nh * 3 + 2] = .8; nh++; }
   ptHeads.geometry.setDrawRange(0, nh); ptHeads.geometry.attributes.position.needsUpdate = true; ptHeads.geometry.attributes.color.needsUpdate = true;
   let np = 0;

@@ -9,7 +9,9 @@ import { wallBuildings } from './walls';
 import { F_HEDGE, F_WALL, F_FENCE } from './types';
 
 // rel: the Overture release the host used, so a guest downloads the same map.
-export interface Place { name: string; full: string; lat: number; lon: number; rel?: string }
+// The historic setup of a battlefield (see battlefields.ts).
+export interface Hist { a: number; you: boolean; d: number }
+export interface Place { name: string; full: string; lat: number; lon: number; rel?: string; hist?: Hist }
 
 export async function searchPlaces(q: string): Promise<Place[]> {
   const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=6&accept-language=en&q=${encodeURIComponent(q)}`);
@@ -215,8 +217,9 @@ way["leisure"~"^(park|garden|pitch|golf_course|common)$"](${bb});relation["leisu
       if (Math.abs(ar) / 2 < 1.2) continue; // smaller than about one cell: sheds and kiosks at large battle sizes
       const r = hashf(el.id % 100000, 7, 3);
       const bt = btypeFromTags(t), BT = BTYPES[bt];
-      // A castle keep with no height in the data: keeps stand about 25 m tall.
-      let hm = Math.max(buildingHeight(t, r), BT.minH || 0); if (bt === 'castle' && !t.height && !t['building:levels'] && KEEP_NAME.test(t.name || '')) hm = Math.max(hm, 25);
+      // A castle part with no height in the data: a keep stands about 25 m tall, other towers 12 to 18 m, so they are
+      // not all the same.
+      let hm = Math.max(buildingHeight(t, r), BT.minH || 0); if (bt === 'castle' && !t.height && !t['building:levels']) hm = Math.max(hm, KEEP_NAME.test(t.name || '') ? 25 : 12 + r * 6);
       B.push({ p: ring, h: hm / M_PER_UNIT, v: r, mat: bt === 'house' || bt === 'flats' ? buildingColour(t, hashf(el.id % 100000, 2, 9)) : BT.roof, btype: bt, name: t.name });
     } else if (t.highway) {
       if (t.tunnel && t.tunnel !== 'no') continue;
@@ -268,6 +271,21 @@ way["leisure"~"^(park|garden|pitch|golf_course|common)$"](${bb});relation["leisu
   }
   // Walls: straight thin buildings along the mapped lines, broken where roads, water and gates cross them.
   B.push(...wallBuildings(wallLines, gates, ci => terr[ci] === T_ROAD || terr[ci] === T_WATER || terr[ci] === T_BRIDGE));
+  // A historic battlefield: remove the buildings that did not exist at the time of the battle, so the field looks
+  // more like it did. Before 1946: no offices, factories, supermarkets or tall blocks. Before 1830: no railway stations
+  // and no blocks of flats.
+  const year = +((place as any).year || 0);
+  if (year) {
+    const modern = (b: Building) => {
+      if (b.btype === 'church' || b.btype === 'castle' || b.btype === 'rampart' || b.btype === 'wall' || b.btype === 'tower' || b.btype === 'townhall') return false;
+      let a = 0; for (let i = 0; i < b.p.length; i++) { const p = b.p[i], q = b.p[(i + 1) % b.p.length]; a += p[0] * q[1] - q[0] * p[1]; }
+      const m2 = Math.abs(a) / 2 * M_PER_UNIT * M_PER_UNIT, hm = b.h * M_PER_UNIT;
+      if (year < 1946 && (b.btype === 'office' || b.btype === 'industrial' || hm > 24 || (b.btype === 'shop' && m2 > 1200) || m2 > 4000)) return true;
+      if (year < 1830 && (b.btype === 'station' || b.btype === 'flats')) return true;
+      return false;
+    };
+    for (let i = B.length - 1; i >= 0; i--) if (modern(B[i])) B.splice(i, 1);
+  }
   // Hedges and fences on the cell grid: about one cell wide, with gaps at gates.
   const feat = new Uint8Array(GW * GH);
   for (const k of [F_FENCE, F_HEDGE, F_WALL]) {
@@ -304,5 +322,5 @@ way["leisure"~"^(park|garden|pitch|golf_course|common)$"](${bb});relation["leisu
     g.strokeStyle = '#686254'; for (const r of roads) if (r.bridge) lines(g, [r.pts], r.w);
   };
   const lineFeats = fences.filter(f => f.pts.some(p => inMap(p)));
-  return { seed: Math.floor(Math.abs(lat0 * 1000 + lon0 * 1000)) % 100000, name: place.name.toUpperCase(), source: 'osm', credit, terr, baseH, B, farm: mFarm, paintOver, feat, fences: lineFeats, trees };
+  return { seed: Math.floor(Math.abs(lat0 * 1000 + lon0 * 1000)) % 100000, name: place.name.toUpperCase(), source: 'osm', credit, hist: place.hist, terr, baseH, B, farm: mFarm, paintOver, feat, fences: lineFeats, trees };
 }
