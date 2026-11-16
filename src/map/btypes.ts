@@ -1,5 +1,6 @@
 // Building types: how a building looks and what it does in a battle. Colours are 0..255 roofs.
-export interface BType { label: string; roof: number[]; wall?: number[]; spire?: boolean; battlements?: boolean; minH?: number; cover?: number; sight?: number; note?: string }
+// plain: no rows of windows. noGarrison: men cannot go in (a low wall is not a building).
+export interface BType { label: string; roof: number[]; wall?: number[]; spire?: boolean; battlements?: boolean; minH?: number; cover?: number; sight?: number; note?: string; plain?: boolean; noGarrison?: boolean }
 export const BTYPES: Record<string, BType> = {
   house: { label: 'House', roof: [156, 108, 88] },
   flats: { label: 'Flats', roof: [150, 146, 136] },
@@ -7,7 +8,11 @@ export const BTYPES: Record<string, BType> = {
   office: { label: 'Offices', roof: [120, 132, 140] },
   industrial: { label: 'Industrial', roof: [125, 130, 136] },
   church: { label: 'Church', roof: [96, 102, 108], wall: [190, 182, 164], spire: true, minH: 10, sight: 30, note: 'The tower lets a garrison see far.' },
-  castle: { label: 'Castle', roof: [150, 146, 136], wall: [160, 155, 144], battlements: true, minH: 12, cover: .93, note: 'Thick walls: a garrison here is very hard to dig out.' },
+  castle: { label: 'Castle', roof: [150, 146, 136], wall: [160, 155, 144], battlements: true, minH: 12, cover: .93, plain: true, note: 'Thick walls: a garrison here is very hard to dig out.' },
+  // Castle and town walls: tall, thick, with a walk along the top. Men on them see far and are hard to hit.
+  rampart: { label: 'Castle wall', roof: [146, 141, 130], wall: [158, 152, 140], battlements: true, minH: 7, cover: .9, sight: 15, plain: true, note: 'A garrison on the wall sees far and is very hard to hit.' },
+  // Garden and field walls: too low to go in, but nothing walks through them. Men behind them have good cover.
+  wall: { label: 'Wall', roof: [132, 126, 114], wall: [150, 144, 132], plain: true, noGarrison: true, note: 'Blocks the way. Men behind it have good cover.' },
   police: { label: 'Police station', roof: [70, 100, 140], note: 'Solid walls: good cover for a garrison.', cover: .88 },
   fire: { label: 'Fire station', roof: [168, 66, 56] },
   hospital: { label: 'Hospital', roof: [228, 224, 214] },
@@ -18,10 +23,20 @@ export const BTYPES: Record<string, BType> = {
   farm: { label: 'Farm building', roof: [140, 96, 70] },
   tower: { label: 'Tower', roof: [140, 136, 128], minH: 18, sight: 40, note: 'Tall: a garrison here sees very far.' },
 };
+// Names of castles and their parts in the languages of Europe. A word on its own, so 'Hamburg' does not match.
+export const CASTLE_NAME = /\b(castle|keep|donjon|ch[aâ]teau|ch[aâ]teau[- ]fort|schloss|burg|festung|castillo|alc[aá]zar|castelo|castello|rocca|fortezza|kasteel|burcht|zamek|hrad|slott?|linna|citadel(le)?|fortress|bastion|fort|barbacane|barbican|courtine|rempart|rampart|enceinte|stadtmauer|muralla|muraille|poterne|postern|porte)\b/i;
+// Towers. A tower near castle work is part of the castle.
+export const TOWER_NAME = /\b(tour|tower|turm|torre|toren|wieża)\b/i;
+// Hotels, shops and cafes often take a castle word for their name ("Hotel Le Donjon"): these are not castles.
+export const TRADE_NAME = /(^|[^a-z])(h[oô]tel|hostel|restaurant|caf[eé]|bar|pub|inn|shop|boutique|g[iî]te|apartments?|cr[eê]perie|brasserie|tavern[ea]?|auberge|pizzeria|gasthof|gasthaus)([^a-z]|$)/i;
+// The tall central tower of a castle.
+export const KEEP_NAME = /\b(keep|donjon|bergfried|great tower|tower|turm|tour|torre|wieża)\b/i;
 // OpenStreetMap tags to a building type.
 export function btypeFromTags(t: any): string {
   const b = t.building, a = t.amenity;
   if (t.historic === 'castle' || b === 'castle' || t.historic === 'fort' || b === 'fort') return 'castle';
+  // Many castles are mapped with no type, only a name: the name tells.
+  if ((!b || b === 'yes' || b === 'ruins' || b === 'tower') && CASTLE_NAME.test(t.name || '') && !TRADE_NAME.test(t.name || '')) return 'castle';
   if (a === 'place_of_worship' || ['church', 'cathedral', 'chapel', 'mosque', 'temple', 'synagogue'].includes(b)) return 'church';
   if (a === 'police') return 'police';
   if (a === 'fire_station' || b === 'fire_station') return 'fire';

@@ -1,4 +1,6 @@
-import { W, H, C, GW, GH, GS, CX, CY, PLAY_R, T_WATER, T_BRIDGE, T_BUILD, T_WOOD, T_PARK, T_ROAD, clamp, hashf, inPlay } from '../config';
+import { W, H, C, GW, GH, GS, CX, CY, PLAY_R, T_WATER, T_BRIDGE, T_BUILD, T_WOOD, T_PARK, T_ROAD, M_PER_UNIT, clamp, hashf, inPlay } from '../config';
+import { BTYPES, TOWER_NAME } from './btypes';
+import { grow, WALL_MIN } from './walls';
 import type { RawMap, MapData, Bridge } from './types';
 
 const isWet = (t: number) => t === T_WATER || t === T_BRIDGE;
@@ -116,6 +118,39 @@ export function finishMap(raw: RawMap): MapData {
 
   const bldTop = new Float32Array(GW * GH), bldId = new Int32Array(GW * GH).fill(-1);
   const B = raw.B.filter(b => b.p.length >= 3); for (const b of B) { delete b.parent; delete b.parts; delete b.spire; }
+  // Castle work spreads to its neighbours. A named tower near a castle is a castle tower. An unnamed, long and narrow
+  // building that touches castle work is a stretch of curtain wall (many town walls are mapped like that).
+  {
+    const box = B.map(b => { let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; for (const q of b.p) { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); } return [x0, x1, y0, y1]; });
+    const gap = (i: number, j: number) => Math.max(0, box[i][0] - box[j][1], box[j][0] - box[i][1], box[i][2] - box[j][3], box[j][2] - box[i][3]);
+    const thick = (b: typeof B[0]) => { let a = 0, per = 0; for (let i = 0; i < b.p.length; i++) { const p = b.p[i], q = b.p[(i + 1) % b.p.length]; a += p[0] * q[1] - q[0] * p[1]; per += Math.hypot(q[0] - p[0], q[1] - p[1]); } return [Math.abs(a) / per * M_PER_UNIT, per * M_PER_UNIT]; };
+    const fort = (b: typeof B[0]) => b.btype === 'castle' || b.btype === 'rampart';
+    for (let pass = 0; pass < 6; pass++) {
+      const forts = B.map((b, i) => fort(b) ? i : -1).filter(i => i >= 0); if (!forts.length) break; let changed = false;
+      B.forEach((b, i) => {
+        if (fort(b) || b.btype === 'wall') return;
+        const named = !!b.name && TOWER_NAME.test(b.name), [th, per] = named ? [0, 0] : thick(b), narrow = !b.name && th < 7 && per > 40;
+        if (!named && !narrow) return;
+        const reach = named ? 30 / M_PER_UNIT + 4 : .8;
+        if (!forts.some(j => gap(i, j) <= reach)) return;
+        b.btype = named ? 'castle' : 'rampart'; const BT = BTYPES[b.btype]; b.h = Math.max(b.h, (BT.minH || 7) / M_PER_UNIT); b.mat = BT.roof; changed = true;
+      });
+      if (!changed) break;
+    }
+  }
+  // Long thin outlines are walls: a castle's curtain wall is often mapped as one thin ring. The mean thickness of an
+  // outline is twice its area over its length round. Under 2.5 m, it is a wall: the cell grid takes every cell it
+  // touches, so men cannot slip through. A castle's thin outline becomes a castle wall with battlements.
+  for (const b of B) {
+    if (b.thin) continue; let a = 0, per = 0;
+    for (let i = 0; i < b.p.length; i++) { const p = b.p[i], q = b.p[(i + 1) % b.p.length]; a += p[0] * q[1] - q[0] * p[1]; per += Math.hypot(q[0] - p[0], q[1] - p[1]); }
+    const thick = Math.abs(a) / per * M_PER_UNIT; if (thick >= 2.5 || per * M_PER_UNIT < 30) continue;
+    b.thin = true;
+    if (b.btype === 'castle') { b.btype = 'rampart'; b.h = Math.max(b.h, (BTYPES.rampart.minH || 7) / M_PER_UNIT); b.mat = BTYPES.rampart.roof; }
+    // Too thin to look solid: push the outline out until the wall has its least thickness.
+    const min = b.btype === 'rampart' ? WALL_MIN.rampart : WALL_MIN.wall, now = Math.abs(a) / per;
+    if (now < min) b.p = grow(b.p, (min - now) / 2);
+  }
   // Building parts: a smaller building whose middle lies inside a bigger one is part of it (a cathedral's tower,
   // chapels, aisles). Parts take the main building's colour, type and name, so the whole reads as one building.
   const bbox = B.map(b => { let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9, a = 0; b.p.forEach((q, k) => { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); const r = b.p[(k + 1) % b.p.length]; a += q[0] * r[1] - r[0] * q[1]; }); b.area = Math.abs(a) / 2; return [x0, x1, y0, y1]; });
@@ -123,7 +158,7 @@ export function finishMap(raw: RawMap): MapData {
   for (let oi = 0; oi < order.length; oi++) {
     const b = B[order[oi]], cx = b.p.reduce((s, q) => s + q[0], 0) / b.p.length, cy = b.p.reduce((s, q) => s + q[1], 0) / b.p.length;
     for (let oj = 0; oj < oi; oj++) {
-      const j = order[oj], L = B[j], bb = bbox[j]; if (L.parent != null || L.area < b.area || cx < bb[0] - 1 || cx > bb[1] + 1 || cy < bb[2] - 1 || cy > bb[3] + 1) continue;
+      const j = order[oj], L = B[j], bb = bbox[j]; if (b.thin || L.thin || L.parent != null || L.area < b.area || cx < bb[0] - 1 || cx > bb[1] + 1 || cy < bb[2] - 1 || cy > bb[3] + 1) continue;
       // Inside: the middle is in the bigger one, or most of the corners are.
       const inside = b.p.filter(q => pointIn(L.p, q[0], q[1])).length;
       if (!pointIn(L.p, cx, cy) && inside < b.p.length * .6) continue;
@@ -138,7 +173,13 @@ export function finishMap(raw: RawMap): MapData {
   B.forEach((b, i) => {
     let base = 1e9, sx = 0, sy = 0; for (const q of b.p) { base = Math.min(base, hAt(q[0], q[1])); sx += q[0]; sy += q[1]; }
     b.id = i; b.base = base - .4; b.top = base + .3 + b.h; b.cx = sx / b.p.length; b.cy = sy / b.p.length;
-    b.cells = []; rasterPoly(b.p, ci => { if (isWet(terr[ci])) return; terr[ci] = T_BUILD; bldTop[ci] = b.top; bldId[ci] = i; b.cells.push(ci); });
+    const put = (ci: number) => { if (isWet(terr[ci]) || bldId[ci] === i) return; terr[ci] = T_BUILD; bldTop[ci] = b.top; bldId[ci] = i; b.cells.push(ci); };
+    b.cells = []; rasterPoly(b.p, put);
+    // A wall also takes each cell its sides cross, but not roads: a wall across a road is a gateway.
+    if (b.thin) for (let k = 0; k < b.p.length; k++) {
+      const a = b.p[k], c = b.p[(k + 1) % b.p.length], n = Math.ceil(Math.hypot(c[0] - a[0], c[1] - a[1]) / .3);
+      for (let s = 0; s <= n; s++) { const x = a[0] + (c[0] - a[0]) * s / n, y = a[1] + (c[1] - a[1]) * s / n, cx = Math.floor(x / C), cy = Math.floor(y / C); if (cx >= 0 && cy >= 0 && cx < GW && cy < GH && terr[cy * GW + cx] !== T_ROAD) put(cy * GW + cx); }
+    }
     // Strength: bigger and taller buildings take more shells to bring down. Castles are much tougher.
     let ar = 0; for (let k = 0; k < b.p.length; k++) { const a = b.p[k], c = b.p[(k + 1) % b.p.length]; ar += a[0] * c[1] - c[0] * a[1]; }
     b.hp0 = clamp(Math.abs(ar) / 2 * b.h * .05, 6, 160) * (b.btype === 'castle' ? 4 : 1); b.hp = b.hp0; b.down = null;
@@ -191,11 +232,19 @@ export function finishMap(raw: RawMap): MapData {
     bridges.push({ cells, ramp, ends, deck: top, cx, cy, blown: null, span });
   }
 
-  const trees: number[][] = [];
+  // Mapped single trees and tree rows, then trees scattered in woods. Parks get random trees only when
+  // the map data has few real ones.
+  const trees: number[][] = [], open = (ci: number) => ci >= 0 && !isWet(terr[ci]) && terr[ci] !== T_BUILD && terr[ci] !== T_ROAD;
+  const cellAt = (x: number, y: number) => x < 0 || y < 0 || x >= W || y >= H ? -1 : Math.floor(y / C) * GW + Math.floor(x / C);
+  for (const t of raw.trees || []) if (open(cellAt(t[0], t[1]))) trees.push(t);
+  const parkP = (raw.trees || []).length > 40 ? 0 : .05;
   for (let ci = 0; ci < GW * GH; ci++) {
     const t = terr[ci]; if (t !== T_WOOD && t !== T_PARK) continue;
     const x = (ci % GW) * C + 1, y = Math.floor(ci / GW) * C + 1;
-    if (hashf(x, y, 3) < (t === T_WOOD ? .42 : .05)) trees.push([x + (hashf(x, y, 4) - .5) * 1.6, y + (hashf(x, y, 5) - .5) * 1.6, 3 + hashf(x, y, 6) * 4]);
+    if (hashf(x, y, 3) < (t === T_WOOD ? .42 : parkP)) trees.push([x + (hashf(x, y, 4) - .5) * 1.6, y + (hashf(x, y, 5) - .5) * 1.6, 3 + hashf(x, y, 6) * 4]);
   }
-  return { seed: raw.seed, name: raw.name, source: raw.source, credit: raw.credit, ground, terr, terr0: terr.slice(), TH, hAt, deck, deck0: deck.slice(), bridges, B, trees, bldTop, bldId, count: B.length, play, bldId0: bldId.slice(), bldTop0: bldTop.slice(), wl };
+  // Hedges and walls only stand on open ground: not in water, on roads or inside buildings.
+  const feat = raw.feat ? raw.feat.slice() : new Uint8Array(GW * GH);
+  for (let ci = 0; ci < feat.length; ci++) if (feat[ci] && !open(ci)) feat[ci] = 0;
+  return { seed: raw.seed, name: raw.name, source: raw.source, credit: raw.credit, ground, terr, terr0: terr.slice(), TH, hAt, deck, deck0: deck.slice(), bridges, B, trees, bldTop, bldId, count: B.length, play, bldId0: bldId.slice(), bldTop0: bldTop.slice(), wl, feat, fences: raw.fences || [] };
 }

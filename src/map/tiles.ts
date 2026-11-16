@@ -44,9 +44,9 @@ export async function fetchTiles(s: number, w: number, n: number, e: number, pro
     });
     L('transportation', (f, rings) => {
       const p = f.properties; if (p.brunnel === 'tunnel') return;
-      if (p.class === 'rail') { for (const r of rings) elements.push({ type: 'way', tags: { highway: 'footway' }, geometry: r }); return; }
+      if (p.class === 'rail') { if (p.subclass === 'rail' || !p.subclass) for (const r of rings) elements.push({ type: 'way', tags: { railway: 'rail' }, geometry: r }); return; }
       const hw = ROAD[p.class]; if (!hw) return;
-      for (const r of rings) elements.push({ type: 'way', tags: { highway: hw, bridge: p.brunnel === 'bridge' ? 'yes' : undefined }, geometry: r });
+      for (const r of rings) elements.push({ type: 'way', tags: { highway: hw, bridge: p.brunnel === 'bridge' ? 'yes' : undefined, surface: p.surface === 'unpaved' ? 'unpaved' : undefined }, geometry: r });
     });
     const poly = (tags: any, rings: any[]) => { if (rings.length) elements.push({ type: 'relation', tags, members: rings.map(r => ({ role: area(r) < 0 ? 'inner' : 'outer', geometry: r })) }); };
     L('water', (f, rings) => poly({ natural: 'water' }, rings));
